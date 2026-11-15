@@ -157,6 +157,9 @@
                     <button id="btnOpenHangar" class="btn-secondary">
                         MECH UPGRADES &amp; LOADOUT
                     </button>
+                    <button id="btnOpenPatchNotes" class="btn-secondary" style="border-color: #38f2ff; color: #38f2ff;">
+                        PATCH NOTES (v0.9.1)
+                    </button>
                 </div>
 
                 <div class="controls-card">
@@ -238,6 +241,17 @@
             </div>
         </div>
 
+        <!-- Patch Notes Modal -->
+        <div id="patchNotesModal" class="modal-overlay hidden interactive">
+            <div class="menu-box patch-notes-box">
+                <h2 class="modal-title" style="color: #38f2ff;">COMBAT LOG &amp; PATCH NOTES</h2>
+                <div id="patchNotesList" class="patch-notes-list"></div>
+                <button id="btnClosePatchNotes" class="btn-secondary" style="margin-top: 14px; border-color: #38f2ff; color: #38f2ff;">
+                    CLOSE [ESC]
+                </button>
+            </div>
+        </div>
+
         <!-- Defeat Screen -->
         <div id="defeatScreen" class="modal-overlay hidden interactive">
             <div class="menu-box" style="border-color: #ff3344; box-shadow: 0 0 30px rgba(255, 51, 68, 0.4);">
@@ -277,6 +291,7 @@
     <script src="js/pixelart.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/patchnotes.js"></script>
     <script src="js/pool.js"></script>
     <script src="js/hangar.js"></script>
     <script src="js/weapons.js"></script>

@@ -220,6 +220,24 @@ class Game {
         document.getElementById('btnModeEndless').addEventListener('click', () => this.startGame('endless'));
         document.getElementById('btnOpenHangar').addEventListener('click', () => this.openHangar());
         document.getElementById('btnCloseHangar').addEventListener('click', () => this.closeHangar());
+        const btnOpenPatch = document.getElementById('btnOpenPatchNotes');
+        const btnClosePatch = document.getElementById('btnClosePatchNotes');
+        const patchModal = document.getElementById('patchNotesModal');
+        if (btnOpenPatch && patchModal) {
+            const notes = Array.isArray(window.PATCH_NOTES) ? window.PATCH_NOTES : [];
+            if (notes[0] && notes[0].version) {
+                btnOpenPatch.textContent = `PATCH NOTES (${notes[0].version})`;
+            }
+            btnOpenPatch.addEventListener('click', () => {
+                this.renderPatchNotes();
+                patchModal.classList.remove('hidden');
+            });
+        }
+        if (btnClosePatch && patchModal) {
+            btnClosePatch.addEventListener('click', () => {
+                patchModal.classList.add('hidden');
+            });
+        }
         const resetHangarBtn = document.getElementById('btnResetHangar');
         if (resetHangarBtn) {
             resetHangarBtn.addEventListener('click', () => {
@@ -416,6 +434,11 @@ class Game {
             // Note: Escape also exits pointer lock in browsers; handle pause & refit closure cleanly
             if (e.code ==='Escape'&& this.state ==='LEVELUP') {
                 this.closeRefitTerminal();
+                return;
+            }
+            const patchModal = document.getElementById('patchNotesModal');
+            if (e.code ==='Escape'&& patchModal && !patchModal.classList.contains('hidden')) {
+                patchModal.classList.add('hidden');
                 return;
             }
             if (e.code ==='KeyP'|| (e.code ==='Escape'&& document.pointerLockElement !== this.canvas)) {
@@ -645,6 +668,29 @@ class Game {
             const mm = document.getElementById('mainMenu');
             if (mm) mm.classList.remove('hidden');
         }
+    }
+
+    renderPatchNotes() {
+        const listEl = document.getElementById('patchNotesList');
+        if (!listEl) return;
+        const notes = Array.isArray(window.PATCH_NOTES) ? window.PATCH_NOTES : [];
+        if (notes.length === 0) {
+            listEl.innerHTML = '<div style="color:#94a3b8;">No patch notes recorded yet.</div>';
+            return;
+        }
+        listEl.innerHTML = notes.map(entry => {
+            const items = (entry.changes || []).map(c => `<li>${c}</li>`).join('');
+            return `
+                <div class="patch-entry">
+                    <div class="patch-entry-header">
+                        <span class="patch-version">${entry.version}</span>
+                        <span class="patch-title">${entry.title}</span>
+                        <span class="patch-date">${entry.date}</span>
+                    </div>
+                    <ul class="patch-list">${items}</ul>
+                </div>
+            `;
+        }).join('');
     }
 
     updateHangarUI() {
