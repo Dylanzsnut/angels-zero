@@ -139,6 +139,11 @@ class WaveDirector {
             case'BURROW_CLUSTER': {
                 // 2 to 4 Sand-Stalkers buried in a forward arc ahead of the walker
                 window.gameInstance.showBanner('SEISMIC ANOMALY: SUBTERRANEAN CONTACTS AHEAD','#eea832', 2400);
+                if (window.soundManager && window.soundManager.speakComms) {
+                    window.soundManager.speakComms('Seismic tremor ahead. Sand-stalkers beneath the surface.', {
+                        speaker: 'AI', priority: 1, cooldownKey: 'wave_event', cooldownMs: 12000
+                    });
+                }
                 if (window.soundManager && window.soundManager.playSubterraneanRumble) {
                     window.soundManager.playSubterraneanRumble();
                 }
@@ -157,6 +162,11 @@ class WaveDirector {
             case'FLANK_PINCER': {
                 // Dual pincer ambush from blind-spot flanks perpendicular to torso heading
                 window.gameInstance.showBanner('TACTICAL WARNING: CONVERGING FLANK PINCER','#ff3822', 2400);
+                if (window.soundManager && window.soundManager.speakComms) {
+                    window.soundManager.speakComms('Warning. Hostile flanking movement on both sides.', {
+                        speaker: 'AI', priority: 1, cooldownKey: 'wave_event', cooldownMs: 12000
+                    });
+                }
                 const flankAngles = [player.facingAngle + Math.PI / 2, player.facingAngle - Math.PI / 2];
                 for (const fAng of flankAngles) {
                     const count = 2;
@@ -175,6 +185,11 @@ class WaveDirector {
             case'SQUALL_RUSH': {
                 // Swarm sprint emerging from blinding dust wall
                 window.gameInstance.showBanner('PERIMETER BREACH: SQUALL RUSH DETECTED','#00ffff', 2400);
+                if (window.soundManager && window.soundManager.speakComms) {
+                    window.soundManager.speakComms('Perimeter breach. Fast movers incoming through the dust.', {
+                        speaker: 'AI', priority: 1, cooldownKey: 'wave_event', cooldownMs: 12000
+                    });
+                }
                 const count = Math.min(8, 4 + Math.floor(t / 90));
                 for (let i = 0; i < count; i++) {
                     const ang = Math.random() * Math.PI * 2;
@@ -192,6 +207,11 @@ class WaveDirector {
     spawnMiniBoss(player) {
         window.soundManager.playBossWarning();
         window.gameInstance.showBanner('WARNING: BROOD-GUARD MINI-BOSS DETECTED!','#ff0055');
+        if (window.soundManager && window.soundManager.speakComms) {
+            window.soundManager.speakComms('Heavy bio-signature on scope. Brood-Guard inbound.', {
+                speaker: 'COMMAND', priority: 2, cooldownKey: 'boss', cooldownMs: 10000
+            });
+        }
 
         const angle = Math.random() * Math.PI * 2;
         const spawnX = player.x + Math.cos(angle) * 700;
@@ -204,6 +224,11 @@ class WaveDirector {
     spawnApexBoss(player) {
         window.soundManager.playBossWarning();
         window.gameInstance.showBanner('CRITICAL ALERT: APEX BROODMOTHER HAS SURFACED!','#9900ff', 6000);
+        if (window.soundManager && window.soundManager.speakComms) {
+            window.soundManager.speakComms('Critical threat. Apex Broodmother has surfaced. All weapons free, pilot.', {
+                speaker: 'COMMAND', priority: 2, cooldownKey: 'apex', cooldownMs: 15000
+            });
+        }
 
         const angle = Math.random() * Math.PI * 2;
         const spawnX = player.x + Math.cos(angle) * 750;

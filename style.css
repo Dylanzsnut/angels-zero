@@ -1621,3 +1621,50 @@ body, html {
         filter: none;
     }
 }
+
+/* Tactical AI & Orbital Command Radio Comms Bar */
+.hud-comms {
+    position: absolute;
+    bottom: 118px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(680px, 86vw);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: rgba(6, 12, 18, 0.82);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-left: 3px solid #00e5ff;
+    border-radius: 3px;
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #e6f4f8;
+    pointer-events: none;
+    z-index: 25;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+.hud-comms-speaker {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    padding: 2px 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.hud-comms-speaker.ai {
+    color: #00e5ff;
+    background: rgba(0, 229, 255, 0.12);
+    border: 1px solid rgba(0, 229, 255, 0.4);
+}
+
+.hud-comms-speaker.cmd {
+    color: #ffaa00;
+    background: rgba(255, 170, 0, 0.12);
+    border: 1px solid rgba(255, 170, 0, 0.45);
+}

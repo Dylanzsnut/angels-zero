@@ -578,6 +578,12 @@ class Game {
         }
         this.updatePointerLockPrompt();
         this.showDropBanner();
+        if (window.soundManager && window.soundManager.speakComms) {
+            const brief = mode === 'endless'
+                ? 'Endless patrol active. Hunt down high-value bounties and press X to pop your evac flare whenever you are ready to extract.'
+                : 'Orbital Command online. Advance north through the canyon sectors, secure the outposts, and reach extraction.';
+            window.soundManager.speakComms(brief, { speaker: 'COMMAND', priority: 2, cooldownKey: 'deploy', cooldownMs: 10000 });
+        }
     }
 
     onMechFootstep(isLeftFoot) {
@@ -1311,6 +1317,9 @@ class Game {
         if (this.releasePointerLock) this.releasePointerLock();
         if (window.soundManager && window.soundManager.playEvolution) {
             window.soundManager.playEvolution();
+            if (window.soundManager.speakComms) {
+                window.soundManager.speakComms('Supply crate secured. Analyzing salvage payload.', { speaker: 'AI', priority: 1, cooldownKey: 'chest', cooldownMs: 4000 });
+            }
         }
         const chestModal = typeof document !=='undefined'? document.getElementById('chestModal') : null;
         if (chestModal) chestModal.classList.remove('hidden');
@@ -1776,6 +1785,11 @@ class Game {
         }
         if (this.showBanner) {
             this.showBanner('EVAC FLARE DEPLOYED — HOLD LZ FOR 20s TO EXTRACT WITH YOUR SCRAP!','#00ffcc', 4500);
+        if (window.soundManager && window.soundManager.speakComms) {
+            window.soundManager.speakComms('Evac flare confirmed. Dropship inbound. Hold the landing zone for twenty seconds.', {
+                speaker: 'COMMAND', priority: 2, cooldownKey: 'evac_flare', cooldownMs: 10000
+            });
+        }
         }
         return true;
     }
@@ -1797,8 +1811,18 @@ class Game {
             if (this.showBanner) {
                 this.showBanner(`${op.name} CLEARED (+${reward} SCRAP)! NEW BOUNTY: ${nextOp.code}`,'#48ee58', 3500);
             }
+            if (window.soundManager && window.soundManager.speakComms) {
+                window.soundManager.speakComms('Bounty neutralized. Uploading next target coordinates.', {
+                    speaker: 'COMMAND', priority: 1, cooldownKey: 'bounty', cooldownMs: 5000
+                });
+            }
         } else if (this.showBanner) {
             this.showBanner(`${op.name} LIBERATED (+${iffBonus}m SECTOR IFF & REFIT PAD ONLINE)`,'#48ee58', 3500);
+            if (window.soundManager && window.soundManager.speakComms) {
+                window.soundManager.speakComms('Outpost secured. Refit pad online and sensor grid expanded.', {
+                    speaker: 'COMMAND', priority: 1, cooldownKey: 'outpost', cooldownMs: 5000
+                });
+            }
         }
     }
 
@@ -2190,6 +2214,11 @@ class Game {
 
             if ((totalOps > 0 && libOps >= totalOps) || timerDone) {
                 this.activateExtractionBeacon('ALL SECTORS CLEARED — NORTH EXTRACTION LZ ACTIVE!');
+                if (window.soundManager && window.soundManager.speakComms) {
+                    window.soundManager.speakComms('All sectors cleared. Proceed to the North Extraction Landing Zone.', {
+                        speaker: 'COMMAND', priority: 2, cooldownKey: 'lz_active', cooldownMs: 15000
+                    });
+                }
             }
         } else if (ext.phase ==='BEACON_READY') {
             const d = Math.hypot(this.player.x - ext.beaconX, this.player.y - ext.beaconY);
@@ -2230,6 +2259,11 @@ class Game {
                 if (this.showBanner) {
                     this.showBanner('EXTRACTION DROPSHIP LANDED — MARCH ONTO REAR RAMP NOW!','#48ee58', 4500);
                 }
+                if (window.soundManager && window.soundManager.speakComms) {
+                    window.soundManager.speakComms('Dropship on deck. Board the rear ramp now, pilot.', {
+                        speaker: 'COMMAND', priority: 2, cooldownKey: 'dropship_landed', cooldownMs: 15000
+                    });
+                }
             }
         } else if (ext.phase ==='BOARDING') {
             ext.boardingTimer = Math.max(0, ext.boardingTimer - dt);
@@ -2249,6 +2283,9 @@ class Game {
         this.releasePointerLock();
         window.soundManager.stopBgm();
         window.soundManager.playPlayerHurt();
+        if (window.soundManager.speakComms) {
+            window.soundManager.speakComms('Suit telemetry lost. Pilot down.', { speaker: 'COMMAND', priority: 2 });
+        }
         window.hangarSystem.recordGameEnd(this.waveDirector.elapsedTime, this.player.kills, false);
 
         const raidHaul = (this.player.credits || 0) + (this.raidCachesCollected || 0) * 50;
@@ -2264,6 +2301,9 @@ class Game {
         this.releasePointerLock();
         window.soundManager.stopBgm();
         window.soundManager.playEvolution();
+        if (window.soundManager.speakComms) {
+            window.soundManager.speakComms('Extraction complete. Returning to orbital hangar with your scrap haul.', { speaker: 'COMMAND', priority: 2 });
+        }
         window.hangarSystem.recordGameEnd(this.waveDirector.elapsedTime, this.player.kills, true);
 
         const raidHaul = (this.player.credits || 0) + (this.raidCachesCollected || 0) * 50;
@@ -2382,6 +2422,26 @@ class Game {
         }
 
         // Player update
+        if (window.soundManager && window.soundManager.speakComms && !this.introActive && this.state === 'PLAYING') {
+            const nowComms = Date.now();
+            if (nowComms - (window.soundManager.lastCommsTime || 0) > 48000) {
+                const ambientLines = this.currentMode === 'endless'
+                    ? [
+                        { speaker: 'AI', text: 'Long-range sensors detecting movement across the dunes. Stay sharp.' },
+                        { speaker: 'COMMAND', text: 'Remember pilot, press X to deploy your evac flare whenever you want to bank your haul.' },
+                        { speaker: 'AI', text: 'Reactor output nominal. Thermal sweep ready on E.' },
+                        { speaker: 'COMMAND', text: 'Keep clearing bounties to push your scrap multiplier, or call evac if the swarm gets too thick.' }
+                    ]
+                    : [
+                        { speaker: 'AI', text: 'Sandstorm interference rising. Use E for active thermal sonar.' },
+                        { speaker: 'COMMAND', text: 'Keep pushing north through the canyon, pilot. Extraction awaits.' },
+                        { speaker: 'AI', text: 'Chassis hydraulics nominal. Watch your barrel heat.' },
+                        { speaker: 'COMMAND', text: 'Sweep the flanks and clear the outposts to expand your visor IFF range.' }
+                    ];
+                const pick = ambientLines[Math.floor(Math.random() * ambientLines.length)];
+                window.soundManager.speakComms(pick.text, { speaker: pick.speaker, priority: 0, cooldownKey: 'ambient', cooldownMs: 45000 });
+            }
+        }
         if (this.hitMarkerTimer > 0) this.hitMarkerTimer = Math.max(0, this.hitMarkerTimer - dt);
         if (this.killMarkerTimer > 0) this.killMarkerTimer = Math.max(0, this.killMarkerTimer - dt);
         if (this.killStreakTimer > 0) {

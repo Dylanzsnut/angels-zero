@@ -517,6 +517,11 @@ class Player {
                 }
                 if (window.gameInstance && window.gameInstance.showBanner) {
                     window.gameInstance.showBanner('SHIELD COLLAPSE — HULL COMPROMISED','#00ffff', 1200);
+            if (window.soundManager && window.soundManager.speakComms) {
+                window.soundManager.speakComms('Warning. Shields offline.', {
+                    speaker: 'AI', priority: 1, cooldownKey: 'shield_down', cooldownMs: 15000
+                });
+            }
                 }
             }
         }

@@ -4,6 +4,10 @@ class SoundManager {
         this.ctx = null;
         this.muted = false;
         this.bgmMuted = false;
+        this.commsMuted = false;
+        this.lastCommsTime = 0;
+        this.commsCategoryTimes = {};
+        this._commsHideTimer = null;
         this.masterVolume = 0.48;
         this.bgmVolume = 0.36;
         this.initialized = false;
@@ -473,6 +477,9 @@ class SoundManager {
 
     toggleMute() {
         this.muted = !this.muted;
+        if (this.muted && typeof window !== 'undefined' && window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
         return this.muted;
     }
 
@@ -2382,6 +2389,119 @@ class SoundManager {
         gain.connect(extOut);
         osc.start(now);
         osc.stop(now + 0.50);
+    }
+
+    // Short tactical radio PTT squelch chirp before/after voice transmissions
+    playCommsSquelch(isTail = false) {
+        if (this.muted || !this.ctx) return;
+        this.resume();
+        const now = this.ctx.currentTime;
+        const intOut = this.getInteriorBus ? this.getInteriorBus() : (this.masterOut || this.ctx.destination);
+
+        // Filtered static micro-burst
+        const bufLen = Math.floor(this.ctx.sampleRate * 0.045);
+        const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(isTail ? 1400 : 1900, now);
+        bp.Q.setValueAtTime(1.8, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.09 * this.masterVolume, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
+
+        noise.connect(bp);
+        bp.connect(gain);
+        gain.connect(intOut);
+        noise.start(now);
+
+        // Crisp PTT tone pip
+        const osc = this.ctx.createOscillator();
+        const tGain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(isTail ? 880 : 1240, now);
+        tGain.gain.setValueAtTime(0.045 * this.masterVolume, now);
+        tGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
+        osc.connect(tGain);
+        tGain.connect(intOut);
+        osc.start(now);
+        osc.stop(now + 0.032);
+    }
+
+    // Tactical AI & Orbital Commander Voice Narration (Web Speech API + HUD Subtitles)
+    speakComms(text, opts = {}) {
+        if (!text || this.muted || this.commsMuted) return false;
+        const speaker = opts.speaker || 'AI';
+        const priority = opts.priority !== undefined ? opts.priority : 1;
+        const cooldownKey = opts.cooldownKey || null;
+        const cooldownMs = opts.cooldownMs !== undefined ? opts.cooldownMs : 6000;
+        const nowMs = Date.now();
+
+        if (cooldownKey) {
+            const last = this.commsCategoryTimes[cooldownKey] || 0;
+            if (nowMs - last < cooldownMs) return false;
+        }
+
+        const hasTTS = (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined');
+        if (hasTTS && window.speechSynthesis.speaking && priority < 2) {
+            return false;
+        }
+
+        this.lastCommsTime = nowMs;
+        if (cooldownKey) this.commsCategoryTimes[cooldownKey] = nowMs;
+
+        // Update HUD radio subtitle bar if present
+        if (typeof document !== 'undefined') {
+            const box = document.getElementById('hudComms');
+            const spkEl = document.getElementById('hudCommsSpeaker');
+            const txtEl = document.getElementById('hudCommsText');
+            if (box && spkEl && txtEl) {
+                spkEl.textContent = speaker === 'COMMAND' ? 'ORBITAL CMD' : 'TAC-AI';
+                spkEl.className = 'hud-comms-speaker ' + (speaker === 'COMMAND' ? 'cmd' : 'ai');
+                txtEl.textContent = text;
+                box.classList.remove('hidden');
+                if (this._commsHideTimer) clearTimeout(this._commsHideTimer);
+                this._commsHideTimer = setTimeout(() => {
+                    box.classList.add('hidden');
+                }, Math.max(4200, Math.min(7500, text.length * 65)));
+            }
+        }
+
+        this.playCommsSquelch(false);
+
+        if (hasTTS) {
+            try {
+                if (priority >= 2) window.speechSynthesis.cancel();
+                const utt = new SpeechSynthesisUtterance(text);
+                const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+                if (voices && voices.length > 0) {
+                    const enVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+                    const preferred = enVoices.find(v => /daniel|guy|david|mark|aria|google us|natural/i.test(v.name)) || enVoices[0] || voices[0];
+                    if (preferred) utt.voice = preferred;
+                }
+                if (speaker === 'COMMAND') {
+                    utt.pitch = 0.88;
+                    utt.rate = 1.02;
+                    utt.volume = Math.min(1, 0.85 * (this.masterVolume / 0.48));
+                } else {
+                    utt.pitch = 1.04;
+                    utt.rate = 1.06;
+                    utt.volume = Math.min(1, 0.80 * (this.masterVolume / 0.48));
+                }
+                utt.onend = () => {
+                    if (!this.muted) this.playCommsSquelch(true);
+                };
+                window.speechSynthesis.speak(utt);
+            } catch (e) {}
+        }
+        return true;
     }
 }
 
