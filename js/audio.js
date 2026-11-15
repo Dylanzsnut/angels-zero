@@ -1954,7 +1954,7 @@ class SoundManager {
         osc.stop(now + 0.4);
     }
 
-    // Escalating Aliens-Style Motion Tracker Doppler Chirp (Interior Cockpit Bus)
+    // Subtle Low-Fatigue Motion Tracker Pulse (Interior Cockpit Bus)
     playMotionTrackerChirp(urgency = 0.0, proximity = 0.5) {
         if (this.muted || !this.ctx) return;
         this.resume();
@@ -1963,34 +1963,28 @@ class SoundManager {
         const u = Math.max(0, Math.min(1, urgency || 0));
         const p = Math.max(0, Math.min(1, proximity !== undefined ? proximity : 0.5));
 
-        const baseFreq = 1650 + u * 720 + p * 380;
-        const endFreq = baseFreq * (1.28 + u * 0.14);
-        const dur = 0.042 - u * 0.016;
+        // Soft, warm mid-frequency sonar tick (no shrill 2-4kHz harmonics)
+        const baseFreq = 620 + u * 180 + p * 110;
+        const endFreq = baseFreq * 0.92;
+        const dur = 0.038;
 
         const osc = this.ctx.createOscillator();
-        const harmonic = this.ctx.createOscillator();
-        const hGain = this.ctx.createGain();
         const gain = this.ctx.createGain();
 
         osc.type = 'sine';
         osc.frequency.setValueAtTime(baseFreq, now);
         osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
 
-        harmonic.type = 'triangle';
-        harmonic.frequency.setValueAtTime(baseFreq * 1.5, now);
-        hGain.gain.setValueAtTime(0.18 + u * 0.18, now);
-        harmonic.connect(hGain);
-        hGain.connect(gain);
-        osc.connect(gain);
+        const peak = (0.032 + u * 0.022) * this.masterVolume;
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(peak, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + dur + 0.012);
 
-        gain.gain.setValueAtTime((0.16 + u * 0.14) * this.masterVolume, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.008);
+        osc.connect(gain);
         gain.connect(intOut);
 
         osc.start(now);
-        harmonic.start(now);
-        osc.stop(now + dur + 0.014);
-        harmonic.stop(now + dur + 0.014);
+        osc.stop(now + dur + 0.016);
     }
 
     // Military CRT Radar Contact Ping Chirp (Delegates to Motion Tracker Chirp)

@@ -5557,7 +5557,8 @@ class Game {
                 const contactAngle = Math.atan2(pos.ry - cy, pos.rx - cx);
                 const diff = Math.abs(Math.atan2(Math.sin(sweepAngle - contactAngle), Math.cos(sweepAngle - contactAngle)));
                 if (diff < 0.14) {
-                    if (intensity < 0.65 && window.soundManager) {
+                    if (intensity < 0.65 && window.soundManager && (nowMs - (this.lastRadarPingTime || 0)) > 450) {
+                        this.lastRadarPingTime = nowMs;
                         if (window.soundManager.playMotionTrackerChirp) {
                             window.soundManager.playMotionTrackerChirp(urg, prox);
                         } else if (window.soundManager.playRadarContactPing) {
