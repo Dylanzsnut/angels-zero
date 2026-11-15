@@ -2,6 +2,8 @@
 
 **First-Person 3D Mech Horde-Survival & Extraction Shooter**
 
+**Play Live in Browser:** https://orbital-perimeter.pages.dev/
+
 Drop into a sandstorm-choked desert perimeter inside an armored **Orbital Drop Exosuit**. Fight through subterranean arachnid swarms, liberate forward outposts, shatter hive nests with Hellbombs, and hold the extraction zone long enough to bank your scrap haul.
 
 Built with **Three.js (WebGL)** and a **procedural Web Audio API sound engine** with zero external CDN dependencies.
