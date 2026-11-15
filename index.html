@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORBITAL PERIMETER — Heavy Grim-Dark Mech Combat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+    <div id="vignette" class="vignette-overlay hidden"></div>
+    <div id="thermalOverlay" class="thermal-overlay hidden"></div>
+
+    <div class="ui-layer">
+        <!-- Cockpit Visor & Phosphor-Green Exosuit HUD -->
+        <div id="hud" class="hidden">
+            <!-- Subtle Retro Visor Vignette -->
+            <div class="cockpit-visor"></div>
+
+            <!-- Top-Left CRT System Telemetry -->
+            <div id="hudTelemetryLog" class="hud-telemetry-log"></div>
+
+            <!-- Center Pixel Crosshair -->
+            <div id="fpsCrosshair" class="fps-crosshair">
+                <div class="crosshair-ring"></div>
+                <div class="crosshair-dot"></div>
+            </div>
+
+            <!-- Pointer Lock Prompt -->
+            <div id="pointerLockPrompt" class="pointer-lock-prompt">
+                🖱️ CLICK SCREEN TO ENGAGE COCKPIT NEURAL LINK (MOUSE AIM &amp; LMB FIRE) &bull; [ESC] TO DISENGAGE
+            </div>
+
+            <!-- Rear Proximity Alert -->
+            <div id="rearProximityAlert" class="rear-alert hidden">
+                ⚠️ REAR CONTACT DETECTED ⚠️
+            </div>
+
+            <div class="hud-top">
+                <div class="xp-bar-container">
+                    <div id="hudXpFill" class="xp-bar-fill"></div>
+                    <div id="hudLevelText" class="level-text">LVL 1</div>
+                </div>
+
+                <!-- Epic Boss Health Bar -->
+                <div id="bossBarContainer" class="boss-bar-container hidden">
+                    <div class="boss-bar-title"><span id="bossName">BROOD-GUARD</span> <span class="boss-skull">☠</span></div>
+                    <div class="boss-bar-track">
+                        <div id="bossHpFill" class="boss-hp-fill"></div>
+                    </div>
+                </div>
+
+                <div class="hud-header">
+                    <div class="hud-left-spacer"></div>
+
+                    <div class="hud-center">
+                        <div id="hudTimer" class="hud-timer">00:00</div>
+                    </div>
+
+                    <div class="hud-right">
+                        <div class="counters-box">
+                            <div class="kill-count" id="hudKills">☠ 0</div>
+                            <div class="scrap-count" id="hudScrap">🔩 0</div>
+                        </div>
+                        <div class="hud-controls-group interactive">
+                            <button id="bgmBtn" class="hud-btn">🎵 BGM: ON</button>
+                            <button id="muteBtn" class="hud-btn">🔊 AUDIO</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Central Alert Banner -->
+            <div id="alertBanner" class="alert-banner hidden"></div>
+
+            <!-- Project Warlock Chunky Riveted Steel Bottom Corners -->
+            <div class="hud-bottom">
+                <!-- Bottom-Left: Weapon/Passive Slots + Pilot Portrait + Boost/HP Bars -->
+                <div class="pw-corner-left">
+                    <div class="pw-docks-row">
+                        <div class="dock-container" id="hudWeaponsDock"></div>
+                        <div class="dock-container" id="hudPassivesDock"></div>
+                    </div>
+
+                    <div class="pw-steel-panel pw-left-frame">
+                        <div class="pw-portrait-frame">
+                            <canvas id="portraitCanvas" width="64" height="64"></canvas>
+                        </div>
+                        <div class="pw-bars-col">
+                            <div class="pw-stat-row">
+                                <span class="pw-stat-icon pw-icon-boost">⚡</span>
+                                <span id="hudDashText" class="pw-stat-num">READY</span>
+                                <div class="pw-bar-track">
+                                    <div id="hudDashFill" class="dash-fill"></div>
+                                    <div class="pw-bar-segments"></div>
+                                </div>
+                            </div>
+                            <div class="pw-stat-row">
+                                <span class="pw-stat-icon pw-icon-hp">♥</span>
+                                <span id="hudHpText" class="pw-stat-num">100 / 100</span>
+                                <div class="pw-bar-track">
+                                    <div id="hudHpFill" class="hp-fill"></div>
+                                    <div class="pw-bar-segments"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom-Right: 360° Motion Tracker + Segmented Green Sonar Bar + Ability Tile -->
+                <div class="pw-corner-right">
+                    <div class="radar-box pw-steel-panel">
+                        <div class="radar-header">360° MOTION TRACKER</div>
+                        <canvas id="radarCanvas" width="156" height="156"></canvas>
+                        <div id="hudAltitudeText" class="radar-altitude">ALTITUDE  18.10</div>
+                    </div>
+
+                    <div class="pw-steel-panel pw-right-frame">
+                        <div class="pw-sonar-wrap">
+                            <div class="pw-bar-track pw-sonar-track">
+                                <div id="hudSonarFill" class="sonar-fill"></div>
+                                <div class="pw-bar-segments"></div>
+                            </div>
+                            <div class="pw-sonar-meta">
+                                <span class="pw-sonar-tag">[E] SONAR &bull; [Q] SALVO</span>
+                                <span id="hudSonarText" class="pw-ammo-num">READY [E]</span>
+                            </div>
+                        </div>
+                        <div id="hudAbilityBox" class="pw-ability-box">
+                            <canvas id="abilityCanvas" width="48" height="48"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div id="mainMenu" class="modal-overlay interactive">
+            <div class="menu-box">
+                <h1 class="game-title">ORBITAL PERIMETER</h1>
+                <div class="game-subtitle">Full-Manual 3D Canyon Mech Raid &bull; 5-Sector Assault</div>
+
+                <div class="menu-actions">
+                    <button id="btnModeSiege" class="btn-primary">
+                        OPERATION: CANYON RAID (5 SECTORS)
+                    </button>
+                    <button id="btnModeEndless" class="btn-primary" style="background: linear-gradient(135deg, #7c3aed, #a855f7);">
+                        OPERATION: ENDLESS GAUNTLET
+                    </button>
+                    <button id="btnOpenHangar" class="btn-secondary">
+                        🛠️ MECH UPGRADES &amp; LOADOUT
+                    </button>
+                </div>
+
+                <div class="controls-card">
+                    <b>WASD:</b> Move Chassis &bull;
+                    <b>LMB:</b> Fire Active Weapon (<b>1</b> 120mm Rifle / <b>2</b> 37mm Pistol) &bull;
+                    <b>RMB (Hold):</b> ADS Optical Zoom &bull;
+                    <b>R:</b> Reload<br>
+                    <b>V / Mouse4:</b> Thermal Cleaver Slash &bull;
+                    <b>Q (Hold &amp; Release):</b> Micro-Missile Salvo &bull;
+                    <b>F:</b> Seismic Stomp &bull;
+                    <b>SPACE:</b> Thruster Dash &bull;
+                    <b>E:</b> Thermal Sonar &bull;
+                    <b>X:</b> Evac Flare (Endless)
+                </div>
+            </div>
+        </div>
+
+        <!-- Gantry / Outpost Refit Terminal Modal -->
+        <div id="levelUpModal" class="modal-overlay hidden interactive">
+            <div class="modal-header">
+                <h2 class="modal-title">GANTRY &amp; OUTPOST REFIT TERMINAL</h2>
+                <p id="refitHubSubtitle" style="color: #94a3b8; font-size: 14px;">Purchase hardpoint upgrades &amp; evolutions with Salvaged Scrap</p>
+                <div class="hangar-scrap-badge" style="margin-top: 8px; display: inline-block; background: rgba(12,22,38,0.85); border: 1px solid #ffaa00; padding: 4px 12px; border-radius: 4px;">
+                    🔩 SCRAP: <span id="refitScrapCount">0</span>
+                </div>
+            </div>
+            <div id="upgradeCards" class="cards-container"></div>
+            <div style="margin-top: 10px; display: flex; gap: 14px; justify-content: center;">
+                <button id="btnReroll" class="btn-secondary">
+                    🎲 REROLL (<span id="rerollCount">0</span>)
+                </button>
+                <button id="btnCloseRefit" class="btn-secondary" style="border-color: #38f2ff; color: #38f2ff;">
+                    UNDOCK TERMINAL [B / ESC]
+                </button>
+            </div>
+        </div>
+
+        <!-- Supply Crate / Evolution Chest Modal -->
+        <div id="chestModal" class="modal-overlay hidden interactive">
+            <div class="chest-box">
+                <div id="chestContent"></div>
+                <button id="btnClaimChest" class="btn-primary" style="margin-top: 20px;">
+                    SECURE PAYLOAD
+                </button>
+            </div>
+        </div>
+
+        <!-- Hangar Meta-Progression Modal -->
+        <div id="hangarModal" class="modal-overlay hidden interactive">
+            <div id="hangarStatsPanel" class="hangar-stats-panel"></div>
+            <div class="hangar-box">
+                <div class="hangar-header">
+                    <h2 class="modal-title" style="font-size: 22px;">EXOSUIT RETROFIT HANGAR</h2>
+                    <div class="hangar-scrap-badge">🔩 SCRAP: <span id="hangarCredits">0</span></div>
+                </div>
+                <div id="hangarThreatBar" class="hangar-threat-bar"></div>
+                <div id="hangarSlotBar" class="hangar-slot-bar"></div>
+                <div id="hangarTabsBar" class="hangar-tabs-bar">
+                    <button class="hangar-tab active" data-tab="systems">SYSTEMS (16)</button>
+                    <button class="hangar-tab" data-tab="weapons">WEAPONS (16)</button>
+                    <button class="hangar-tab" data-tab="mods">MODS (30)</button>
+                    <button class="hangar-tab" data-tab="cosmetics">PAINT & OPTICS (40)</button>
+                    <button class="hangar-tab" data-tab="attachments">ATTACH & CALLSIGN (20)</button>
+                </div>
+                <div id="hangarCosmeticsBar" class="hangar-cosmetics-bar hidden"></div>
+                <div id="hangarUpgradesList" class="hangar-upgrades-list"></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px;">
+                    <button id="btnResetHangar" class="btn-refund">RESET LOADOUT (50% REFUND: +0 🔩)</button>
+                    <button id="btnCloseHangar" class="btn-secondary">CLOSE HANGAR</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pause Screen -->
+        <div id="pauseOverlay" class="modal-overlay hidden">
+            <div class="menu-box">
+                <h2 class="modal-title">MISSION PAUSED</h2>
+                <p style="color: #94a3b8; margin: 15px 0;">Press <b>ESC</b> or <b>P</b> to resume combat.</p>
+            </div>
+        </div>
+
+        <!-- Defeat Screen -->
+        <div id="defeatScreen" class="modal-overlay hidden interactive">
+            <div class="menu-box" style="border-color: #ff3344; box-shadow: 0 0 30px rgba(255, 51, 68, 0.4);">
+                <h1 class="game-title" style="color: #ff3344; text-shadow: 0 0 18px #ff0033;">OPERATOR KIA</h1>
+                <div class="game-subtitle" style="color: #ff8888;">EXOSUIT INTEGRITY COLLAPSED</div>
+                <div style="margin: 20px 0; font-size: 18px; line-height: 1.8;">
+                    <div>Time Survived: <b id="defeatTime" style="color: #00e5ff;">00:00</b></div>
+                    <div>Biomass Exterminated: <b id="defeatKills" style="color: #ff3344;">0</b></div>
+                    <div>Scrap Recovered: <b id="defeatScrap" style="color: #ffaa00;">0</b> 🔩</div>
+                </div>
+                <button id="btnRestartDefeat" class="btn-primary" style="background: linear-gradient(135deg, #e11d48, #f43f5e);">
+                    RETURN TO HEADQUARTERS
+                </button>
+            </div>
+        </div>
+
+        <!-- Victory Screen -->
+        <div id="victoryScreen" class="modal-overlay hidden interactive">
+            <div class="menu-box" style="border-color: #00ffcc; box-shadow: 0 0 35px rgba(0, 255, 204, 0.5);">
+                <h1 class="game-title" style="color: #00ffcc; text-shadow: 0 0 18px #00ffcc;">MISSION ACCOMPLISHED</h1>
+                <div class="game-subtitle" style="color: #38bdf8;">ORBITAL DROP EVACUATION SUCCESSFUL</div>
+                <div style="margin: 20px 0; font-size: 18px; line-height: 1.8;">
+                    <div>Time to Extraction: <b id="victoryTime" style="color: #00e5ff;">15:00</b></div>
+                    <div>Apex Broodmother Defeated!</div>
+                    <div>Swarm Confirmed Slain: <b id="victoryKills" style="color: #ff3344;">0</b></div>
+                    <div>Scrap Recovered: <b id="victoryScrap" style="color: #ffaa00;">0</b> 🔩</div>
+                </div>
+                <button id="btnRestartVictory" class="btn-primary">
+                    REPORT TO HANGAR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js, Pixel Art Bank & Modular Game Scripts -->
+    <script src="js/lib/three.min.js"></script>
+    <script src="js/pixelart.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/pool.js"></script>
+    <script src="js/hangar.js"></script>
+    <script src="js/weapons.js"></script>
+    <script src="js/entities.js"></script>
+    <script src="js/waves.js"></script>
+    <script src="js/renderer3d.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
