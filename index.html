@@ -29,12 +29,12 @@
 
             <!-- Pointer Lock Prompt -->
             <div id="pointerLockPrompt" class="pointer-lock-prompt">
-                🖱️ CLICK SCREEN TO ENGAGE COCKPIT NEURAL LINK (MOUSE AIM &amp; LMB FIRE) &bull; [ESC] TO DISENGAGE
+                CLICK SCREEN TO ENGAGE COCKPIT NEURAL LINK (MOUSE AIM &amp; LMB FIRE) &bull; [ESC] TO DISENGAGE
             </div>
 
             <!-- Rear Proximity Alert -->
             <div id="rearProximityAlert" class="rear-alert hidden">
-                ⚠️ REAR CONTACT DETECTED ⚠️
+                [!] REAR CONTACT DETECTED [!]
             </div>
 
             <div class="hud-top">
@@ -45,7 +45,7 @@
 
                 <!-- Epic Boss Health Bar -->
                 <div id="bossBarContainer" class="boss-bar-container hidden">
-                    <div class="boss-bar-title"><span id="bossName">BROOD-GUARD</span> <span class="boss-skull">☠</span></div>
+                    <div class="boss-bar-title"><span id="bossName">BROOD-GUARD</span></div>
                     <div class="boss-bar-track">
                         <div id="bossHpFill" class="boss-hp-fill"></div>
                     </div>
@@ -60,12 +60,12 @@
 
                     <div class="hud-right">
                         <div class="counters-box">
-                            <div class="kill-count" id="hudKills">☠ 0</div>
-                            <div class="scrap-count" id="hudScrap">🔩 0</div>
+                            <div class="kill-count" id="hudKills">KILLS 0</div>
+                            <div class="scrap-count" id="hudScrap">SCRAP 0</div>
                         </div>
                         <div class="hud-controls-group interactive">
-                            <button id="bgmBtn" class="hud-btn">🎵 BGM: ON</button>
-                            <button id="muteBtn" class="hud-btn">🔊 AUDIO</button>
+                            <button id="bgmBtn" class="hud-btn">BGM: ON</button>
+                            <button id="muteBtn" class="hud-btn">AUDIO</button>
                         </div>
                     </div>
                 </div>
@@ -89,7 +89,7 @@
                         </div>
                         <div class="pw-bars-col">
                             <div class="pw-stat-row">
-                                <span class="pw-stat-icon pw-icon-boost">⚡</span>
+                                <span class="pw-stat-icon pw-icon-boost">BST</span>
                                 <span id="hudDashText" class="pw-stat-num">READY</span>
                                 <div class="pw-bar-track">
                                     <div id="hudDashFill" class="dash-fill"></div>
@@ -97,7 +97,7 @@
                                 </div>
                             </div>
                             <div class="pw-stat-row">
-                                <span class="pw-stat-icon pw-icon-hp">♥</span>
+                                <span class="pw-stat-icon pw-icon-hp">HP</span>
                                 <span id="hudHpText" class="pw-stat-num">100 / 100</span>
                                 <div class="pw-bar-track">
                                     <div id="hudHpFill" class="hp-fill"></div>
@@ -149,7 +149,7 @@
                         OPERATION: ENDLESS GAUNTLET
                     </button>
                     <button id="btnOpenHangar" class="btn-secondary">
-                        🛠️ MECH UPGRADES &amp; LOADOUT
+                        MECH UPGRADES &amp; LOADOUT
                     </button>
                 </div>
 
@@ -174,13 +174,13 @@
                 <h2 class="modal-title">GANTRY &amp; OUTPOST REFIT TERMINAL</h2>
                 <p id="refitHubSubtitle" style="color: #94a3b8; font-size: 14px;">Purchase hardpoint upgrades &amp; evolutions with Salvaged Scrap</p>
                 <div class="hangar-scrap-badge" style="margin-top: 8px; display: inline-block; background: rgba(12,22,38,0.85); border: 1px solid #ffaa00; padding: 4px 12px; border-radius: 4px;">
-                    🔩 SCRAP: <span id="refitScrapCount">0</span>
+                    SCRAP: <span id="refitScrapCount">0</span>
                 </div>
             </div>
             <div id="upgradeCards" class="cards-container"></div>
             <div style="margin-top: 10px; display: flex; gap: 14px; justify-content: center;">
                 <button id="btnReroll" class="btn-secondary">
-                    🎲 REROLL (<span id="rerollCount">0</span>)
+                    REROLL (<span id="rerollCount">0</span>)
                 </button>
                 <button id="btnCloseRefit" class="btn-secondary" style="border-color: #38f2ff; color: #38f2ff;">
                     UNDOCK TERMINAL [B / ESC]
@@ -204,7 +204,7 @@
             <div class="hangar-box">
                 <div class="hangar-header">
                     <h2 class="modal-title" style="font-size: 22px;">EXOSUIT RETROFIT HANGAR</h2>
-                    <div class="hangar-scrap-badge">🔩 SCRAP: <span id="hangarCredits">0</span></div>
+                    <div class="hangar-scrap-badge">SCRAP: <span id="hangarCredits">0</span></div>
                 </div>
                 <div id="hangarThreatBar" class="hangar-threat-bar"></div>
                 <div id="hangarSlotBar" class="hangar-slot-bar"></div>
@@ -218,7 +218,7 @@
                 <div id="hangarCosmeticsBar" class="hangar-cosmetics-bar hidden"></div>
                 <div id="hangarUpgradesList" class="hangar-upgrades-list"></div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px;">
-                    <button id="btnResetHangar" class="btn-refund">RESET LOADOUT (50% REFUND: +0 🔩)</button>
+                    <button id="btnResetHangar" class="btn-refund">RESET LOADOUT (50% REFUND: +0 CR)</button>
                     <button id="btnCloseHangar" class="btn-secondary">CLOSE HANGAR</button>
                 </div>
             </div>
@@ -240,7 +240,7 @@
                 <div style="margin: 20px 0; font-size: 18px; line-height: 1.8;">
                     <div>Time Survived: <b id="defeatTime" style="color: #00e5ff;">00:00</b></div>
                     <div>Biomass Exterminated: <b id="defeatKills" style="color: #ff3344;">0</b></div>
-                    <div>Scrap Recovered: <b id="defeatScrap" style="color: #ffaa00;">0</b> 🔩</div>
+                    <div>Scrap Recovered: <b id="defeatScrap" style="color: #ffaa00;">0</b> CR</div>
                 </div>
                 <button id="btnRestartDefeat" class="btn-primary" style="background: linear-gradient(135deg, #e11d48, #f43f5e);">
                     RETURN TO HEADQUARTERS
@@ -257,7 +257,7 @@
                     <div>Time to Extraction: <b id="victoryTime" style="color: #00e5ff;">15:00</b></div>
                     <div>Apex Broodmother Defeated!</div>
                     <div>Swarm Confirmed Slain: <b id="victoryKills" style="color: #ff3344;">0</b></div>
-                    <div>Scrap Recovered: <b id="victoryScrap" style="color: #ffaa00;">0</b> 🔩</div>
+                    <div>Scrap Recovered: <b id="victoryScrap" style="color: #ffaa00;">0</b> CR</div>
                 </div>
                 <button id="btnRestartVictory" class="btn-primary">
                     REPORT TO HANGAR

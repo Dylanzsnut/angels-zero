@@ -1,8 +1,8 @@
 // Wave Director & Spawning Engine for Orbital Perimeter
 
 class WaveDirector {
-    constructor(gameMode = 'siege') {
-        this.mode = gameMode; // 'siege' or 'endless'
+    constructor(gameMode ='siege') {
+        this.mode = gameMode; //'siege'or'endless'
         this.elapsedTime = 0;
         this.spawnTimer = 0;
         this.spawnInterval = 2.5; // Accessible early pacing (was 1.0)
@@ -12,7 +12,7 @@ class WaveDirector {
         this.nextAmbushTime = 65 + Math.random() * 25; // First ambush delayed past 65s (was 22+16)
     }
 
-    reset(mode = 'siege') {
+    reset(mode ='siege') {
         this.mode = mode;
         this.elapsedTime = 0;
         this.spawnTimer = 0;
@@ -38,7 +38,7 @@ class WaveDirector {
         }
 
         // Adjust spawn interval based on time
-        if (this.mode === 'siege') {
+        if (this.mode ==='siege') {
             // Gradually reduce spawn interval from 2.5s down to 0.40s at 15 minutes
             this.spawnInterval = Math.max(0.40, 2.5 - (this.elapsedTime / 900) * 2.1);
         } else {
@@ -56,7 +56,7 @@ class WaveDirector {
         }
 
         // Check for Apex Broodmother final boss at 15:00 (900 seconds) in Siege Mode
-        if (this.mode === 'siege' && this.elapsedTime >= window.GAME_CONFIG.SIEGE_DURATION_SECONDS && !this.finalBossSpawned) {
+        if (this.mode ==='siege'&& this.elapsedTime >= window.GAME_CONFIG.SIEGE_DURATION_SECONDS && !this.finalBossSpawned) {
             this.finalBossSpawned = true;
             this.spawnApexBoss(player);
         }
@@ -77,7 +77,7 @@ class WaveDirector {
 
         // Paced batch size curve: starts at 1, scaling gradually up to 16
         let batchSize = Math.max(1, Math.floor(1 + Math.pow(t / 120, 1.2) * 1.8));
-        if (this.mode === 'endless') {
+        if (this.mode ==='endless') {
             batchSize += Math.floor(minutes * 0.6);
         }
 
@@ -92,31 +92,31 @@ class WaveDirector {
             const spawnY = player.y + Math.sin(angle) * distance;
 
             // Select enemy archetype based on paced schedule
-            let type = 'skitterer';
+            let type ='skitterer';
 
             if (t > 45 && Math.random() < 0.12) {
                 // Pheromone Breach Scouts begin patrolling past 45s
-                type = 'pheromone_scout';
+                type ='pheromone_scout';
             }
 
             if (t > 60 && Math.random() < 0.20) {
                 // Dune sand-stalkers begin burrowing under desert past 60s
-                type = 'sand_stalker';
+                type ='sand_stalker';
             }
 
             if (t > 90 && Math.random() < 0.15) {
                 // Aerial radar-jamming Shrieker-Mites arrive past 90s
-                type = 'shrieker_mite';
+                type ='shrieker_mite';
             }
 
             if (t > 150 && Math.random() < 0.25) {
                 // Acid spitters appear after 2:30
-                type = 'acid_spitter';
+                type ='acid_spitter';
             }
 
             if (t > 240 && Math.random() < 0.20) {
                 // Siege-Beetles (Carapace Chargers) appear after 4:00
-                type = 'carapace_charger';
+                type ='carapace_charger';
             }
 
             window.EnemyController.spawn(type, spawnX, spawnY, difficulty);
@@ -131,14 +131,14 @@ class WaveDirector {
         const isSquall = r3d && r3d.squallIntensity > 0.65;
 
         // Choose between 3 tactical ambush patterns
-        const choices = ['BURROW_CLUSTER', 'FLANK_PINCER'];
+        const choices = ['BURROW_CLUSTER','FLANK_PINCER'];
         if (isSquall || t > 60) choices.push('SQUALL_RUSH');
         const pattern = choices[Math.floor(Math.random() * choices.length)];
 
         switch (pattern) {
-            case 'BURROW_CLUSTER': {
+            case'BURROW_CLUSTER': {
                 // 2 to 4 Sand-Stalkers buried in a forward arc ahead of the walker
-                window.gameInstance.showBanner('⚠️ SEISMIC ANOMALY: SUBTERRANEAN CONTACTS AHEAD ⚠️', '#eea832', 2400);
+                window.gameInstance.showBanner('SEISMIC ANOMALY: SUBTERRANEAN CONTACTS AHEAD','#eea832', 2400);
                 if (window.soundManager && window.soundManager.playSubterraneanRumble) {
                     window.soundManager.playSubterraneanRumble();
                 }
@@ -154,9 +154,9 @@ class WaveDirector {
                 break;
             }
 
-            case 'FLANK_PINCER': {
+            case'FLANK_PINCER': {
                 // Dual pincer ambush from blind-spot flanks perpendicular to torso heading
-                window.gameInstance.showBanner('⚠️ TACTICAL WARNING: CONVERGING FLANK PINCER ⚠️', '#ff3822', 2400);
+                window.gameInstance.showBanner('TACTICAL WARNING: CONVERGING FLANK PINCER','#ff3822', 2400);
                 const flankAngles = [player.facingAngle + Math.PI / 2, player.facingAngle - Math.PI / 2];
                 for (const fAng of flankAngles) {
                     const count = 2;
@@ -165,23 +165,23 @@ class WaveDirector {
                         const dist = 280 + Math.random() * 60;
                         const sx = player.x + Math.cos(ang) * dist;
                         const sy = player.y + Math.sin(ang) * dist;
-                        const type = (t > 140 && Math.random() < 0.45) ? 'carapace_charger' : 'skitterer';
+                        const type = (t > 140 && Math.random() < 0.45) ?'carapace_charger':'skitterer';
                         window.EnemyController.spawn(type, sx, sy, difficulty);
                     }
                 }
                 break;
             }
 
-            case 'SQUALL_RUSH': {
+            case'SQUALL_RUSH': {
                 // Swarm sprint emerging from blinding dust wall
-                window.gameInstance.showBanner('⚠️ PERIMETER BREACH: SQUALL RUSH DETECTED ⚠️', '#00ffff', 2400);
+                window.gameInstance.showBanner('PERIMETER BREACH: SQUALL RUSH DETECTED','#00ffff', 2400);
                 const count = Math.min(8, 4 + Math.floor(t / 90));
                 for (let i = 0; i < count; i++) {
                     const ang = Math.random() * Math.PI * 2;
                     const dist = 210 + Math.random() * 60;
                     const sx = player.x + Math.cos(ang) * dist;
                     const sy = player.y + Math.sin(ang) * dist;
-                    const type = Math.random() < 0.4 ? 'sand_stalker' : 'skitterer';
+                    const type = Math.random() < 0.4 ?'sand_stalker':'skitterer';
                     window.EnemyController.spawn(type, sx, sy, difficulty);
                 }
                 break;
@@ -191,7 +191,7 @@ class WaveDirector {
 
     spawnMiniBoss(player) {
         window.soundManager.playBossWarning();
-        window.gameInstance.showBanner('⚠️ WARNING: BROOD-GUARD MINI-BOSS DETECTED! ⚠️', '#ff0055');
+        window.gameInstance.showBanner('WARNING: BROOD-GUARD MINI-BOSS DETECTED!','#ff0055');
 
         const angle = Math.random() * Math.PI * 2;
         const spawnX = player.x + Math.cos(angle) * 700;
@@ -203,7 +203,7 @@ class WaveDirector {
 
     spawnApexBoss(player) {
         window.soundManager.playBossWarning();
-        window.gameInstance.showBanner('🚨 CRITICAL ALERT: APEX BROODMOTHER HAS SURFACED! 🚨', '#9900ff', 6000);
+        window.gameInstance.showBanner('CRITICAL ALERT: APEX BROODMOTHER HAS SURFACED!','#9900ff', 6000);
 
         const angle = Math.random() * Math.PI * 2;
         const spawnX = player.x + Math.cos(angle) * 750;

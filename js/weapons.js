@@ -14,7 +14,7 @@ class WeaponSystem {
 
     forEachEnemy(enemies, cb) {
         if (!enemies) return;
-        if (typeof enemies.forEachActive === 'function') {
+        if (typeof enemies.forEachActive ==='function') {
             enemies.forEachActive(cb);
         } else if (Array.isArray(enemies)) {
             for (let i = 0; i < enemies.length; i++) {
@@ -57,8 +57,8 @@ class WeaponSystem {
                 timeSinceLastShot: 999,
                 spinSpeed: 0,
                 barrelAngle: 0,
-                spinUpTime: cfg.spinUpTime || (weaponId === 'depleted_uranium_rotary' ? 0.06 : 0.08),
-                spinDownTime: cfg.spinDownTime || (weaponId === 'depleted_uranium_rotary' ? 0.22 : 0.25),
+                spinUpTime: cfg.spinUpTime || (weaponId ==='depleted_uranium_rotary'? 0.06 : 0.08),
+                spinDownTime: cfg.spinDownTime || (weaponId ==='depleted_uranium_rotary'? 0.22 : 0.25),
                 minSpinToFire: cfg.minSpinToFire !== undefined ? cfg.minSpinToFire : 0.25,
                 config: cfg
             });
@@ -129,25 +129,25 @@ class WeaponSystem {
             window.soundManager.playWeaponVent();
         }
         if (window.poolManager && window.poolManager.spawnSparks) {
-            window.poolManager.spawnSparks(this.player.x, this.player.y, 16, '#ffffff', 120);
+            window.poolManager.spawnSparks(this.player.x, this.player.y, 16,'#ffffff', 120);
         }
         if (window.gameInstance && window.gameInstance.showBanner) {
-            window.gameInstance.showBanner('COOLANT PURGE ENGAGED', '#55ddff', 900);
+            window.gameInstance.showBanner('COOLANT PURGE ENGAGED','#55ddff', 900);
         }
         return true;
     }
 
     castHitscanRotaryRay(originX, originY, rayAngle, stats, isEvolved, enemies, damageMult) {
-        const pcfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) ? window.GAME_CONFIG.PLAYER : {};
+        const pcfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) ? window.GAME_CONFIG.PLAYER : {};
         const maxRange = pcfg.HITSCAN_MAX_RANGE || 950.0;
         const dirX = Math.cos(rayAngle);
         const dirY = Math.sin(rayAngle);
-        const r3d = (typeof window !== 'undefined' && window.gameInstance) ? window.gameInstance.renderer3d : null;
+        const r3d = (typeof window !=='undefined'&& window.gameInstance) ? window.gameInstance.renderer3d : null;
         const dmgMult = (damageMult !== undefined) ? damageMult : ((this.player && this.player.getDamageMultiplier) ? this.player.getDamageMultiplier() : 1.0);
 
         let effectiveMaxDist = maxRange;
         let hitObstacle = false;
-        const obstacles = (typeof window !== 'undefined' && window.gameInstance && Array.isArray(window.gameInstance.obstacles)) ? window.gameInstance.obstacles : null;
+        const obstacles = (typeof window !=='undefined'&& window.gameInstance && Array.isArray(window.gameInstance.obstacles)) ? window.gameInstance.obstacles : null;
         if (obstacles) {
             for (let i = 0; i < obstacles.length; i++) {
                 const obs = obstacles[i];
@@ -194,7 +194,7 @@ class WeaponSystem {
         hits.sort((a, b) => a.proj - b.proj);
 
         // Check shootable canyon hazards (Volatile Fuel Drums & Coolant Tanks)
-        const gi = (typeof window !== 'undefined') ? window.gameInstance : null;
+        const gi = (typeof window !=='undefined') ? window.gameInstance : null;
         if (gi && Array.isArray(gi.hazards)) {
             for (const hz of gi.hazards) {
                 if (!hz || hz.detonated) continue;
@@ -221,22 +221,22 @@ class WeaponSystem {
             const h = piercedHits[i];
             const e = h.enemy;
             actualHits++;
-            if (e.type === 'acid_spitter') {
+            if (e.type ==='acid_spitter') {
                 e.bileSacHit = true;
             }
             const adsBlend = (this.player && this.player.adsBlend) || 0;
-            const hasWeakpoint = (e.type === 'acid_spitter' || e.type === 'pheromone_scout' || (e.type === 'siege_beetle' && !!e.armorShattered));
+            const hasWeakpoint = (e.type ==='acid_spitter'|| e.type ==='pheromone_scout'|| (e.type ==='siege_beetle'&& !!e.armorShattered));
             const wpMult = (adsBlend > 0.25 && hasWeakpoint) ? (pcfg.ADS_WEAKPOINT_MULT || 1.35) : 1.0;
-            if (typeof e.takeDamage === 'function') {
-                e.takeDamage(hitDamage * wpMult, this.player, 'Ballistic');
+            if (typeof e.takeDamage ==='function') {
+                e.takeDamage(hitDamage * wpMult, this.player,'Ballistic');
             }
             if (wpMult > 1.0 && window.poolManager && window.poolManager.spawnDamageNumber) {
-                window.poolManager.spawnDamageNumber(h.hitX, h.hitY - 18, 'WEAKPOINT!', '#ffbb33', 13);
+                window.poolManager.spawnDamageNumber(h.hitX, h.hitY - 18,'WEAKPOINT!','#ffbb33', 13);
             }
             e.blindLitTimer = lightDur;
             if (window.poolManager && window.poolManager.spawnSparks) {
-                window.poolManager.spawnSparks(h.hitX, h.hitY, isEvolved ? 6 : 4, isEvolved ? '#ffee55' : '#ffaa33', 135);
-                window.poolManager.spawnSparks(h.hitX, h.hitY, 3, '#77ff44', 95);
+                window.poolManager.spawnSparks(h.hitX, h.hitY, isEvolved ? 6 : 4, isEvolved ?'#ffee55':'#ffaa33', 135);
+                window.poolManager.spawnSparks(h.hitX, h.hitY, 3,'#77ff44', 95);
             }
             if (r3d) {
                 if (r3d.spawnBlindFireImpactLight) {
@@ -247,7 +247,7 @@ class WeaponSystem {
             }
             if (e.chitinArmor && !e.armorShattered) {
                 if (window.poolManager && window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(h.hitX, h.hitY, 7, '#ddeeff', 190);
+                    window.poolManager.spawnSparks(h.hitX, h.hitY, 7,'#ddeeff', 190);
                 }
                 stoppedByArmor = true;
                 break;
@@ -258,7 +258,7 @@ class WeaponSystem {
         const gameInst = window.gameInstance;
         if (gameInst && Array.isArray(gameInst.outposts)) {
             for (const op of gameInst.outposts) {
-                if (!op || op.liberated || op.missionType !== 'RELAY_DESTROY' || !Array.isArray(op.relays)) continue;
+                if (!op || op.liberated || op.missionType !=='RELAY_DESTROY'|| !Array.isArray(op.relays)) continue;
                 for (const rel of op.relays) {
                     if (!rel || rel.destroyed) continue;
                     const rx = rel.x - originX;
@@ -269,12 +269,12 @@ class WeaponSystem {
                     if (perpSq <= 34 * 34) {
                         rel.hp -= hitDamage;
                         if (window.poolManager && window.poolManager.spawnSparks) {
-                            window.poolManager.spawnSparks(rel.x, rel.y, 5, '#d966ff', 150);
+                            window.poolManager.spawnSparks(rel.x, rel.y, 5,'#d966ff', 150);
                         }
                         if (rel.hp <= 0) {
                             rel.destroyed = true;
                             if (window.poolManager && window.poolManager.spawnExplosion) {
-                                window.poolManager.spawnExplosion(rel.x, rel.y, 75, '#d966ff', false);
+                                window.poolManager.spawnExplosion(rel.x, rel.y, 75,'#d966ff', false);
                             }
                         }
                         break;
@@ -296,14 +296,14 @@ class WeaponSystem {
             endX = originX + dirX * effectiveMaxDist;
             endY = originY + dirY * effectiveMaxDist;
             if (window.poolManager && window.poolManager.spawnSparks) {
-                window.poolManager.spawnSparks(endX, endY, 5, '#ffeeaa', 165);
+                window.poolManager.spawnSparks(endX, endY, 5,'#ffeeaa', 165);
             }
         } else {
             finalDist = Math.min(effectiveMaxDist, 360 + Math.random() * 260);
             endX = originX + dirX * finalDist;
             endY = originY + dirY * finalDist;
             if (window.poolManager && window.poolManager.spawnSparks) {
-                window.poolManager.spawnSparks(endX, endY, 4, '#d4a86a', 90);
+                window.poolManager.spawnSparks(endX, endY, 4,'#d4a86a', 90);
             }
         }
 
@@ -381,7 +381,7 @@ class WeaponSystem {
             const metaRifle = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
             const actualCooldown = stats.cooldown * cooldownMult * Math.max(0.55, metaRifle.rifleCooldownMult || 1.0);
 
-            const isPrimary = (id === 'autocannon' || id === 'depleted_uranium_rotary');
+            const isPrimary = (id ==='autocannon'|| id ==='depleted_uranium_rotary');
             if (isPrimary) {
                 w.timeSinceLastShot = (w.timeSinceLastShot !== undefined ? w.timeSinceLastShot : 999) + dt;
 
@@ -391,7 +391,7 @@ class WeaponSystem {
                 const spinUpTime = w.spinUpTime || 0.28;
                 const spinDownTime = w.spinDownTime || 0.48;
                 const minSpinToFire = w.minSpinToFire !== undefined ? w.minSpinToFire : 0.65;
-                const isEvolved = (id === 'depleted_uranium_rotary');
+                const isEvolved = (id ==='depleted_uranium_rotary');
 
                 // Determine whether trigger is held
                 let autoAimWantsFire = false;
@@ -417,7 +417,7 @@ class WeaponSystem {
                     }
                 }
 
-                const pistolActive = (this.player && this.player.activeHandheld === 'pistol37');
+                const pistolActive = (this.player && this.player.activeHandheld ==='pistol37');
                 if (pistolActive && isPrimaryFiring && this.player.triggerPistol37) {
                     this.player.triggerPistol37();
                 }
@@ -485,16 +485,16 @@ class WeaponSystem {
         const r3d = window.gameInstance && window.gameInstance.renderer3d;
 
         switch (id) {
-            case 'autocannon':
-            case 'depleted_uranium_rotary': {
+            case'autocannon':
+            case'depleted_uranium_rotary': {
                 if (weapon.isVenting || weapon.isReloading) return;
 
                 weapon.timeSinceLastShot = 0;
-                const isEvolved = (id === 'depleted_uranium_rotary');
+                const isEvolved = (id ==='depleted_uranium_rotary');
                 let targetAngle = this.player.facingAngle || 0;
 
                 // Magazine consumption & auto-reload on empty (enabled in live game or when enableMagazines=true)
-                const magazinesActive = this.enableMagazines || (typeof window !== 'undefined' && window.gameInstance && window.gameInstance.canvas);
+                const magazinesActive = this.enableMagazines || (typeof window !=='undefined'&& window.gameInstance && window.gameInstance.canvas);
                 if (magazinesActive) {
                     const maxAmmo = weapon.maxAmmo || weapon.config.magSize || (isEvolved ? 64 : 32);
                     if (weapon.ammo === undefined) weapon.ammo = maxAmmo;
@@ -513,9 +513,9 @@ class WeaponSystem {
                     if (window.soundManager && window.soundManager.playWeaponVent) {
                         window.soundManager.playWeaponVent();
                     }
-                    window.poolManager.spawnSparks(this.player.x, this.player.y, 22, '#ffffff', 140);
+                    window.poolManager.spawnSparks(this.player.x, this.player.y, 22,'#ffffff', 140);
                     if (window.gameInstance && window.gameInstance.showBanner) {
-                        window.gameInstance.showBanner('⚠️ BARREL OVERHEAT — EMERGENCY COOLANT PURGE ENGAGED ⚠️', '#ff3822', 1400);
+                        window.gameInstance.showBanner('BARREL OVERHEAT — EMERGENCY COOLANT PURGE ENGAGED','#ff3822', 1400);
                     }
                 }
 
@@ -548,7 +548,7 @@ class WeaponSystem {
                         r3d.triggerMuzzleFlash();
                     }
                     if (r3d.spawnShellCasing) {
-                        r3d.spawnShellCasing(this.player, this.player.facingAngle, this.player.pitch, stats.casingType || 'brass_20mm');
+                        r3d.spawnShellCasing(this.player, this.player.facingAngle, this.player.pitch, stats.casingType ||'brass_20mm');
                     }
                     if (r3d.spawnMuzzleSmoke) {
                         r3d.spawnMuzzleSmoke(this.player, this.player.facingAngle, this.player.pitch);
@@ -572,9 +572,9 @@ class WeaponSystem {
                 break;
             }
 
-            case 'arc_tesla':
-            case 'storm_grid_pylon': {
-                const isEvolved = (id === 'storm_grid_pylon');
+            case'arc_tesla':
+            case'storm_grid_pylon': {
+                const isEvolved = (id ==='storm_grid_pylon');
                 const range = stats.range * areaMult;
                 const maxChains = stats.chains;
                 const damage = stats.damage * damageMult;
@@ -623,8 +623,8 @@ class WeaponSystem {
                 for (let i = 1; i < hitTargets.length; i++) {
                     const target = hitTargets[i].enemy;
                     if (target) {
-                        target.takeDamage(damage, this.player, 'Arc');
-                        window.poolManager.spawnSparks(target.x, target.y, 4, '#00ffff', 90);
+                        target.takeDamage(damage, this.player,'Arc');
+                        window.poolManager.spawnSparks(target.x, target.y, 4,'#00ffff', 90);
                     }
                 }
 
@@ -632,23 +632,23 @@ class WeaponSystem {
                     points: hitTargets.map(p => ({ x: p.x, y: p.y })),
                     life: 0.12,
                     maxLife: 0.12,
-                    color: isEvolved ? '#00ffff' : '#33d4ff',
+                    color: isEvolved ?'#00ffff':'#33d4ff',
                     width: isEvolved ? 4 : 2
                 });
 
                 this.shoulderPodFlashTimer = 0.22;
                 if (r3d) {
                     r3d.triggerPodPulse();
-                    r3d.spawnTesla3D(hitTargets, isEvolved ? '#00ffff' : '#33d4ff');
+                    r3d.spawnTesla3D(hitTargets, isEvolved ?'#00ffff':'#33d4ff');
                 }
 
                 window.soundManager.playTesla(isEvolved);
                 break;
             }
 
-            case 'thermite_vent':
-            case 'plasma_nova_core': {
-                const isEvolved = (id === 'plasma_nova_core');
+            case'thermite_vent':
+            case'plasma_nova_core': {
+                const isEvolved = (id ==='plasma_nova_core');
                 const radius = stats.radius * areaMult;
                 const damage = stats.damage * damageMult;
 
@@ -659,8 +659,8 @@ class WeaponSystem {
                     radius,
                     damage * 0.4,
                     stats.burnDuration,
-                    isEvolved ? 'rgba(255, 30, 80, 0.35)' : 'rgba(255, 80, 0, 0.3)',
-                    isEvolved ? '#ff2266' : '#ff4400'
+                    isEvolved ?'rgba(255, 30, 80, 0.35)':'rgba(255, 80, 0, 0.3)',
+                    isEvolved ?'#ff2266':'#ff4400'
                 );
 
                 // Immediate burst damage + knockback to nearby enemies
@@ -669,7 +669,7 @@ class WeaponSystem {
                     const dy = e.y - this.player.y;
                     const dist = Math.hypot(dx, dy);
                     if (dist <= radius) {
-                        e.takeDamage(damage, this.player, 'Thermal');
+                        e.takeDamage(damage, this.player,'Thermal');
                         const kb = (stats.knockback || 160);
                         if (dist > 0) {
                             e.vx += (dx / dist) * kb;
@@ -679,7 +679,7 @@ class WeaponSystem {
                 });
 
                 this.coreVentFlashTimer = 0.35;
-                window.poolManager.spawnExplosion(this.player.x, this.player.y, radius * 0.7, '#ff5500', isEvolved);
+                window.poolManager.spawnExplosion(this.player.x, this.player.y, radius * 0.7,'#ff5500', isEvolved);
                 if (r3d) {
                     r3d.triggerPodPulse();
                     r3d.spawnDynamicLight(this.player.x, this.player.y, isEvolved ? 0xff2266 : 0xff5500, 5.0, 0.4);
@@ -688,9 +688,9 @@ class WeaponSystem {
                 break;
             }
 
-            case 'orbital_rail_strike':
-            case 'hammer_of_dawn': {
-                const isEvolved = (id === 'hammer_of_dawn');
+            case'orbital_rail_strike':
+            case'hammer_of_dawn': {
+                const isEvolved = (id ==='hammer_of_dawn');
                 const beams = stats.beams;
                 const radius = stats.radius * areaMult;
                 const damage = stats.damage * damageMult;
@@ -728,9 +728,9 @@ class WeaponSystem {
                 break;
             }
 
-            case 'seeker_micro_pods':
-            case 'swarm_breaker_salvo': {
-                const isEvolved = (id === 'swarm_breaker_salvo');
+            case'seeker_micro_pods':
+            case'swarm_breaker_salvo': {
+                const isEvolved = (id ==='swarm_breaker_salvo');
                 const count = stats.count;
                 const damage = stats.damage * damageMult;
                 const radius = stats.radius * areaMult;
@@ -739,7 +739,7 @@ class WeaponSystem {
                 for (let i = 0; i < count; i++) {
                     const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
                     const p = window.poolManager.projectiles.get();
-                    p.type = 'missile';
+                    p.type ='missile';
                     p.x = this.player.x + Math.cos(angle) * 12;
                     p.y = this.player.y + Math.sin(angle) * 12;
                     p.vx = Math.cos(angle) * speed * 0.6;
@@ -774,13 +774,13 @@ class WeaponSystem {
         window.poolManager.this.forEachEnemy(enemies, (e) => {
             const dist = Math.hypot(e.x - marker.x, e.y - marker.y);
             if (dist <= marker.radius) {
-                e.takeDamage(marker.damage, this.player, 'Ordnance');
+                e.takeDamage(marker.damage, this.player,'Ordnance');
                 e.vx += (e.x - marker.x) * 4;
                 e.vy += (e.y - marker.y) * 4;
             }
         });
 
-        window.poolManager.spawnExplosion(marker.x, marker.y, marker.radius, '#ff00ee', true);
+        window.poolManager.spawnExplosion(marker.x, marker.y, marker.radius,'#ff00ee', true);
 
         // If evolved, leave lingering radiation field
         if (marker.radiationDuration > 0) {
@@ -819,7 +819,7 @@ class WeaponSystem {
             const sy = m.y - camera.y;
 
             ctx.save();
-            ctx.strokeStyle = m.isEvolved ? '#ff00aa' : '#ff22ee';
+            ctx.strokeStyle = m.isEvolved ?'#ff00aa':'#ff22ee';
             ctx.lineWidth = 2;
             ctx.setLineDash([8, 6]);
 
@@ -838,7 +838,7 @@ class WeaponSystem {
 
             // Descending beam telegraph
             const progress = 1 - (m.timer / 0.4);
-            ctx.fillStyle = m.isEvolved ? 'rgba(255, 0, 170, 0.4)' : 'rgba(255, 34, 238, 0.3)';
+            ctx.fillStyle = m.isEvolved ?'rgba(255, 0, 170, 0.4)':'rgba(255, 34, 238, 0.3)';
             ctx.beginPath();
             ctx.arc(sx, sy, m.radius * progress, 0, Math.PI * 2);
             ctx.fill();

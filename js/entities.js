@@ -12,9 +12,9 @@ class Player {
         this.y = (canyon && canyon.START_Y) || (window.GAME_CONFIG.WORLD_HEIGHT / 2);
         this.vx = 0;
         this.vy = 0;
-        this.facingAngle = -Math.PI / 2;       // Torso turret heading (starts North)
+        this.facingAngle = -Math.PI / 2; // Torso turret heading (starts North)
         this.targetFacingAngle = -Math.PI / 2; // Raw mouse look target heading
-        this.chassisAngle = -Math.PI / 2;      // Independent leg walking chassis heading
+        this.chassisAngle = -Math.PI / 2; // Independent leg walking chassis heading
         this.pitch = 0;
         this.isHydraulicBraking = false;
         this.wasMoving = false;
@@ -61,10 +61,10 @@ class Player {
         this.baseSpeed = pcfg.BASE_SPEED;
 
         // Secondary Weapon System, Handheld Switching (1 / 2) & ADS Optical Zoom (RMB)
-        this.activeHandheld = 'rifle'; // 'rifle' | 'pistol37'
+        this.activeHandheld ='rifle'; //'rifle'|'pistol37'
         this.adsActive = false;
         this.adsBlend = 0.0;
-        this.secondaryMode = 'cleaver';
+        this.secondaryMode ='cleaver';
         const secCfg = window.GAME_CONFIG.SECONDARY_WEAPONS || {};
         const p37Cfg = secCfg.pistol37 || {};
         this.pistolMaxAmmo = p37Cfg.magSize || 6;
@@ -111,8 +111,8 @@ class Player {
         this.carryingPayload = false;
         this.payloadType = null;
         this.hardpoints = {
-            rightArm: { weaponId: 'autocannon', visualTier: 1, evolved: false },
-            leftArm: { actionId: 'hydraulic_claw', visualTier: 1, carryingPayload: false },
+            rightArm: { weaponId:'autocannon', visualTier: 1, evolved: false },
+            leftArm: { actionId:'hydraulic_claw', visualTier: 1, carryingPayload: false },
             shoulderPods: { modules: [], active: false, visualTier: 0, flashTimer: 0 },
             coreVent: { modules: [], active: false, visualTier: 0, flashTimer: 0 }
         };
@@ -122,7 +122,7 @@ class Player {
         this.syncHardpoints();
     }
 
-    setCarryingPayload(state, payloadType = 'artillery_shell') {
+    setCarryingPayload(state, payloadType ='artillery_shell') {
         this.carryingPayload = !!state;
         this.payloadType = state ? payloadType : null;
         if (this.hardpoints && this.hardpoints.leftArm) {
@@ -133,20 +133,20 @@ class Player {
     syncHardpoints() {
         if (!this.hardpoints) {
             this.hardpoints = {
-                rightArm: { weaponId: 'autocannon', visualTier: 1, evolved: false },
-                leftArm: { actionId: 'hydraulic_claw', visualTier: 1, carryingPayload: !!this.carryingPayload },
+                rightArm: { weaponId:'autocannon', visualTier: 1, evolved: false },
+                leftArm: { actionId:'hydraulic_claw', visualTier: 1, carryingPayload: !!this.carryingPayload },
                 shoulderPods: { modules: [], active: false, visualTier: 0, flashTimer: 0 },
                 coreVent: { modules: [], active: false, visualTier: 0, flashTimer: 0 }
             };
         }
         const aw = (this.weapons && this.weapons.activeWeapons) ? this.weapons.activeWeapons : new Map();
-        const cfgWeapons = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.WEAPONS) ? window.GAME_CONFIG.WEAPONS : {};
+        const cfgWeapons = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.WEAPONS) ? window.GAME_CONFIG.WEAPONS : {};
 
-        let rWeaponId = 'autocannon';
+        let rWeaponId ='autocannon';
         let rTier = 1;
         let rEvolved = false;
         if (aw.has('depleted_uranium_rotary')) {
-            rWeaponId = 'depleted_uranium_rotary';
+            rWeaponId ='depleted_uranium_rotary';
             rTier = 6;
             rEvolved = true;
         } else if (aw.has('autocannon')) {
@@ -176,10 +176,10 @@ class Player {
             if (!wCfg) continue;
             const slot = wCfg.hardpoint;
             const effectiveLvl = wCfg.isEvolution ? 6 : (w.level || 1);
-            if (slot === 'shoulderPods') {
+            if (slot ==='shoulderPods') {
                 shoulderMods.push({ id, level: effectiveLvl, name: wCfg.name, evolved: !!wCfg.isEvolution });
                 if (effectiveLvl > shoulderMaxLvl) shoulderMaxLvl = effectiveLvl;
-            } else if (slot === 'coreVent') {
+            } else if (slot ==='coreVent') {
                 coreMods.push({ id, level: effectiveLvl, name: wCfg.name, evolved: !!wCfg.isEvolution });
                 if (effectiveLvl > coreMaxLvl) coreMaxLvl = effectiveLvl;
             }
@@ -327,8 +327,8 @@ class Player {
             window.soundManager.playDash();
         }
 
-        window.poolManager.spawnSparks(this.x, this.y, 22, '#ffaa44', 260);
-        window.poolManager.spawnSparks(this.x, this.y, 14, '#00e5ff', 180);
+        window.poolManager.spawnSparks(this.x, this.y, 22,'#ffaa44', 260);
+        window.poolManager.spawnSparks(this.x, this.y, 14,'#00e5ff', 180);
         return true;
     }
 
@@ -394,7 +394,7 @@ class Player {
             const spreadAng = this.facingAngle + ((i % 2 === 0 ? -1 : 1) * (0.24 + (i * 0.06)));
             if (window.poolManager && window.poolManager.projectiles && window.poolManager.projectiles.get) {
                 const proj = window.poolManager.projectiles.get();
-                proj.type = 'missile';
+                proj.type ='missile';
                 proj.isEnemyBullet = false;
                 proj.x = this.x + Math.cos(spreadAng) * 16;
                 proj.y = this.y + Math.sin(spreadAng) * 16;
@@ -402,7 +402,7 @@ class Player {
                 proj.vy = Math.sin(spreadAng) * 460;
                 proj.damage = dmg;
                 proj.radius = 12;
-                proj.color = '#ff5522';
+                proj.color ='#ff5522';
                 proj.life = 2.6;
                 proj.maxLife = 2.6;
                 proj.pierce = 1;
@@ -447,7 +447,7 @@ class Player {
             this.armorZones = { head: 1.0, torso: 1.0, leftArm: 1.0, rightArm: 1.0, legs: 1.0 };
         }
         const hpRatio = Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp)));
-        const keys = ['torso', 'legs', 'leftArm', 'rightArm', 'head'];
+        const keys = ['torso','legs','leftArm','rightArm','head'];
         const focusIdx = Math.floor(Math.random() * keys.length);
         for (let i = 0; i < keys.length; i++) {
             const k = keys[i];
@@ -496,13 +496,13 @@ class Player {
                 this.shield -= amount;
                 this.applyArmorZoneWear(amount / Math.max(1, this.maxShield), true);
                 if (window.soundManager && window.soundManager.playTone) {
-                    window.soundManager.playTone(420, 'sine', 0.12, 0.25, 0.01);
+                    window.soundManager.playTone(420,'sine', 0.12, 0.25, 0.01);
                 }
                 if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(this.x, this.y - 18, `-${Math.round(amount)}`, '#00ffff', 16);
+                    window.poolManager.spawnDamageNumber(this.x, this.y - 18,`-${Math.round(amount)}`,'#00ffff', 16);
                 }
                 if (window.poolManager && window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(this.x, this.y, 8, '#00ffff', 160);
+                    window.poolManager.spawnSparks(this.x, this.y, 8,'#00ffff', 160);
                 }
                 this.invulnerableTimer = 0.15;
                 return;
@@ -510,13 +510,13 @@ class Player {
                 amount -= this.shield;
                 this.shield = 0;
                 if (window.soundManager && window.soundManager.playTone) {
-                    window.soundManager.playTone(180, 'sawtooth', 0.25, 0.4, 0.01);
+                    window.soundManager.playTone(180,'sawtooth', 0.25, 0.4, 0.01);
                 }
                 if (window.poolManager && window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(this.x, this.y, 18, '#00ffff', 240);
+                    window.poolManager.spawnSparks(this.x, this.y, 18,'#00ffff', 240);
                 }
                 if (window.gameInstance && window.gameInstance.showBanner) {
-                    window.gameInstance.showBanner('⚡ SHIELD COLLAPSE — HULL COMPROMISED ⚡', '#00ffff', 1200);
+                    window.gameInstance.showBanner('SHIELD COLLAPSE — HULL COMPROMISED','#00ffff', 1200);
                 }
             }
         }
@@ -533,7 +533,7 @@ class Player {
         }
 
         if (window.poolManager && window.poolManager.spawnDamageNumber) {
-            window.poolManager.spawnDamageNumber(this.x, this.y - 15, `-${Math.round(amount)}`, '#ff3333', 18);
+            window.poolManager.spawnDamageNumber(this.x, this.y - 15,`-${Math.round(amount)}`,'#ff3333', 18);
         }
 
         if (this.hp <= 0) {
@@ -545,25 +545,25 @@ class Player {
     }
 
     switchSecondary(mode) {
-        const next = (mode === 'cleaver' || mode === 'pistol37')
+        const next = (mode ==='cleaver'|| mode ==='pistol37')
             ? mode
-            : (this.secondaryMode === 'cleaver' ? 'pistol37' : 'cleaver');
+            : (this.secondaryMode ==='cleaver'?'pistol37':'cleaver');
         if (this.secondaryMode === next) return false;
         this.secondaryMode = next;
-        this.activeHandheld = next === 'pistol37' ? 'pistol37' : 'rifle';
+        this.activeHandheld = next ==='pistol37'?'pistol37':'rifle';
         if (window.soundManager && window.soundManager.playBootBeep) {
-            window.soundManager.playBootBeep(next === 'pistol37' ? 2 : 1);
+            window.soundManager.playBootBeep(next ==='pistol37'? 2 : 1);
         }
         return true;
     }
 
     switchHandheld(mode) {
-        const next = mode === 'pistol37' ? 'pistol37' : 'rifle';
+        const next = mode ==='pistol37'?'pistol37':'rifle';
         if (this.activeHandheld === next) return false;
         this.activeHandheld = next;
-        this.secondaryMode = next === 'pistol37' ? 'pistol37' : 'cleaver';
+        this.secondaryMode = next ==='pistol37'?'pistol37':'cleaver';
         if (window.soundManager && window.soundManager.playBootBeep) {
-            window.soundManager.playBootBeep(next === 'pistol37' ? 2 : 1);
+            window.soundManager.playBootBeep(next ==='pistol37'? 2 : 1);
         }
         return true;
     }
@@ -631,7 +631,7 @@ class Player {
         let endY = this.y + dirY * range;
 
         // Check shootable canyon hazards (Volatile Fuel Drums & Coolant Tanks)
-        const gi = (typeof window !== 'undefined') ? window.gameInstance : null;
+        const gi = (typeof window !=='undefined') ? window.gameInstance : null;
         if (gi && Array.isArray(gi.hazards)) {
             for (const hz of gi.hazards) {
                 if (!hz || hz.detonated) continue;
@@ -666,16 +666,16 @@ class Player {
             let count = 0;
             for (const h of hits) {
                 const e = h.enemy;
-                const hasWeakpoint = (e.type === 'acid_spitter' || e.type === 'pheromone_scout' || (e.type === 'siege_beetle' && !!e.armorShattered));
+                const hasWeakpoint = (e.type ==='acid_spitter'|| e.type ==='pheromone_scout'|| (e.type ==='siege_beetle'&& !!e.armorShattered));
                 const wpMult = ((this.adsBlend || 0) > 0.25 && hasWeakpoint) ? (pcfg.ADS_WEAKPOINT_MULT || 1.35) : 1.0;
-                e.takeDamage(Math.round(baseDmg * wpMult), this, 'Ballistic');
+                e.takeDamage(Math.round(baseDmg * wpMult), this,'Ballistic');
                 if (wpMult > 1.0 && window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(e.x, e.y - 20, 'WEAKPOINT!', '#ffbb33', 14);
+                    window.poolManager.spawnDamageNumber(e.x, e.y - 20,'WEAKPOINT!','#ffbb33', 14);
                 }
                 e.vx = (e.vx || 0) + dirX * knockback;
                 e.vy = (e.vy || 0) + dirY * knockback;
                 if (window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(e.x, e.y, 12, '#ffaa44', this.facingAngle + Math.PI);
+                    window.poolManager.spawnSparks(e.x, e.y, 12,'#ffaa44', this.facingAngle + Math.PI);
                 }
                 endX = e.x;
                 endY = e.y;
@@ -693,7 +693,7 @@ class Player {
     }
 
     triggerClawMelee() {
-        if (this.secondaryMode === 'pistol37') {
+        if (this.secondaryMode ==='pistol37') {
             return this.triggerPistol37();
         }
         return this.triggerKnifeMelee();
@@ -754,22 +754,22 @@ class Player {
                             e.armorShatterTimer = 12.0;
                             e.hitFlash = 0.28;
                             if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                                window.poolManager.spawnDamageNumber(e.x, e.y - 26, 'ARMOR SHATTERED!', '#ff9933', 16);
+                                window.poolManager.spawnDamageNumber(e.x, e.y - 26,'ARMOR SHATTERED!','#ff9933', 16);
                             }
                             if (window.poolManager && window.poolManager.spawnSparks) {
-                                window.poolManager.spawnSparks(e.x, e.y, 14, '#ffcc55', Math.atan2(e.y - this.y, e.x - this.x));
+                                window.poolManager.spawnSparks(e.x, e.y, 14,'#ffcc55', Math.atan2(e.y - this.y, e.x - this.x));
                             }
                         }
-                        e.takeDamage(scaledDamage, this, 'Kinetic');
+                        e.takeDamage(scaledDamage, this,'Kinetic');
                         hitCount++;
                         e.vx = (e.vx || 0) + Math.cos(angToEnemy) * knockback;
                         e.vy = (e.vy || 0) + Math.sin(angToEnemy) * knockback;
                         if (e.isBurrowed) {
-                            e.burrowState = 'ERUPTING';
+                            e.burrowState ='ERUPTING';
                             e.eruptTimer = 0.4;
                         }
                         if (window.poolManager.spawnSparks) {
-                            window.poolManager.spawnSparks(e.x, e.y, 10, '#00e5ff', 240);
+                            window.poolManager.spawnSparks(e.x, e.y, 10,'#00e5ff', 240);
                         }
                     }
                 }
@@ -779,9 +779,9 @@ class Player {
         const tipX = this.x + Math.cos(this.facingAngle) * 45;
         const tipY = this.y + Math.sin(this.facingAngle) * 45;
         if (window.poolManager && window.poolManager.spawnSparks) {
-            window.poolManager.spawnSparks(tipX, tipY, 14, hitCount > 0 ? '#ffdd44' : '#00e5ff', 180);
+            window.poolManager.spawnSparks(tipX, tipY, 14, hitCount > 0 ?'#ffdd44':'#00e5ff', 180);
         }
-        if (window.gameInstance && typeof window.gameInstance.onPlayerClawStrike === 'function') {
+        if (window.gameInstance && typeof window.gameInstance.onPlayerClawStrike ==='function') {
             window.gameInstance.onPlayerClawStrike(this, tipX, tipY);
         }
         return true;
@@ -809,8 +809,8 @@ class Player {
         }
 
         if (window.poolManager && window.poolManager.spawnSparks) {
-            window.poolManager.spawnSparks(this.x, this.y, 35, '#cfa258', 340, 0.55);
-            window.poolManager.spawnSparks(this.x, this.y, 20, '#ff9900', 260, 0.4);
+            window.poolManager.spawnSparks(this.x, this.y, 35,'#cfa258', 340, 0.55);
+            window.poolManager.spawnSparks(this.x, this.y, 20,'#ff9900', 260, 0.4);
         }
 
         const meta = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
@@ -828,16 +828,16 @@ class Player {
                     const wasBurrowed = !!e.isBurrowed;
                     if (wasBurrowed) {
                         e.isBurrowed = false;
-                        e.burrowState = 'STUNNED';
+                        e.burrowState ='STUNNED';
                         e.stunTimer = (pcfg.STOMP_STUN_DURATION || 2.5);
                         if (window.poolManager.spawnDamageNumber) {
-                            window.poolManager.spawnDamageNumber(e.x, e.y - 24, 'UNEARTHED & STUNNED!', '#ffdd44', 15);
+                            window.poolManager.spawnDamageNumber(e.x, e.y - 24,'UNEARTHED & STUNNED!','#ffdd44', 15);
                         }
                         if (window.poolManager.spawnExplosion) {
-                            window.poolManager.spawnExplosion(e.x, e.y, 34, '#cfa258');
+                            window.poolManager.spawnExplosion(e.x, e.y, 34,'#cfa258');
                         }
                     }
-                    e.takeDamage(wasBurrowed ? damage * 1.35 : damage, this, 'Ordnance');
+                    e.takeDamage(wasBurrowed ? damage * 1.35 : damage, this,'Ordnance');
                     const pushLen = Math.max(0.01, dist);
                     e.vx = (e.vx || 0) + (dx / pushLen) * knockback;
                     e.vy = (e.vy || 0) + (dy / pushLen) * knockback;
@@ -856,7 +856,7 @@ class Player {
             }
         }
         if (window.poolManager && window.poolManager.spawnDamageNumber) {
-            window.poolManager.spawnDamageNumber(this.x, this.y - 15, `+${Math.round(amount)}`, '#33ff88', 16);
+            window.poolManager.spawnDamageNumber(this.x, this.y - 15,`+${Math.round(amount)}`,'#33ff88', 16);
         }
     }
 
@@ -886,7 +886,7 @@ class Player {
         if (this.sonarCooldown > 0) this.sonarCooldown = Math.max(0, this.sonarCooldown - dt);
 
         // ADS Optical Zoom Blend Interpolation (0.0 -> 1.0 over ADS_TRANSITION_TIME)
-        const adsPcfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) || {};
+        const adsPcfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) || {};
         const adsStep = dt / Math.max(0.04, adsPcfg.ADS_TRANSITION_TIME || 0.16);
         if (this.adsActive && !this.carryingPayload) {
             this.adsBlend = Math.min(1.0, (this.adsBlend || 0) + adsStep);
@@ -957,7 +957,7 @@ class Player {
             this.torsoTurnRate = Math.abs(turnStep / Math.max(0.0001, dt));
         } else {
             // Optional smooth keyboard turning via ArrowLeft / ArrowRight alongside mouse look
-            const keys = (typeof window !== 'undefined' && window.gameInstance && window.gameInstance.keys) ? window.gameInstance.keys : null;
+            const keys = (typeof window !=='undefined'&& window.gameInstance && window.gameInstance.keys) ? window.gameInstance.keys : null;
             if (keys) {
                 const kbTurnRate = 2.6;
                 if (keys['ArrowLeft']) this.targetFacingAngle -= kbTurnRate * dt;
@@ -1074,7 +1074,7 @@ class Player {
                 p.vx = -this.vx * 0.2 + (Math.random() - 0.5) * 50;
                 p.vy = -this.vy * 0.2 + (Math.random() - 0.5) * 50;
                 p.radius = Math.random() * 4 + 3;
-                p.color = '#ff9900';
+                p.color ='#ff9900';
                 p.life = 0.35;
                 p.maxLife = 0.35;
             }
@@ -1179,8 +1179,8 @@ class Player {
 
         // Resolve obstacle & canyon cliff wall collisions (open-field endless mode has no canyon walls)
         this.resolveObstacles(this, window.GAME_CONFIG.PLAYER.HIT_RADIUS);
-        const isEndlessMode = typeof window !== 'undefined' && window.gameInstance && window.gameInstance.currentMode === 'endless';
-        const canyon = (!isEndlessMode && typeof window !== 'undefined' && window.gameInstance && window.gameInstance.canvas) ? window.GAME_CONFIG.CANYON : null;
+        const isEndlessMode = typeof window !=='undefined'&& window.gameInstance && window.gameInstance.currentMode ==='endless';
+        const canyon = (!isEndlessMode && typeof window !=='undefined'&& window.gameInstance && window.gameInstance.canvas) ? window.GAME_CONFIG.CANYON : null;
         if (canyon && canyon.getBoundsAtY) {
             const pRad = window.GAME_CONFIG.PLAYER.HIT_RADIUS || 16;
             this.y = Math.max(220, Math.min((window.GAME_CONFIG.WORLD_HEIGHT || 4800) - 140, this.y));
@@ -1221,13 +1221,13 @@ class Player {
 
                 if (dist <= 24 && !drop.collected) {
                     drop.collected = true;
-                    if (drop.type === 'xp') {
+                    if (drop.type ==='xp') {
                         this.addXp(drop.value);
                         window.soundManager.playPickup();
-                    } else if (drop.type === 'scrap') {
+                    } else if (drop.type ==='scrap') {
                         this.credits += drop.value;
                         window.soundManager.playPickup();
-                    } else if (drop.type === 'chest') {
+                    } else if (drop.type ==='chest') {
                         window.gameInstance.triggerChestModal(drop);
                     }
                     window.poolManager.drops.release(drop);
@@ -1246,7 +1246,7 @@ class Player {
 
         // Thruster flame if moving
         if (Math.hypot(this.vx, this.vy) > 30 || this.isDashing) {
-            ctx.fillStyle = this.isDashing ? '#00ffff' : '#ff9900';
+            ctx.fillStyle = this.isDashing ?'#00ffff':'#ff9900';
             ctx.beginPath();
             ctx.moveTo(-14, -6);
             ctx.lineTo(-24 - Math.random() * 8, 0);
@@ -1261,8 +1261,8 @@ class Player {
         }
 
         // Heavy Exosuit Hull
-        ctx.fillStyle = '#223344';
-        ctx.strokeStyle = '#00e5ff';
+        ctx.fillStyle ='#223344';
+        ctx.strokeStyle ='#00e5ff';
         ctx.lineWidth = 2.5;
 
         // Shoulder pods & body
@@ -1279,13 +1279,13 @@ class Player {
         ctx.stroke();
 
         // Visor / cockpit light
-        ctx.fillStyle = this.isDashing ? '#00ffff' : '#ffaa00';
+        ctx.fillStyle = this.isDashing ?'#00ffff':'#ffaa00';
         ctx.beginPath();
         ctx.ellipse(4, 0, 5, 8, 0, 0, Math.PI * 2);
         ctx.fill();
 
         // Center kinetic core glow
-        ctx.fillStyle = '#00ffff';
+        ctx.fillStyle ='#00ffff';
         ctx.beginPath();
         ctx.arc(-2, 0, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -1324,8 +1324,8 @@ class EnemyController {
         e.shootTimer = 0;
         e.chargeTimer = 0;
         e.isCharging = false;
-        e.isBurrowed = (typeKey === 'sand_stalker');
-        e.burrowState = (typeKey === 'sand_stalker') ? 'BURROWED' : 'SURFACE';
+        e.isBurrowed = (typeKey ==='sand_stalker');
+        e.burrowState = (typeKey ==='sand_stalker') ?'BURROWED':'SURFACE';
         e.burrowTimer = 0;
         e.eruptTimer = 0;
         e.lungeTimer = 0;
@@ -1333,7 +1333,7 @@ class EnemyController {
         e.lungeDirY = 0;
         e.bossPhase = 1;
         e.bossAttackTimer = 0;
-        const _eCfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES)
+        const _eCfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES)
             ? (window.GAME_CONFIG.ENEMIES[e.type] || window.GAME_CONFIG.ENEMIES[e.id])
             : null;
         e.chitinArmor = !!(_eCfg && _eCfg.chitinArmor);
@@ -1342,18 +1342,18 @@ class EnemyController {
         e.armorShatterTimer = 0;
         e.blindLitTimer = 0;
         e.isAerial = !!cfg.isAerial;
-        e.flightState = e.isAerial ? 'ORBITING' : 'GROUND';
+        e.flightState = e.isAerial ?'ORBITING':'GROUND';
         e.orbitTimer = 0;
         e.orbitDir = Math.random() < 0.5 ? 1 : -1;
         e.altitudeOffset = e.isAerial ? 3.2 : 0;
-        e.isPheromoneScout = !!(cfg.isPheromoneScout || typeKey === 'pheromone_scout');
+        e.isPheromoneScout = !!(cfg.isPheromoneScout || typeKey ==='pheromone_scout');
         e.scoutSpotted = false;
         e.scoutFlareTimer = 0;
         e.flareLaunched = false;
         e.stunTimer = 0;
         e._bileDetonated = false;
         e.bileSacHit = false;
-        e.slamState = 'IDLE';
+        e.slamState ='IDLE';
         e.slamTimer = 0;
         e.slamCooldown = 2.5;
         e.slamRadius = cfg.slamRadius || 210;
@@ -1366,19 +1366,19 @@ class EnemyController {
 
     static handleDamage(amt, player, damageType) {
         if (!this.active) return;
-        const pcfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) ? window.GAME_CONFIG.PLAYER : null;
+        const pcfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) ? window.GAME_CONFIG.PLAYER : null;
         if (this.chitinArmor) {
-            if (!this.armorShattered && damageType === 'Ballistic') {
+            if (!this.armorShattered && damageType ==='Ballistic') {
                 const mit = (pcfg && pcfg.CHITIN_ARMOR_MITIGATION !== undefined) ? pcfg.CHITIN_ARMOR_MITIGATION : 0.45;
                 amt *= mit;
                 if (window.soundManager && window.soundManager.playArmorRicochet) {
                     window.soundManager.playArmorRicochet();
                 }
                 if (window.poolManager && window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(this.x, this.y, 4, '#ddeeff', 140);
+                    window.poolManager.spawnSparks(this.x, this.y, 4,'#ddeeff', 140);
                 }
                 if (Math.random() < 0.15 && window.poolManager && window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(this.x, this.y - 18, 'ARMORED', '#88aacc', 11);
+                    window.poolManager.spawnDamageNumber(this.x, this.y - 18,'ARMORED','#88aacc', 11);
                 }
             } else if (this.armorShattered) {
                 const bonus = (pcfg && pcfg.ARMOR_SHATTER_BONUS_MULT !== undefined) ? pcfg.ARMOR_SHATTER_BONUS_MULT : 1.25;
@@ -1388,11 +1388,11 @@ class EnemyController {
 
         // Subterranean damage mitigation & vulnerability
         if (this.isBurrowed) {
-            if (damageType === 'Thermal' || damageType === 'Ordnance') {
+            if (damageType ==='Thermal'|| damageType ==='Ordnance') {
                 amt *= 1.5; // Superheated thermite & seismic concussion crack subterranean carapace
                 // Force premature eruption for ambushers
-                if (this.type !== 'apex_broodmother') {
-                    this.burrowState = 'ERUPTING';
+                if (this.type !=='apex_broodmother') {
+                    this.burrowState ='ERUPTING';
                     this.eruptTimer = 0.35;
                 }
                 if (window.soundManager && window.soundManager.playAmbushScreech) {
@@ -1409,32 +1409,32 @@ class EnemyController {
             window.gameInstance.onEnemyHitConfirmed(this.hp <= 0);
         }
 
-        const isCrit = (damageType === 'Ordnance') || (Math.random() < 0.15);
-        const displayColor = isCrit ? '#ffcc00' : (damageType === 'Arc' ? '#00ffff' : '#ffffff');
+        const isCrit = (damageType ==='Ordnance') || (Math.random() < 0.15);
+        const displayColor = isCrit ?'#ffcc00': (damageType ==='Arc'?'#00ffff':'#ffffff');
         window.poolManager.spawnDamageNumber(this.x, this.y, Math.round(amt), displayColor, isCrit ? 18 : 13);
 
         if (this.hp <= 0) {
             this.hp = 0;
             if (player) player.kills++;
-            if (typeof window !== 'undefined' && window.gameInstance && window.gameInstance.renderer3d && window.gameInstance.renderer3d.spawnBugGibs3D) {
-                window.gameInstance.renderer3d.spawnBugGibs3D(this.x, this.y, this.color || '#66aa44', this.radius || 16);
+            if (typeof window !=='undefined'&& window.gameInstance && window.gameInstance.renderer3d && window.gameInstance.renderer3d.spawnBugGibs3D) {
+                window.gameInstance.renderer3d.spawnBugGibs3D(this.x, this.y, this.color ||'#66aa44', this.radius || 16);
             }
 
             // Acid Spitter: shooting glowing bile sac triggers explosive corrosive chain detonation
-            if (this.type === 'acid_spitter' && !this._bileDetonated &&
-                (this.bileSacHit || damageType === 'Ballistic' || damageType === 'Thermal' || damageType === 'Arc' || damageType === 'Ordnance' || damageType === 'Corrosive')) {
+            if (this.type ==='acid_spitter'&& !this._bileDetonated &&
+                (this.bileSacHit || damageType ==='Ballistic'|| damageType ==='Thermal'|| damageType ==='Arc'|| damageType ==='Ordnance'|| damageType ==='Corrosive')) {
                 this._bileDetonated = true;
-                const spCfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES && window.GAME_CONFIG.ENEMIES.acid_spitter) || {};
+                const spCfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES && window.GAME_CONFIG.ENEMIES.acid_spitter) || {};
                 const chainRad = spCfg.bileChainRadius || 110;
                 const chainDmg = spCfg.bileChainDamage || 65;
                 if (window.soundManager && window.soundManager.playBileDetonation) {
                     window.soundManager.playBileDetonation();
                 }
                 if (window.poolManager && window.poolManager.spawnExplosion) {
-                    window.poolManager.spawnExplosion(this.x, this.y, chainRad, '#33ff44', true);
+                    window.poolManager.spawnExplosion(this.x, this.y, chainRad,'#33ff44', true);
                 }
                 if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(this.x, this.y - 20, 'BILE DETONATION!', '#44ff55', 16);
+                    window.poolManager.spawnDamageNumber(this.x, this.y - 20,'BILE DETONATION!','#44ff55', 16);
                 }
                 if (window.poolManager && window.poolManager.spawnGroundZone) {
                     const pz = window.poolManager.spawnGroundZone(
@@ -1461,8 +1461,8 @@ class EnemyController {
                         }
                     });
                     for (let i = 0; i < chainTargets.length; i++) {
-                        if (typeof chainTargets[i].takeDamage === 'function') {
-                            chainTargets[i].takeDamage(chainDmg, player, 'Corrosive');
+                        if (typeof chainTargets[i].takeDamage ==='function') {
+                            chainTargets[i].takeDamage(chainDmg, player,'Corrosive');
                         }
                     }
                 }
@@ -1470,7 +1470,7 @@ class EnemyController {
 
             // Spawn single Scrap Drop
             const scrap = window.poolManager.drops.get();
-            scrap.type = 'scrap';
+            scrap.type ='scrap';
             scrap.x = this.x;
             scrap.y = this.y;
             scrap.value = Math.max(1, this.scrapValue || 1);
@@ -1478,22 +1478,22 @@ class EnemyController {
             // Guaranteed Chest drop for Mini-Bosses & Final Boss
             if (this.dropsChest) {
                 const chest = window.poolManager.drops.get();
-                chest.type = 'chest';
+                chest.type ='chest';
                 chest.x = this.x;
                 chest.y = this.y;
                 chest.radius = 14;
             }
 
             // Spawn battlefield ichor splatter decal
-            const decalColor = (this.type === 'acid_spitter') ? 'rgba(50, 255, 80, 0.45)' : 
-                               (this.isBoss ? 'rgba(180, 0, 255, 0.5)' : 'rgba(238, 68, 34, 0.35)');
-            window.poolManager.spawnDecal(this.x, this.y, this.radius * 1.4, decalColor, 'splatter', 15.0);
+            const decalColor = (this.type ==='acid_spitter') ?'rgba(50, 255, 80, 0.45)': 
+                               (this.isBoss ?'rgba(180, 0, 255, 0.5)':'rgba(238, 68, 34, 0.35)');
+            window.poolManager.spawnDecal(this.x, this.y, this.radius * 1.4, decalColor,'splatter', 15.0);
 
             window.poolManager.spawnExplosion(this.x, this.y, this.radius * 1.5, this.color, this.isBoss);
             window.soundManager.playExplosion(this.isBoss);
 
             if (this.isFinalBoss) {
-                if (window.gameInstance && typeof window.gameInstance.activateExtractionBeacon === 'function') {
+                if (window.gameInstance && typeof window.gameInstance.activateExtractionBeacon ==='function') {
                     window.gameInstance.activateExtractionBeacon('APEX BROODMOTHER SLAIN — EXTRACTION BEACON ACTIVE');
                 } else {
                     window.gameInstance.triggerVictory();
@@ -1509,17 +1509,17 @@ class EnemyController {
             window.soundManager.playPheromoneFlare();
         }
         if (window.gameInstance && window.gameInstance.showBanner) {
-            window.gameInstance.showBanner('🔥 PHEROMONE FLARE LAUNCHED — SUB-SURFACE BUG BREACH! 🔥', '#ff7700', 2600);
+            window.gameInstance.showBanner('PHEROMONE FLARE LAUNCHED — SUB-SURFACE BUG BREACH!','#ff7700', 2600);
         }
         if (window.poolManager && window.poolManager.spawnSparks) {
-            window.poolManager.spawnSparks(x, y, 28, '#ff7700', 240, 0.75);
+            window.poolManager.spawnSparks(x, y, 28,'#ff7700', 240, 0.75);
         }
         if (window.gameInstance && window.gameInstance.renderer3d && window.gameInstance.renderer3d.spawnDynamicLight) {
             window.gameInstance.renderer3d.spawnDynamicLight(x, y, 0xff6600, 6.0, 0.85);
         }
-        const scoutCfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES && window.GAME_CONFIG.ENEMIES.pheromone_scout) || {};
+        const scoutCfg = (typeof window !=='undefined'&& window.GAME_CONFIG && window.GAME_CONFIG.ENEMIES && window.GAME_CONFIG.ENEMIES.pheromone_scout) || {};
         const total = scoutCfg.breachSpawnCount || 6;
-        const breachTypes = ['sand_stalker', 'sand_stalker', 'sand_stalker', 'skitterer', 'skitterer', 'acid_spitter'];
+        const breachTypes = ['sand_stalker','sand_stalker','sand_stalker','skitterer','skitterer','acid_spitter'];
         const spawned = [];
         for (let i = 0; i < total; i++) {
             const ang = (i / total) * Math.PI * 2 + Math.random() * 0.4;
@@ -1559,10 +1559,10 @@ class EnemyController {
             enemy.x += enemy.vx * dt;
             enemy.y += enemy.vy * dt;
             if (Math.random() < 0.35 && window.poolManager && window.poolManager.spawnSparks) {
-                window.poolManager.spawnSparks(enemy.x, enemy.y, 2, '#ffee44', 50);
+                window.poolManager.spawnSparks(enemy.x, enemy.y, 2,'#ffee44', 50);
             }
-            if (enemy.stunTimer <= 0 && enemy.type === 'sand_stalker') {
-                enemy.burrowState = 'STALKING';
+            if (enemy.stunTimer <= 0 && enemy.type ==='sand_stalker') {
+                enemy.burrowState ='STALKING';
             }
             if (player.resolveObstacles) player.resolveObstacles(enemy, enemy.radius);
             if (dt > 0.0001) {
@@ -1574,9 +1574,9 @@ class EnemyController {
 
         // Behavior per archetype
         switch (enemy.type) {
-            case 'sand_stalker': {
+            case'sand_stalker': {
                 const cfg = window.GAME_CONFIG.ENEMIES.sand_stalker;
-                if (enemy.burrowState === 'BURROWED') {
+                if (enemy.burrowState ==='BURROWED') {
                     enemy.isBurrowed = true;
                     enemy.burrowTimer += dt;
                     // Subterranean stalking towards player at creep speed
@@ -1586,10 +1586,10 @@ class EnemyController {
                     }
                     // Sand puff dust trail
                     if (Math.random() < 0.25) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2, '#cfa258', 35);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2,'#cfa258', 35);
                     }
                     if (dist <= (cfg.eruptRange || 80) || enemy.burrowTimer >= (cfg.burrowDuration || 4.2)) {
-                        enemy.burrowState = 'ERUPTING';
+                        enemy.burrowState ='ERUPTING';
                         enemy.eruptTimer = 0;
                         if (window.soundManager && window.soundManager.playSubterraneanRumble) {
                             window.soundManager.playSubterraneanRumble();
@@ -1598,14 +1598,14 @@ class EnemyController {
                             window.gameInstance.triggerScreenShake(3.5, 0.45);
                         }
                     }
-                } else if (enemy.burrowState === 'ERUPTING') {
+                } else if (enemy.burrowState ==='ERUPTING') {
                     enemy.eruptTimer += dt;
                     // Violent sand geyser telegraph
                     if (Math.random() < 0.6) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 4, '#e0b870', 80);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 4,'#e0b870', 80);
                     }
                     if (enemy.eruptTimer >= (cfg.eruptTelegraphTime || 0.75)) {
-                        enemy.burrowState = 'LUNGING';
+                        enemy.burrowState ='LUNGING';
                         enemy.isBurrowed = false; // Breach surface!
                         enemy.lungeTimer = 0;
                         const lungeLen = Math.max(0.01, dist);
@@ -1614,15 +1614,15 @@ class EnemyController {
                         if (window.soundManager && window.soundManager.playAmbushScreech) {
                             window.soundManager.playAmbushScreech();
                         }
-                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 28, '#cfa258');
+                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 28,'#cfa258');
                     }
-                } else if (enemy.burrowState === 'LUNGING') {
+                } else if (enemy.burrowState ==='LUNGING') {
                     enemy.isBurrowed = false;
                     enemy.lungeTimer += dt;
                     enemy.x += enemy.lungeDirX * (cfg.lungeSpeed || 360) * dt;
                     enemy.y += enemy.lungeDirY * (cfg.lungeSpeed || 360) * dt;
                     if (enemy.lungeTimer >= 0.70) {
-                        enemy.burrowState = 'STALKING';
+                        enemy.burrowState ='STALKING';
                     }
                 } else {
                     // STALKING: aggressive surface chase at 180 speed
@@ -1636,7 +1636,7 @@ class EnemyController {
                 break;
             }
 
-            case 'skitterer': {
+            case'skitterer': {
                 // Direct swarm chase
                 if (dist > 0) {
                     enemy.x += (dx / dist) * enemy.speed * dt + enemy.vx * dt;
@@ -1645,7 +1645,7 @@ class EnemyController {
                 break;
             }
 
-            case 'acid_spitter': {
+            case'acid_spitter': {
                 const cfg = window.GAME_CONFIG.ENEMIES.acid_spitter;
                 const shootRange = cfg.shootRange || 380;
                 const minKeepRange = cfg.minKeepRange || 300;
@@ -1667,14 +1667,14 @@ class EnemyController {
                     const p = window.poolManager.projectiles.get();
                     const spd = cfg.bulletSpeed || 210;
                     const invDist = 1 / Math.max(1, dist);
-                    p.type = 'acid';
+                    p.type ='acid';
                     p.x = enemy.x;
                     p.y = enemy.y;
                     p.vx = dx * invDist * spd;
                     p.vy = dy * invDist * spd;
                     p.damage = cfg.bulletDamage || 8;
                     p.radius = 7;
-                    p.color = '#33ee44';
+                    p.color ='#33ee44';
                     p.life = Math.min(2.2, Math.max(0.45, dist / Math.max(1, spd)));
                     p.maxLife = p.life;
                     p.pierce = 1;
@@ -1689,8 +1689,8 @@ class EnemyController {
                 break;
             }
 
-            case 'carapace_charger':
-            case 'siege_beetle': {
+            case'carapace_charger':
+            case'siege_beetle': {
                 enemy.chargeTimer += dt;
                 const cfg = window.GAME_CONFIG.ENEMIES[enemy.type] || window.GAME_CONFIG.ENEMIES.carapace_charger;
 
@@ -1707,7 +1707,7 @@ class EnemyController {
                         enemy.chargeTimer = 0;
                         enemy.chargeTargetX = dx / dist;
                         enemy.chargeTargetY = dy / dist;
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 8, '#ffaa00', 160);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 8,'#ffaa00', 160);
                     }
                 } else {
                     // Rushing forward fast
@@ -1722,11 +1722,11 @@ class EnemyController {
                 break;
             }
 
-            case 'shrieker_mite': {
+            case'shrieker_mite': {
                 const cfg = window.GAME_CONFIG.ENEMIES.shrieker_mite || {};
                 enemy.orbitTimer = (enemy.orbitTimer || 0) + dt;
                 const orbitRad = cfg.orbitRadius || 340;
-                if (enemy.flightState !== 'DIVING') {
+                if (enemy.flightState !=='DIVING') {
                     enemy.altitudeOffset = 3.0 + Math.sin(enemy.orbitTimer * 5) * 0.45;
                     const invDist = 1 / Math.max(1, dist);
                     const rx = dx * invDist;
@@ -1740,10 +1740,10 @@ class EnemyController {
                     enemy.x += (mvx / mvLen) * (cfg.speed || 195) * dt + enemy.vx * dt;
                     enemy.y += (mvy / mvLen) * (cfg.speed || 195) * dt + enemy.vy * dt;
                     if (Math.random() < 0.25 && window.poolManager.spawnSparks) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2, '#00e5ff', 70);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2,'#00e5ff', 70);
                     }
                     if (enemy.orbitTimer >= (cfg.orbitTime || 4.5)) {
-                        enemy.flightState = 'DIVING';
+                        enemy.flightState ='DIVING';
                     }
                 } else {
                     enemy.altitudeOffset = Math.max(1.0, (enemy.altitudeOffset || 3.0) - dt * 2.2);
@@ -1755,7 +1755,7 @@ class EnemyController {
                 break;
             }
 
-            case 'pheromone_scout': {
+            case'pheromone_scout': {
                 const cfg = window.GAME_CONFIG.ENEMIES.pheromone_scout || {};
                 const spotRange = cfg.spotRange || 480;
                 const windup = cfg.flareWindupSeconds || 3.0;
@@ -1766,7 +1766,7 @@ class EnemyController {
                         window.soundManager.playScoutChitter();
                     }
                     if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                        window.poolManager.spawnDamageNumber(enemy.x, enemy.y - 22, '! SCOUT FLARE IN 3.0s !', '#ff8800', 15);
+                        window.poolManager.spawnDamageNumber(enemy.x, enemy.y - 22,'! SCOUT FLARE IN 3.0s !','#ff8800', 15);
                     }
                 }
                 if (enemy.scoutSpotted && !enemy.flareLaunched) {
@@ -1776,7 +1776,7 @@ class EnemyController {
                         enemy.y += (dy / dist) * (enemy.speed * 0.35) * dt + enemy.vy * dt;
                     }
                     if (Math.random() < 0.45 && window.poolManager.spawnSparks) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2, '#ff7700', 95);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 2,'#ff7700', 95);
                     }
                     if (enemy.scoutFlareTimer >= windup) {
                         enemy.flareLaunched = true;
@@ -1789,12 +1789,12 @@ class EnemyController {
                 break;
             }
 
-            case 'brood_guard': {
+            case'brood_guard': {
                 const cfg = window.GAME_CONFIG.ENEMIES.brood_guard || {};
                 enemy.slamCooldown = Math.max(0, (enemy.slamCooldown || 0) - dt);
                 enemy.bossAttackTimer += dt;
 
-                if (enemy.slamState === 'TELEGRAPH') {
+                if (enemy.slamState ==='TELEGRAPH') {
                     enemy.slamTimer -= dt;
                     if (Math.random() < 0.65 && window.poolManager.spawnSparks) {
                         const rAng = Math.random() * Math.PI * 2;
@@ -1802,18 +1802,18 @@ class EnemyController {
                         window.poolManager.spawnSparks(
                             enemy.x + Math.cos(rAng) * slamR * 0.75,
                             enemy.y + Math.sin(rAng) * slamR * 0.75,
-                            3, '#ff2255', 75
+                            3,'#ff2255', 75
                         );
                     }
                     if (enemy.slamTimer <= 0) {
-                        enemy.slamState = 'IDLE';
+                        enemy.slamState ='IDLE';
                         enemy.slamCooldown = cfg.slamCooldown || 6.5;
                         const slamR = enemy.slamRadius || cfg.slamRadius || 210;
                         if (window.soundManager && window.soundManager.playBossGroundSlam) {
                             window.soundManager.playBossGroundSlam();
                         }
                         if (window.poolManager && window.poolManager.spawnExplosion) {
-                            window.poolManager.spawnExplosion(enemy.x, enemy.y, slamR, '#ff0055', true);
+                            window.poolManager.spawnExplosion(enemy.x, enemy.y, slamR,'#ff0055', true);
                         }
                         if (window.gameInstance && window.gameInstance.renderer3d && window.gameInstance.renderer3d.spawnSonarRing3D) {
                             window.gameInstance.renderer3d.spawnSonarRing3D(enemy.x, enemy.y);
@@ -1821,7 +1821,7 @@ class EnemyController {
                         if (dist <= slamR) {
                             if (player.isDashing) {
                                 if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                                    window.poolManager.spawnDamageNumber(player.x, player.y - 26, 'DODGED [OVERDRIVE]!', '#00ffff', 16);
+                                    window.poolManager.spawnDamageNumber(player.x, player.y - 26,'DODGED [OVERDRIVE]!','#00ffff', 16);
                                 }
                             } else {
                                 player.takeDamage(cfg.slamDamage || 42, enemy.x, enemy.y);
@@ -1834,10 +1834,10 @@ class EnemyController {
                         enemy.y += (dy / dist) * enemy.speed * dt + enemy.vy * dt;
                     }
                     if (dist <= 260 && enemy.slamCooldown <= 0) {
-                        enemy.slamState = 'TELEGRAPH';
+                        enemy.slamState ='TELEGRAPH';
                         enemy.slamTimer = cfg.slamWindup || 1.15;
                         if (window.poolManager && window.poolManager.spawnDamageNumber) {
-                            window.poolManager.spawnDamageNumber(enemy.x, enemy.y - 32, '⚠️ SEISMIC SLAM — DODGE [SPACE] ⚠️', '#ff3355', 15);
+                            window.poolManager.spawnDamageNumber(enemy.x, enemy.y - 32,'SEISMIC SLAM — DODGE [SPACE]','#ff3355', 15);
                         }
                     }
                 }
@@ -1851,26 +1851,26 @@ class EnemyController {
                     for (let g = 0; g < 6; g++) {
                         const gang = (g / 6) * Math.PI * 2;
                         const p = window.poolManager.projectiles.get();
-                        p.type = 'acid';
+                        p.type ='acid';
                         p.x = enemy.x;
                         p.y = enemy.y;
                         p.vx = Math.cos(gang) * 220;
                         p.vy = Math.sin(gang) * 220;
                         p.damage = 18;
                         p.radius = 8;
-                        p.color = '#aa00ff';
+                        p.color ='#aa00ff';
                         p.life = 2.5;
                         p.maxLife = 2.5;
                         p.isEnemyBullet = true;
                     }
-                    window.poolManager.spawnExplosion(enemy.x, enemy.y, 60, '#9900ff', true);
+                    window.poolManager.spawnExplosion(enemy.x, enemy.y, 60,'#9900ff', true);
                 }
                 break;
             }
 
-            case 'apex_broodmother': {
+            case'apex_broodmother': {
                 const cfg = window.GAME_CONFIG.ENEMIES.apex_broodmother || {};
-                if (enemy.burrowState === 'BURROWED') {
+                if (enemy.burrowState ==='BURROWED') {
                     enemy.isBurrowed = true;
                     enemy.bossBurrowTimer = (enemy.bossBurrowTimer || 0) - dt;
                     const subSpd = enemy.speed * 1.35;
@@ -1882,33 +1882,33 @@ class EnemyController {
                         enemy.y += (dx / dist) * subSpd * dt;
                     }
                     if (Math.random() < 0.5 && window.poolManager.spawnSparks) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 4, '#aa66ff', 85);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 4,'#aa66ff', 85);
                     }
                     if (enemy.bossBurrowTimer <= 0) {
-                        enemy.burrowState = 'ERUPTING';
+                        enemy.burrowState ='ERUPTING';
                         enemy.eruptTimer = cfg.eruptTelegraphTime || 0.85;
                     }
-                } else if (enemy.burrowState === 'ERUPTING') {
+                } else if (enemy.burrowState ==='ERUPTING') {
                     enemy.eruptTimer = (enemy.eruptTimer || 0) - dt;
                     if (Math.random() < 0.7 && window.poolManager.spawnSparks) {
-                        window.poolManager.spawnSparks(enemy.x, enemy.y, 6, '#e0b870', 120);
+                        window.poolManager.spawnSparks(enemy.x, enemy.y, 6,'#e0b870', 120);
                     }
                     if (enemy.eruptTimer <= 0) {
                         enemy.isBurrowed = false;
-                        enemy.burrowState = 'SURFACE';
+                        enemy.burrowState ='SURFACE';
                         enemy.bossPhaseTimer = 0;
-                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 95, '#9900ff', true);
+                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 95,'#9900ff', true);
                         for (let g = 0; g < 12; g++) {
                             const gang = (g / 12) * Math.PI * 2;
                             const p = window.poolManager.projectiles.get();
-                            p.type = 'acid';
+                            p.type ='acid';
                             p.x = enemy.x;
                             p.y = enemy.y;
                             p.vx = Math.cos(gang) * 230;
                             p.vy = Math.sin(gang) * 230;
                             p.damage = 18;
                             p.radius = 8;
-                            p.color = '#aa00ff';
+                            p.color ='#aa00ff';
                             p.life = 2.5;
                             p.maxLife = 2.5;
                             p.isEnemyBullet = true;
@@ -1931,30 +1931,30 @@ class EnemyController {
                         for (let g = 0; g < 12; g++) {
                             const gang = (g / 12) * Math.PI * 2;
                             const p = window.poolManager.projectiles.get();
-                            p.type = 'acid';
+                            p.type ='acid';
                             p.x = enemy.x;
                             p.y = enemy.y;
                             p.vx = Math.cos(gang) * 220;
                             p.vy = Math.sin(gang) * 220;
                             p.damage = 18;
                             p.radius = 8;
-                            p.color = '#aa00ff';
+                            p.color ='#aa00ff';
                             p.life = 2.5;
                             p.maxLife = 2.5;
                             p.isEnemyBullet = true;
                         }
-                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 60, '#9900ff', true);
+                        window.poolManager.spawnExplosion(enemy.x, enemy.y, 60,'#9900ff', true);
                     }
                     if (enemy.bossPhaseTimer >= (cfg.surfacePhaseDuration || 10.0)) {
                         enemy.isBurrowed = true;
-                        enemy.burrowState = 'BURROWED';
+                        enemy.burrowState ='BURROWED';
                         enemy.bossBurrowTimer = cfg.burrowPhaseDuration || 6.0;
                         enemy.bossPhaseTimer = 0;
                         if (window.soundManager && window.soundManager.playSubterraneanRumble) {
                             window.soundManager.playSubterraneanRumble();
                         }
                         if (window.gameInstance && window.gameInstance.showBanner) {
-                            window.gameInstance.showBanner('⚠️ APEX BROODMOTHER SUBMERGED — TRACK SEISMIC TREMOR ON RADAR! ⚠️', '#ff55ff', 3000);
+                            window.gameInstance.showBanner('APEX BROODMOTHER SUBMERGED — TRACK SEISMIC TREMOR ON RADAR!','#ff55ff', 3000);
                         }
                         for (let s = 0; s < 2; s++) {
                             const ang = Math.random() * Math.PI * 2;
@@ -1979,23 +1979,23 @@ class EnemyController {
             const playerSpd = Math.hypot(player.vx || 0, player.vy || 0);
             const trampleMin = (window.GAME_CONFIG && window.GAME_CONFIG.PLAYER && window.GAME_CONFIG.PLAYER.TRAMPLE_MIN_SPEED) || 75.0;
 
-            if (enemy.type === 'skitterer' && (playerSpd >= trampleMin || player.isDashing)) {
+            if (enemy.type ==='skitterer'&& (playerSpd >= trampleMin || player.isDashing)) {
                 player.kills++;
 
                 const scrap = window.poolManager.drops.get();
-                scrap.type = 'scrap';
+                scrap.type ='scrap';
                 scrap.x = enemy.x;
                 scrap.y = enemy.y;
                 scrap.value = Math.max(1, enemy.scrapValue || 1);
 
                 if (window.poolManager.spawnDecal) {
-                    window.poolManager.spawnDecal(enemy.x, enemy.y, (enemy.radius || 10) * 1.5, 'rgba(50, 255, 80, 0.55)', 'splatter', 12.0);
+                    window.poolManager.spawnDecal(enemy.x, enemy.y, (enemy.radius || 10) * 1.5,'rgba(50, 255, 80, 0.55)','splatter', 12.0);
                 }
                 if (window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(enemy.x, enemy.y, 14, '#33ff66', 180, 0.4);
+                    window.poolManager.spawnSparks(enemy.x, enemy.y, 14,'#33ff66', 180, 0.4);
                 }
                 if (window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(enemy.x, enemy.y, 'CRUSHED', '#48ee58', 14);
+                    window.poolManager.spawnDamageNumber(enemy.x, enemy.y,'CRUSHED','#48ee58', 14);
                 }
                 if (window.gameInstance && window.gameInstance.triggerScreenShake) {
                     window.gameInstance.triggerScreenShake(2.2, 0.10);
@@ -2012,7 +2012,7 @@ class EnemyController {
             }
 
             // Burrowed enemies do not cause melee collision damage until erupting/lunging or surfaced
-            if (!enemy.isBurrowed || enemy.burrowState === 'LUNGING' || enemy.burrowState === 'ERUPTING') {
+            if (!enemy.isBurrowed || enemy.burrowState ==='LUNGING'|| enemy.burrowState ==='ERUPTING') {
                 player.takeDamage(enemy.damage, enemy.x, enemy.y);
                 // Push enemy slightly away
                 if (dist > 0) {
@@ -2035,12 +2035,12 @@ class EnemyController {
         // Hit-flash white shader (0.05s on damage)
         const isHitFlash = enemy.hitFlash > 0;
 
-        ctx.fillStyle = isHitFlash ? '#ffffff' : enemy.color;
-        ctx.strokeStyle = isHitFlash ? '#ffffff' : '#000000';
+        ctx.fillStyle = isHitFlash ?'#ffffff': enemy.color;
+        ctx.strokeStyle = isHitFlash ?'#ffffff':'#000000';
         ctx.lineWidth = 1.5;
 
         // Draw insectoid silhouettes based on type
-        if (enemy.type === 'skitterer') {
+        if (enemy.type ==='skitterer') {
             // Triangular arachnid silhouette with mandibles
             ctx.beginPath();
             ctx.moveTo(14, 0);
@@ -2052,7 +2052,7 @@ class EnemyController {
             ctx.stroke();
 
             // Legs
-            ctx.strokeStyle = isHitFlash ? '#ffffff' : '#aa2211';
+            ctx.strokeStyle = isHitFlash ?'#ffffff':'#aa2211';
             ctx.beginPath();
             ctx.moveTo(4, -8); ctx.lineTo(8, -14);
             ctx.moveTo(-2, -8); ctx.lineTo(-4, -14);
@@ -2060,7 +2060,7 @@ class EnemyController {
             ctx.moveTo(-2, 8); ctx.lineTo(-4, 14);
             ctx.stroke();
 
-        } else if (enemy.type === 'acid_spitter') {
+        } else if (enemy.type ==='acid_spitter') {
             // Bulbous sac with venom injector
             ctx.beginPath();
             ctx.ellipse(-4, 0, 14, 10, 0, 0, Math.PI * 2);
@@ -2068,12 +2068,12 @@ class EnemyController {
             ctx.stroke();
 
             // Glowing venom gland
-            ctx.fillStyle = '#33ff55';
+            ctx.fillStyle ='#33ff55';
             ctx.beginPath();
             ctx.arc(6, 0, 5, 0, Math.PI * 2);
             ctx.fill();
 
-        } else if (enemy.type === 'carapace_charger') {
+        } else if (enemy.type ==='carapace_charger') {
             // Heavy armored beetle with massive ram horns
             ctx.beginPath();
             ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
@@ -2081,7 +2081,7 @@ class EnemyController {
             ctx.stroke();
 
             // Ram Horns
-            ctx.fillStyle = '#ffbb33';
+            ctx.fillStyle ='#ffbb33';
             ctx.beginPath();
             ctx.moveTo(18, -12); ctx.lineTo(30, -18); ctx.lineTo(16, -6);
             ctx.moveTo(18, 12); ctx.lineTo(30, 18); ctx.lineTo(16, 6);
@@ -2089,7 +2089,7 @@ class EnemyController {
 
             // If charging telegraph
             if (enemy.isCharging) {
-                ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+                ctx.strokeStyle ='rgba(255, 0, 0, 0.8)';
                 ctx.lineWidth = 3;
                 ctx.strokeRect(-enemy.radius - 2, -enemy.radius - 2, enemy.radius * 2 + 4, enemy.radius * 2 + 4);
             }
@@ -2102,7 +2102,7 @@ class EnemyController {
             ctx.stroke();
 
             // Eyes / pulsing cores
-            ctx.fillStyle = '#ff0033';
+            ctx.fillStyle ='#ff0033';
             ctx.beginPath();
             ctx.arc(enemy.radius * 0.4, -enemy.radius * 0.3, 5, 0, Math.PI * 2);
             ctx.arc(enemy.radius * 0.4, enemy.radius * 0.3, 5, 0, Math.PI * 2);
@@ -2118,11 +2118,11 @@ class EnemyController {
             const barX = sx - barW / 2;
             const barY = sy - enemy.radius - 12;
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillStyle ='rgba(0, 0, 0, 0.6)';
             ctx.fillRect(barX, barY, barW, barH);
 
             const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
-            ctx.fillStyle = enemy.isBoss ? '#ff0055' : '#ff4444';
+            ctx.fillStyle = enemy.isBoss ?'#ff0055':'#ff4444';
             ctx.fillRect(barX, barY, barW * hpRatio, barH);
         }
     }
