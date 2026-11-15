@@ -1,5 +1,6 @@
 .edge_tmp2/
 __pycache__/
 *.pyc
+*.rar
 .DS_Store
 Thumbs.db
