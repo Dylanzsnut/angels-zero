@@ -504,7 +504,7 @@ class Player {
                 if (window.poolManager && window.poolManager.spawnSparks) {
                     window.poolManager.spawnSparks(this.x, this.y, 8,'#00ffff', 160);
                 }
-                this.invulnerableTimer = 0.15;
+                this.invulnerableTimer = 0.28;
                 return;
             } else {
                 amount -= this.shield;
@@ -529,7 +529,10 @@ class Player {
         // 2) Armored Hull Penetration
         this.hp -= amount;
         this.applyArmorZoneWear(amount / Math.max(1, this.maxHp), false);
-        this.invulnerableTimer = 0.25; // brief post-hit immunity
+        this.invulnerableTimer = 0.42; // post-hit immunity so stacked hits don't insta-delete
+        if (window.gameInstance) {
+            window.gameInstance.damageFlashTimer = 0.35;
+        }
         if (window.soundManager && window.soundManager.playPlayerHurt) {
             window.soundManager.playPlayerHurt();
         }
@@ -1420,7 +1423,7 @@ class EnemyController {
 
         if (this.hp <= 0) {
             this.hp = 0;
-            if (player) player.kills++;
+            if (player && !player.isBaseTurret) player.kills++;
             if (typeof window !=='undefined'&& window.gameInstance && window.gameInstance.renderer3d && window.gameInstance.renderer3d.spawnBugGibs3D) {
                 window.gameInstance.renderer3d.spawnBugGibs3D(this.x, this.y, this.color ||'#66aa44', this.radius || 16);
             }

@@ -98,9 +98,11 @@ class Game {
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
         window.addEventListener('keyup', (e) => this.onKeyUp(e));
 
-        // Pointer Lock & 360 Mouse Look with Turret Slew Interface
+        // Pointer Lock & 360 Mouse Look (plus drag-to-aim fallback when pointer lock is unavailable)
         document.addEventListener('mousemove', (e) => {
-            if (this.state ==='PLAYING'&& !this.introActive && this.player && document.pointerLockElement === this.canvas) {
+            const locked = document.pointerLockElement === this.canvas;
+            const dragging = (e.buttons & 1) !== 0 || (e.buttons & 2) !== 0;
+            if (this.state ==='PLAYING'&& !this.introActive && this.player && (locked || dragging)) {
                 const pcfg = (window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) || {};
                 const adsSensMult = 1 - (this.player.adsBlend || 0) * (1 - (pcfg.ADS_SENS_MULT || 0.55));
                 const sensX = 0.0024 * adsSensMult;
@@ -416,7 +418,7 @@ class Game {
                 this.closeRefitTerminal();
                 return;
             }
-            if (e.code ==='KeyP') {
+            if (e.code ==='KeyP'|| (e.code ==='Escape'&& document.pointerLockElement !== this.canvas)) {
                 if (this.state ==='PLAYING') {
                     this.state ='PAUSED';
                     this.releasePointerLock();
@@ -429,12 +431,6 @@ class Game {
                     this.lastTime = performance.now();
                     this.updatePointerLockPrompt();
                 }
-            } else if (e.code ==='Escape'&& this.state ==='PAUSED') {
-                this.state ='PLAYING';
-                if (!window.soundManager.bgmMuted) window.soundManager.startBgm();
-                document.getElementById('pauseOverlay').classList.add('hidden');
-                this.lastTime = performance.now();
-                this.updatePointerLockPrompt();
             }
         }
     }
@@ -547,11 +543,11 @@ class Game {
 
     showDropBanner() {
         this.showBanner(
-            this.currentMode ==='siege'
-                ?'SIGNAL LOST // STRANDED IN UNKNOWN SECTOR — SURVIVE 15:00'
-                :'DROP-BAY CLEARED // UNKNOWN WORLD — RELY ON 360° RADAR',
-            '#ff7733',
-            4500
+            this.currentMode ==='endless'
+                ?'ENDLESS FRONTIER // CLEAR BOUNTIES [F] · COLLECT SCRAP · PRESS [X] TO CALL EVAC ANYTIME'
+                :'CANYON EXTRACTION // ADVANCE NORTH [W] TO SECTOR-1 · STAND AT HQ PAD [B] TO REFIT · DODGE SLAMS [SPACE]',
+            '#ffaa33',
+            5500
         );
     }
 
@@ -562,6 +558,7 @@ class Game {
         this.introTimer = introDur;
         this.introBootStep = 4;
         if (this.player) {
+            this.player.invulnerableTimer = Math.max(this.player.invulnerableTimer || 0, 3.0);
             const cfg = window.GAME_CONFIG || {};
             this.player.introStrideMult = 1.0;
             this.player.x = (cfg.CANYON && cfg.CANYON.START_X) || (cfg.WORLD_WIDTH / 2);
@@ -1945,7 +1942,7 @@ class Game {
         if (target) {
             this.hqDefenseTimer = cooldown;
             if (typeof target.takeDamage ==='function') {
-                target.takeDamage(dmg, this.player,'Ballistic');
+                target.takeDamage(dmg, { isBaseTurret: true },'Ballistic');
             }
             if (window.poolManager.spawnSparks) {
                 window.poolManager.spawnSparks(target.x, target.y, 5,'#38f2ff', 140);
@@ -2003,8 +2000,8 @@ class Game {
                 if (!op || op.liberated) continue;
                 const d = Math.hypot(p.x - op.x, p.y - op.y);
 
-                // Spawn defending Brood-Guard once on first outpost approach
-                if (!op.defenderSpawned && d <= 480 && window.EnemyController && window.EnemyController.spawn) {
+                // Spawn defending Brood-Guard once on first outpost approach (never during drop intro)
+                if (!this.introActive && !op.defenderSpawned && d <= 360 && window.EnemyController && window.EnemyController.spawn) {
                     op.defenderSpawned = true;
                     op.defenderEnemy = window.EnemyController.spawn('brood_guard', op.x + 65, op.y + 65, 1.0);
                     if (op.missionType ==='HIVE_PURGE') {
@@ -2280,6 +2277,7 @@ class Game {
 
     triggerGameOver() {
         this.state ='GAMEOVER';
+        if (this.updateHud) this.updateHud();
         this.releasePointerLock();
         window.soundManager.stopBgm();
         window.soundManager.playPlayerHurt();
@@ -2411,14 +2409,32 @@ class Game {
                 this.introActive = false;
                 this.introRetroAudioPlayed = false;
                 this.player.introStrideMult = 1.0;
+                this.player.invulnerableTimer = Math.max(this.player.invulnerableTimer || 0, 3.0);
                 if (this.renderer3d && this.renderer3d.updateDropBayIntro) {
                     this.renderer3d.updateDropBayIntro(false, introDur);
                 }
                 this.updatePointerLockPrompt();
                 this.showDropBanner();
+            } else if (this.player) {
+                this.player.invulnerableTimer = Math.max(this.player.invulnerableTimer || 0, 0.5);
             }
         } else {
             inputDir = this.getMovementInput();
+        }
+
+        // Hull damage vignette flash
+        if (this.damageFlashTimer > 0) {
+            this.damageFlashTimer = Math.max(0, this.damageFlashTimer - dt);
+        }
+        const vigEl = typeof document !== 'undefined' ? document.getElementById('vignette') : null;
+        if (vigEl && this.player) {
+            const lowHp = this.player.hp < this.player.maxHp * 0.35;
+            if (this.damageFlashTimer > 0 || lowHp) {
+                vigEl.classList.remove('hidden');
+                vigEl.style.opacity = this.damageFlashTimer > 0 ? String(Math.min(1, this.damageFlashTimer * 2.5)) : '0.45';
+            } else {
+                vigEl.classList.add('hidden');
+            }
         }
 
         // Player update

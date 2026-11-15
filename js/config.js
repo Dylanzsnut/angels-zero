@@ -154,7 +154,7 @@ const GAME_CONFIG = {
             name: 'SECTOR 1 // FORWARD RECON PASS',
             code: 'SECTOR-1',
             dx: -80,
-            dy: -450,
+            dy: -900,
             specialty: 'Ballistic / Refit',
             preferredTags: ['Ballistic', 'Ordnance'],
             missionType: 'COMMS_ALIGN',
