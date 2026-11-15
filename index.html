@@ -157,8 +157,11 @@
                     <button id="btnOpenHangar" class="btn-secondary">
                         MECH UPGRADES &amp; LOADOUT
                     </button>
+                    <button id="btnOpenGuide" class="btn-secondary" style="border-color: #ffaa00; color: #ffaa00;">
+                        FIELD MANUAL (HOW TO PLAY)
+                    </button>
                     <button id="btnOpenPatchNotes" class="btn-secondary" style="border-color: #38f2ff; color: #38f2ff;">
-                        PATCH NOTES (v0.9.1)
+                        PATCH NOTES (v0.9.2)
                     </button>
                 </div>
 
@@ -234,10 +237,68 @@
         </div>
 
         <!-- Pause Screen -->
-        <div id="pauseOverlay" class="modal-overlay hidden">
+        <div id="pauseOverlay" class="modal-overlay hidden interactive">
             <div class="menu-box">
                 <h2 class="modal-title">MISSION PAUSED</h2>
                 <p style="color: #94a3b8; margin: 15px 0;">Press <b>ESC</b> or <b>P</b> to resume combat.</p>
+                <div class="menu-actions" style="margin-top: 16px;">
+                    <button id="btnResumePause" class="btn-primary">RESUME MISSION</button>
+                    <button id="btnOpenGuidePause" class="btn-secondary" style="border-color: #ffaa00; color: #ffaa00;">FIELD MANUAL</button>
+                    <button id="btnQuitPause" class="btn-secondary" style="border-color: #ff4455; color: #ff6677;">ABORT TO HQ</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Field Manual / Tutorial Modal -->
+        <div id="guideModal" class="modal-overlay hidden interactive">
+            <div class="menu-box patch-notes-box">
+                <h2 class="modal-title" style="color: #ffaa00;">TACTICAL FIELD MANUAL</h2>
+                <div class="patch-notes-list">
+                    <div class="patch-entry" style="border-left-color: #00e5ff;">
+                        <div class="patch-entry-header">
+                            <span class="patch-version" style="background: #00e5ff;">01</span>
+                            <span class="patch-title">HQ Pad, Auto-Repair &amp; Refit Terminals [B]</span>
+                        </div>
+                        <ul class="patch-list">
+                            <li>Stand on the glowing cyan pad at <b>HQ</b> (or any liberated Outpost) to repair armor and press <b>[B]</b> to open the Refit Terminal.</li>
+                            <li>HQ is protected by an automated <b>CIWS defense turret</b> (36m range). Turret kills protect the pad and do not count as your personal kills.</li>
+                        </ul>
+                    </div>
+                    <div class="patch-entry" style="border-left-color: #48ee58;">
+                        <div class="patch-entry-header">
+                            <span class="patch-version" style="background: #48ee58;">02</span>
+                            <span class="patch-title">Clearing Sectors &amp; Extraction [F] / [X]</span>
+                        </div>
+                        <ul class="patch-list">
+                            <li>Follow the top compass and 360° radar to each <b>Sector Outpost</b>. Enter the zone or press <b>[F]</b> at the terminal to start the objective (align dish, hold zone, load artillery shells, or destroy relays).</li>
+                            <li><b>Canyon Raid</b>: Clear the sectors and hold the <b>North Extraction LZ</b> for 20s to board the dropship.</li>
+                            <li><b>Endless Gauntlet</b>: Clear repeating bounties for higher scrap rewards, then press <b>[X]</b> anytime to fire an <b>Evac Flare</b> and extract.</li>
+                        </ul>
+                    </div>
+                    <div class="patch-entry" style="border-left-color: #ff3355;">
+                        <div class="patch-entry-header">
+                            <span class="patch-version" style="background: #ff3355; color: #fff;">03</span>
+                            <span class="patch-title">Dodging Seismic Slams [SPACE]</span>
+                        </div>
+                        <ul class="patch-list">
+                            <li>Heavy <b>Brood-Guard</b> mini-bosses telegraph a red spark ring (<i>SEISMIC SLAM — DODGE [SPACE]</i>).</li>
+                            <li>Press <b>[SPACE]</b> (Thruster Dash) right before impact to trigger invulnerability frames and evade the slam damage.</li>
+                        </ul>
+                    </div>
+                    <div class="patch-entry" style="border-left-color: #ffaa00;">
+                        <div class="patch-entry-header">
+                            <span class="patch-version" style="background: #ffaa00;">04</span>
+                            <span class="patch-title">Salvaged Scrap &amp; Hangar Progression</span>
+                        </div>
+                        <ul class="patch-list">
+                            <li>Killed enemies, Salvage Pods, and cleared Outposts drop golden <b>Scrap</b> cogs. Walk near them to magnet-collect.</li>
+                            <li>Spend Scrap mid-run at <b>[B]</b> Refit Terminals, or keep it and <b>extract</b> to bank it permanently into your Hangar for chassis/weapon upgrades.</li>
+                        </ul>
+                    </div>
+                </div>
+                <button id="btnCloseGuide" class="btn-secondary" style="margin-top: 14px; border-color: #ffaa00; color: #ffaa00;">
+                    CLOSE [ESC]
+                </button>
             </div>
         </div>
 

@@ -123,14 +123,23 @@ class Game {
         this.canvas.addEventListener('mousedown', (e) => {
             if (this.state !=='PLAYING') return;
             window.soundManager.init();
+            if (this.canvas && this.canvas.focus) {
+                try { this.canvas.focus({ preventScroll: true }); } catch (err) {}
+            }
 
             // Engage Pointer Lock when clicking viewport
             if (document.pointerLockElement !== this.canvas && this.canvas.requestPointerLock) {
                 try {
                     const pr = this.canvas.requestPointerLock();
-                    if (pr && typeof pr.catch ==='function') pr.catch(() => {});
+                    if (pr && typeof pr.catch ==='function') {
+                        pr.catch(() => {
+                            this.pointerLockFailed = true;
+                            this.updatePointerLockPrompt();
+                        });
+                    }
                 } catch (err) {
-                    // Ignore pointer lock rejection
+                    this.pointerLockFailed = true;
+                    this.updatePointerLockPrompt();
                 }
             }
 
@@ -174,6 +183,13 @@ class Game {
         });
 
         document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === this.canvas) {
+                this.pointerLockFailed = false;
+            }
+            this.updatePointerLockPrompt();
+        });
+        document.addEventListener('pointerlockerror', () => {
+            this.pointerLockFailed = true;
             this.updatePointerLockPrompt();
         });
 
@@ -208,6 +224,11 @@ class Game {
         const prompt = document.getElementById('pointerLockPrompt');
         if (!prompt) return;
         if (this.state ==='PLAYING'&& !this.introActive && document.pointerLockElement !== this.canvas) {
+            if (this.pointerLockFailed) {
+                prompt.innerHTML = 'FALLBACK AIM ACTIVE: HOLD LMB + DRAG (OR ARROWS) TO TURN &bull; [WASD] MOVE &bull; [P / ESC] PAUSE';
+            } else {
+                prompt.innerHTML = 'CLICK VIEWPORT TO LOCK MOUSE AIM (OR HOLD LMB + DRAG / ARROWS TO TURN) &bull; [P] PAUSE';
+            }
             prompt.classList.remove('hidden');
         } else {
             prompt.classList.add('hidden');
@@ -237,6 +258,35 @@ class Game {
             btnClosePatch.addEventListener('click', () => {
                 patchModal.classList.add('hidden');
             });
+        }
+        const guideModal = document.getElementById('guideModal');
+        const btnOpenGuide = document.getElementById('btnOpenGuide');
+        const btnOpenGuidePause = document.getElementById('btnOpenGuidePause');
+        const btnCloseGuide = document.getElementById('btnCloseGuide');
+        if (btnOpenGuide && guideModal) {
+            btnOpenGuide.addEventListener('click', () => guideModal.classList.remove('hidden'));
+        }
+        if (btnOpenGuidePause && guideModal) {
+            btnOpenGuidePause.addEventListener('click', () => guideModal.classList.remove('hidden'));
+        }
+        if (btnCloseGuide && guideModal) {
+            btnCloseGuide.addEventListener('click', () => guideModal.classList.add('hidden'));
+        }
+        const btnResumePause = document.getElementById('btnResumePause');
+        if (btnResumePause) {
+            btnResumePause.addEventListener('click', () => {
+                if (this.state === 'PAUSED') {
+                    this.state = 'PLAYING';
+                    if (!window.soundManager.bgmMuted) window.soundManager.startBgm();
+                    document.getElementById('pauseOverlay').classList.add('hidden');
+                    this.lastTime = performance.now();
+                    this.updatePointerLockPrompt();
+                }
+            });
+        }
+        const btnQuitPause = document.getElementById('btnQuitPause');
+        if (btnQuitPause) {
+            btnQuitPause.addEventListener('click', () => this.returnToMenu());
         }
         const resetHangarBtn = document.getElementById('btnResetHangar');
         if (resetHangarBtn) {
@@ -441,6 +491,11 @@ class Game {
                 patchModal.classList.add('hidden');
                 return;
             }
+            const guideModal = document.getElementById('guideModal');
+            if (e.code ==='Escape'&& guideModal && !guideModal.classList.contains('hidden')) {
+                guideModal.classList.add('hidden');
+                return;
+            }
             if (e.code ==='KeyP'|| (e.code ==='Escape'&& document.pointerLockElement !== this.canvas)) {
                 if (this.state ==='PLAYING') {
                     this.state ='PAUSED';
@@ -549,8 +604,17 @@ class Game {
 
         this.state ='PLAYING';
         this.lastTime = performance.now();
+        this.pointerLockFailed = false;
+        if (document.activeElement && document.activeElement.blur) {
+            try { document.activeElement.blur(); } catch (e) {}
+        }
+        if (this.canvas) {
+            this.canvas.tabIndex = 0;
+            try { this.canvas.focus({ preventScroll: true }); } catch (e) {}
+        }
         this.updatePointerLockPrompt();
 
+        window.soundManager.init();
         window.soundManager.startBgm();
 
         // Request pointer lock cleanly on start button click
@@ -2823,7 +2887,7 @@ class Game {
         const xpPercent = Math.min(100, (p.xp / Math.max(1, p.nextLevelXp)) * 100);
         document.getElementById('hudXpFill').style.width =`${this.onRefitPad ? 100 : xpPercent}%`;
         document.getElementById('hudLevelText').innerText = this.onRefitPad
-            ?`[B] REFIT READY · OUTPOSTS ${libCount}/${totalOps}`
+            ?`HQ CIWS ONLINE · [B] REFIT READY · OUTPOSTS ${libCount}/${totalOps}`
             :`OUTPOSTS ${libCount}/${totalOps} · SCRAP ${p.credits}`;
 
         // Timer & Stats

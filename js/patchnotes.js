@@ -2,6 +2,17 @@
 // Prepend a new entry at the top of this array before every web deployment.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.2',
+        date: '2026-11-16',
+        title: 'Field Manual, Pointer-Lock Fallback & Pause Menu Controls',
+        changes: [
+            'Added Tactical Field Manual (How to Play) explaining HQ Refit Pads [B], HQ CIWS Turret, Sector clearing [F], Seismic Slam dodging [SPACE], and Scrap extraction.',
+            'Added pointerlockerror / blocked-lock detection with clear Fallback Aim HUD feedback (Hold LMB + Drag or Arrows to turn) and automatic canvas keyboard focus.',
+            'Added Resume, Field Manual, and Abort to HQ buttons to the Pause overlay.',
+            'Updated HQ Pad HUD status to explicitly indicate when HQ CIWS automated defense is active.'
+        ]
+    },
+    {
         version: 'v0.9.1',
         date: '2026-11-16',
         title: 'Opening Survival, Kill Accuracy & Patch Notes',
