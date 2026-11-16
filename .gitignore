@@ -4,5 +4,6 @@ __pycache__/
 *.rar
 assets/
 screenshot*.png
+.wrangler/
 .DS_Store
 Thumbs.db

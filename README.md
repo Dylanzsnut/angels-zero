@@ -6,7 +6,7 @@
 
 Drop into a sandstorm-choked desert perimeter inside an armored **Orbital Drop Exosuit**. Fight through subterranean arachnid swarms, liberate forward outposts, shatter hive nests with Hellbombs, and hold the extraction zone long enough to bank your scrap haul.
 
-Built with **Three.js (WebGL)** and a **procedural Web Audio API sound engine** with zero external CDN dependencies.
+Built with **Three.js (WebGL)** and a **procedural Web Audio API sound engine**, with no external JS libraries, bundlers, or asset CDNs. The only remote request is an optional Google Fonts stylesheet for the HUD typeface; the game falls back to system fonts and remains fully playable offline.
 
 ---
 
@@ -14,8 +14,8 @@ Built with **Three.js (WebGL)** and a **procedural Web Audio API sound engine** 
 
 ### Tactical First-Person Mech Combat
 - **Full Cockpit Immersion**: 360-degree mouse look, optical ADS fire-control bracing (`Right-Click`), two-beat hydraulic stride physics, independent torso/chassis waist twist, and reactive armor plating.
-- **Thermal & Ballistic Mastery**: Manage `120mm Rotary` barrel heat with disciplined bursts or trigger an emergency coolant purge (`R`). Swap seamlessly between your primary `120mm Autocannon`, `37mm Armor-Piercing Sidearm`, and `Thermal Cleaver` (`1` / `2` / `3`).
-- **Mobility & Ordnance**: Execute invulnerability-frame **Thruster Dashes** (`Space`), unleash **Shoulder Micro-Missile Salvos** (`Q`), and whip around 180 degrees (`F`) when rear proximity alarms trigger.
+- **Thermal & Ballistic Mastery**: Manage `120mm Rotary` barrel heat with disciplined bursts or trigger an emergency coolant purge (`R`). Swap between the `120mm Autocannon` and `37mm Armor-Piercing Sidearm` with `1` / `2` or the mouse wheel, and swing the `Thermal Cleaver` with `V`, `Shift`, or `Mouse4`.
+- **Mobility & Ordnance**: Execute invulnerability-frame **Thruster Dashes** (`Space`), lock and unleash **Shoulder Micro-Missile Salvos** (hold and release `Q`), and clear crowds with the 360-degree **Seismic Stomp** (`F`).
 
 ### Two Distinct Deployment Modes
 - **Canyon Extraction**: Advance north across 5 hostile sectors (`3400 x 7600`). Clear Outposts via directional uplink sequences, breach crashed Salvage Pods, detonate Sub-Surface Hive Nests, and hold the **Extraction LZ** for **20 seconds** under siege to secure your haul.
@@ -76,14 +76,18 @@ The server binds to `http://127.0.0.1:8090/` (or automatically selects the next 
 | Input | Action |
 | :--- | :--- |
 | **Click Viewport** | Lock cursor for 360-degree mouse look (`ESC` to release) |
-| **W / A / S / D** | Move Forward / Strafe / Reverse |
+| **W / A / S / D** (or Arrows) | Move Forward / Strafe / Reverse |
 | **Left-Click (Hold)** | Fire active weapon |
 | **Right-Click (Hold)** | Optical ADS zoom & fire-control bracing |
-| **1 / 2 / 3** | Equip `120mm Rotary` / `37mm Sidearm` / `Thermal Cleaver` |
+| **Mouse Wheel** | Swap `120mm Autocannon` / `37mm Sidearm` |
+| **1 / 2** | Equip `120mm Autocannon` / `37mm Sidearm` |
+| **V / Shift / Mouse4** | Thermal Cleaver melee slash |
 | **R** | Manual Coolant Purge / Sidearm Reload |
 | **Space** | Thruster Dash (with invulnerability frames) |
-| **E** | Active Thermal Sonar Ping |
-| **Q** | Fire Shoulder Micro-Missile Salvo |
-| **F** | Interact with Outposts & Terminals / 180-Degree Quick Turn |
+| **E** | Interact / Active Thermal Sonar Ping |
+| **Q (Hold & Release)** | Lock and fire Shoulder Micro-Missile Salvo |
+| **F** | Interact with Outposts & Terminals / Seismic Stomp |
+| **B** | Open Refit Terminal (on HQ or liberated Outpost pad) |
+| **C** | Toggle 1st-person cockpit / 3rd-person mech camera |
 | **X** | Deploy Evac Flare (Endless Frontier mode) |
-| **P** | Tactical Pause |
+| **P / Esc** | Tactical Pause |

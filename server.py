@@ -13,6 +13,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
 
+    def end_headers(self):
+        # Always serve fresh assets so local edits are visible on reload.
+        self.send_header('Cache-Control', 'no-store, must-revalidate')
+        super().end_headers()
+
 
 class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True

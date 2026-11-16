@@ -1,49 +1,88 @@
-# Project: Orbital Perimeter Mech Combat & Cockpit Overhaul
+# Project: Orbital Perimeter
+
+**Status:** v0.9.3 — shipped and playable. Live at https://orbital-perimeter.pages.dev/.
+
+First-person 3D mech horde-survival / extraction shooter. Vanilla JavaScript loaded as
+plain `<script>` tags, no bundler, no build step. Three.js supplies WebGL rendering; every
+sound is synthesized at runtime through the Web Audio API.
 
 ## Architecture
-- Module boundaries:
-  - `js/config.js`: Kinematic tuning, player shields/HP, melee/stomp stats, enemy health/speed/damage rebalancing.
-  - `js/audio.js`: Rotary minigun continuous motor whine, per-round punch ("BRRRRRT"), hydraulic claw hiss/snap, seismic stomp sub-bass.
-  - `js/weapons.js`: Minigun spin-up state machine (`spinSpeed`, `barrelAngle`, `spinUpTime`, `minSpinToFire`), weapon firing integration.
-  - `js/entities.js`: Player energy shield absorption/regen, `triggerClawMelee()`, `triggerMechStomp()`, responsive torso slew & leg tracking.
-  - `js/waves.js`: Accessible wave progression, initial 2.5s spawn interval, batch size scaling, staggered ambush pacing.
-  - `js/pixelart.js`: Procedural sprites for left hydraulic claw arm (idle, clamp, strike) and right rotary minigun (6-barrel rotation cluster, ammo chute, evolved variant).
-  - `js/game.js`: Input binding (RMB/Shift for melee claw, F for stomp, LMB for minigun spin/fire, Space for dash), open cockpit canopy frame with transparent side windows, center-bottom dashboard console, exterior flank weapon rendering (`renderMechFlankWeapons`), balanced canvas context transforms.
 
-## Feature Inventory
-| # | Feature | Description | Milestone | Source |
-|---|---------|-------------|-----------|--------|
-| 1 | Cockpit Canopy & Side Windows | Slim A-pillars, transparent lateral side windows, wide forward/peripheral FOV matching Image 1 & 2 | M1 | Survey Explorer 1 |
-| 2 | Center-Bottom Dashboard HUD | Compact bottom-center dashboard, horizontal health/shield bars, analog gauges, unobstructed combat sightlines | M1 | Survey Explorer 1 |
-| 3 | Dual Exterior Flank Weapons | First-person rendering of left hydraulic claw arm and right multi-barrel rotary minigun on screen flanks | M1 | Survey Explorer 1 |
-| 4 | Realistic Minigun Audio | Web Audio rotary motor spool whine (80-520Hz) + high-speed per-round punchy BRRRRRT sound + spin-down deceleration | M1 | Survey Explorer 2 |
-| 5 | Minigun Spin-Up Mechanics | Spool-up delay (0.28s), spin threshold (0.65), smooth deceleration (0.48s), continuous 60FPS barrel angle sync | M1 | Survey Explorer 2 |
-| 6 | Snappy Controls & Mobility | Torso slew 14.0 rad/s (snappy mouse aim), forward 175, strafe 145, reverse 125, accel 560, brake 800, dash CD 1.8s | M1 | Survey Explorer 2 |
-| 7 | Left-Arm Melee Claw Attack | Hydraulic pincer crush on RMB/Shift: 125 range, 75° cone, 95 dmg, 380 knockback, 1.3s CD, punch animation | M1 | Survey Explorer 3 |
-| 8 | Mech Seismic Stomp Ability | 360° ground shockwave on [F]: 180 radius, 80 dmg, 450 knockback, unburrows sand stalkers, dust ring, 4.8s CD | M1 | Survey Explorer 3 |
-| 9 | Kinetic Energy Shields | 100 Shield + 150 Hull, 12 HP/s regen after 3.0s delay, dynamic HUD shield gauge tracking | M1 | Survey Explorer 3 |
-| 10 | Difficulty & Wave Rebalance | 2.5s initial spawn interval, batch size scaling, ambush delayed to 65s+, Skitterer HP 16 (1-shot), speed 135 | M1 | Survey Explorer 3 |
+Scripts load in dependency order from `index.html` (line ~351) and each file attaches a
+constructor to `window`:
 
-## Milestones
-| # | Name | Scope | Dependencies | Status |
-|---|------|-------|-------------|--------|
-| 1 | Complete Mech Overhaul | All 10 features unified in one coherent implementation | Survey complete | IN_PROGRESS |
+| Order | File | Global | Responsibility |
+|---|---|---|---|
+| 1 | `js/lib/three.min.js` | `THREE` | WebGL renderer, scene graph, math |
+| 2 | `js/pixelart.js` | `PixelArtBank` | Procedural canvas sprites (mech arms, enemies, portraits, icons) |
+| 3 | `js/audio.js` | `SoundManager` | Audio buses, BGM sequencer, ~60 synthesized SFX, TAC-AI voice comms |
+| 4 | `js/config.js` | `GAME_CONFIG` | Single source of balance data |
+| 5 | `js/patchnotes.js` | `window.PATCH_NOTES` | Versioned in-game patch log |
+| 6 | `js/pool.js` | `ObjectPool`, `PoolManager` | Reused entities: enemies, projectiles, particles, drops |
+| 7 | `js/hangar.js` | `HangarSystem` | Persistent meta-progression (localStorage) |
+| 8 | `js/weapons.js` | `WeaponSystem` | Weapon state, spin-up, hitscan raycasts, firing |
+| 9 | `js/entities.js` | `Player`, `EnemyController` | Player kinematics/abilities and enemy AI |
+| 10 | `js/waves.js` | `WaveDirector` | Spawn pacing, ambushes, boss schedule |
+| 11 | `js/renderer3d.js` | `Renderer3D` | Terrain, canyon geometry, cockpit arms, enemy sprites, hangar rig |
+| 12 | `js/game.js` | `Game` | Input, state machine, mission loop, HUD and canvas overlays |
 
-## Interface Contracts
-- `Player.triggerClawMelee()`: returns boolean; checks `clawCooldownTimer <= 0`, sets `clawCooldownTimer = 1.3`, `clawPunchAnim = 0.35`, plays audio, deals 95 dmg in 125 radius / 75° cone with 380 knockback.
-- `Player.triggerMechStomp()`: returns boolean; checks `stompCooldownTimer <= 0`, sets `stompCooldownTimer = 4.8`, `stompAnim = 0.5`, plays audio, deals 80 dmg in 180 radial AOE with 450 knockback, unburrows Sand-Stalkers.
-- `Player.takeDamage(amount)`: absorbs up to `this.shield`, resets `shieldRegenTimer = 3.0`, overflows to `this.hp`.
-- `Weapon.spinSpeed` & `Weapon.barrelAngle`: updated in `WeaponSystem.update()`, feeds `SoundManager.updateMinigunSpin(spinSpeed, isFiring, isEvolved)` and `renderMechFlankWeapons(ctx, w, h, dt, timeSec)`.
-- `SoundManager.playMinigunShot(isEvolved, heat)`: plays tight sub-bass thump + breech snap + powder blast + bolt slap.
-- `SoundManager.playClawMelee()`: pneumatic hiss + metallic pincer clamp.
-- `SoundManager.playMechStomp()`: sub-bass tectonic rumble + bedrock shatter crunch.
-- Canvas transform invariant: `ctx.setTransform(1, 0, 0, 1, 0, 0)` at start of `renderProjectedOverlay()`, strictly balanced `ctx.save()` / `ctx.restore()`.
+Cross-module access is via globals (`window.gameInstance`, `window.soundManager`,
+`window.poolManager`, `window.hangarSystem`, `window.EnemyController`).
 
-## Code Layout
-- `js/config.js`: Player kinematic constants, shield/stomp/claw stats, enemy stats.
-- `js/audio.js`: Minigun motor, minigun shot, claw melee, mech stomp sound nodes.
-- `js/weapons.js`: WeaponSystem spin-up physics, cooldown & firing logic.
-- `js/entities.js`: Player shield handling, melee/stomp triggers, mouse slew and leg steering.
-- `js/waves.js`: Wave pacing, spawn interval curve, batch size scaling, ambush scheduling.
-- `js/pixelart.js`: Procedural sprites for mechanical claw arm & rotary minigun.
-- `js/game.js`: Input event handlers, cockpit canopy rendering, center dashboard HUD, flank weapon rendering.
+### Runtime state machine (`Game.state`)
+
+`MENU` → `PLAYING` → (`LEVELUP` refit / `CHEST` reward) → `PAUSED` → `GAMEOVER` | `VICTORY`.
+`currentMode` is `siege` (Canyon Raid) or `endless` (Endless Gauntlet).
+
+## Systems inventory
+
+| Area | Implementation |
+|---|---|
+| Player movement | Two-beat hydraulic stride, separate torso/chassis yaw, waist twist limit, dash with i-frames (`entities.js`) |
+| Damage model | 100 shield + 150 hull, 12 HP/s regen after 3 s, armor-zone wear paper-doll (`Player.takeDamage`, `applyArmorZoneWear`) |
+| Weapons | Hitscan rotary, 37mm sidearm, cleaver, 5 starter weapons → 5 evolved forms (`config.WEAPONS`) |
+| Melee | Cleaver slash (`triggerKnifeMelee`) and fallback claw crush (`triggerClawMelee`) |
+| Stomp | 360° radial shockwave that also unburrows Sand-Stalkers (`triggerMechStomp`) |
+| Enemy roster | skitterer, sand_stalker, acid_spitter, carapace_charger, shrieker_mite, pheromone_scout, plus `brood_guard` mini-boss and `apex_broodmother` final boss |
+| Waves | Spawn interval 2.5 s → 0.4 s over 15 min; ambush patterns BURROW_CLUSTER / FLANK_PINCER / SQUALL_RUSH; mini-bosses at 3/6/9/12 min (`waves.js`) |
+| Missions | HQ refit pad + CIWS turret, 5 outposts with directional uplink minigames, artillery shells, Hellbomb nests, salvage pods, extraction hold (`game.js`) |
+| Sensors | 360° Doppler radar, 3.5 s thermal sonar, IFF brackets with predictive lead (`computeIFFTargets`) |
+| Meta | Scrap banking, 16 systems / 16 weapons / 30 mods / 40 cosmetics / 20 attachments (`hangar.js`) |
+| Presentation | Infinite chunked terrain, canyon mesas and arches, cockpit suspension, sprite enemies, post-processing overlays |
+
+## Interface contracts
+
+- `Game.startGame(mode)` — clears pools, resets scene, constructs `Player`, `WaveDirector`, mission state.
+- `WaveDirector.update(dt, player)` — called once per frame while playing; spawns via `window.EnemyController.spawn(type, x, y, difficulty)`.
+- `WeaponSystem.update(dt, enemies, isPrimaryFiring, isAutoAim)` — advances spin-up, heat, cooldowns and firing.
+- `Player.update(dt, inputDir, isPrimaryFiring, isAutoAim)` — consumes normalized movement input from `Game.getMovementInput()`.
+- `Player.takeDamage(amount, srcX?, srcY?)` — absorbs into `shield` first, resets `shieldRegenTimer`, overflows to `hp`.
+- `Player.triggerDash(inputDir)`, `triggerSonarPing()`, `triggerMechStomp()`, `triggerKnifeMelee()`, `triggerClawMelee()` — all return a boolean that is false when on cooldown or blocked.
+- `HangarSystem.getActiveBonuses()` — merged upgrade/mod effects consumed by `Player.applyMetaUpgrades()`.
+- `Renderer3D.syncFrame(game, dt)` — one-way render sync from simulation state; no gameplay mutation.
+- Canvas invariant: `renderProjectedOverlay()` resets with `ctx.setTransform(1, 0, 0, 1, 0, 0)` and keeps `save()` / `restore()` balanced.
+
+## Controls (verified against `js/game.js`)
+
+Click viewport to lock the mouse · `WASD`/arrows move · LMB fire · RMB hold ADS ·
+wheel or `1`/`2` swap autocannon/sidearm · `V`/`Shift`/`Mouse4` cleaver · `F` interact then
+seismic stomp · `E` interact then sonar · `Q` hold/release missile salvo · `R` reload or
+coolant vent · `Space` dash · `B` refit terminal · `C` camera toggle · `X` evac flare
+(endless) · `P`/`Esc` pause.
+
+## Verification
+
+```bash
+node tests/test_remediation.js
+```
+
+Headless VM sandbox covering thermal venting, shields, claw/stomp, stride physics,
+hardpoints, audio routing, HQ/extraction and boss encounters. Current state: all 10 groups pass.
+
+## Housekeeping notes
+
+- `assets/` (static model/texture archives) is present locally but gitignored and referenced by
+  no code. All geometry and sprites are procedural.
+- `js/lib/` should contain only `three.min.js`. The game does not use FBX/GLTF/OBJ loaders.
+- `PROJECT.md` and `README.md` are the source of truth for behavior; keep them in sync with
+  `js/game.js` when keybinds change.

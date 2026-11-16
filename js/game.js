@@ -663,7 +663,7 @@ class Game {
         this.updatePointerLockPrompt();
         this.showDropBanner();
         if (window.soundManager && window.soundManager.speakComms) {
-            const brief = mode === 'endless'
+            const brief = this.currentMode === 'endless'
                 ? 'Endless patrol active. Hunt down high-value bounties and press X to pop your evac flare whenever you are ready to extract.'
                 : 'Orbital Command online. Advance north through the canyon sectors, secure the outposts, and reach extraction.';
             window.soundManager.speakComms(brief, { speaker: 'COMMAND', priority: 2, cooldownKey: 'deploy', cooldownMs: 10000 });
