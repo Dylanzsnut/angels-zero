@@ -172,6 +172,7 @@ class Renderer3D {
         // 3D Physical Spent Brass Shell Casings & Muzzle Smoke Pools
         this.initShellCasings();
         this.initMuzzleSmoke();
+        this.initDashDust();
         this.initTracerAssets();
 
         // Prime initial spawn desert sector (180m, 180m) & stranded drop-pod site
@@ -1465,6 +1466,77 @@ class Renderer3D {
                 life: 0,
                 maxLife: 0.6
             });
+        }
+    }
+
+    // Ground dust kicked up by thruster dashes (billboard quads, world-space).
+    initDashDust() {
+        this.dashDustPool = [];
+        this.maxDashDust = 48;
+        const geo = new THREE.PlaneGeometry(0.42, 0.42);
+        for (let i = 0; i < this.maxDashDust; i++) {
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0xb08a5c, transparent: true, opacity: 0, depthWrite: false, fog: true
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.visible = false;
+            this.scene.add(mesh);
+            this.dashDustPool.push({ mesh, active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0.9, size: 0.4 });
+        }
+        this.dashDustTimer = 0;
+        this.wasDashing = false;
+    }
+
+    spawnDashDust(player, count = 2) {
+        if (!this.dashDustPool) return;
+        const pWx = player.x * this.SCALE;
+        const pWz = player.y * this.SCALE;
+        const groundY = this.getTerrainHeight(pWx, pWz);
+        const ang = player.facingAngle || 0;
+        const backX = -Math.cos(ang);
+        const backZ = -Math.sin(ang);
+        for (let i = 0; i < count; i++) {
+            const d = this.dashDustPool.find((p) => !p.active) || this.dashDustPool[0];
+            const side = (Math.random() - 0.5) * 1.4;
+            const rightX = -Math.sin(ang);
+            const rightZ = Math.cos(ang);
+            d.x = pWx + backX * (0.3 + Math.random() * 0.5) + rightX * side;
+            d.z = pWz + backZ * (0.3 + Math.random() * 0.5) + rightZ * side;
+            d.y = groundY + 0.12 + Math.random() * 0.25;
+            d.vx = backX * (1.6 + Math.random() * 1.4) + (Math.random() - 0.5) * 1.2;
+            d.vz = backZ * (1.6 + Math.random() * 1.4) + (Math.random() - 0.5) * 1.2;
+            d.vy = 0.5 + Math.random() * 1.1;
+            d.life = d.maxLife = 0.7 + Math.random() * 0.35;
+            d.size = 0.35 + Math.random() * 0.35;
+            d.active = true;
+            d.mesh.visible = true;
+            d.mesh.position.set(d.x, d.y, d.z);
+            d.mesh.scale.setScalar(d.size);
+            d.mesh.material.opacity = 0.55;
+        }
+    }
+
+    updateDashDust(dt) {
+        if (!this.dashDustPool) return;
+        for (const d of this.dashDustPool) {
+            if (!d.active) continue;
+            d.life -= dt;
+            if (d.life <= 0) {
+                d.active = false;
+                d.mesh.visible = false;
+                continue;
+            }
+            d.x += d.vx * dt;
+            d.y += d.vy * dt;
+            d.z += d.vz * dt;
+            d.vx *= Math.pow(0.35, dt);
+            d.vz *= Math.pow(0.35, dt);
+            d.vy -= 1.6 * dt;
+            const t = d.life / d.maxLife;
+            d.mesh.position.set(d.x, d.y, d.z);
+            d.mesh.scale.setScalar(d.size * (1.5 - t * 0.5));
+            d.mesh.material.opacity = 0.55 * t;
+            if (this.camera) d.mesh.quaternion.copy(this.camera.quaternion);
         }
     }
 
@@ -2857,6 +2929,17 @@ class Renderer3D {
         this.updateShellCasings(dt);
         this.updateBugGibs(dt);
         this.updateMuzzleSmoke(dt);
+        this.updateDashDust(dt);
+        if (p.isDashing) {
+            this.dashDustTimer -= dt;
+            if (this.dashDustTimer <= 0) {
+                this.spawnDashDust(p, 3);
+                this.dashDustTimer = 0.035;
+            }
+        } else if (this.wasDashing) {
+            this.spawnDashDust(p, 10); // burst as the boost cuts out
+        }
+        this.wasDashing = !!p.isDashing;
         this.updateBugBreaches(dt);
         this.updateWarzoneSky(dt, pWx, pWz);
         this.updateDropBayIntro(!!game.introActive, game.introTimer || 0);
@@ -4824,6 +4907,29 @@ class Renderer3D {
         if (!this.chassisGLB) return null;
         const scene = this.chassisGLB.clone(true);
         const find = (name) => scene.getObjectByName(name);
+
+        // Booster plumes for the imported rig (Blender -Y maps to Three +Z / rear).
+        const flameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+        const flameCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+        const dashFlames = new THREE.Group();
+        dashFlames.visible = false;
+        const addFlame = (x, y, z, radius, length, mat) => {
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, length, 10), mat);
+            cone.rotation.x = Math.PI / 2;
+            cone.position.set(x, y, z);
+            dashFlames.add(cone);
+        };
+        addFlame(-0.38, 2.92, 1.22, 0.22, 1.15, flameMat);
+        addFlame(0.38, 2.92, 1.22, 0.22, 1.15, flameMat);
+        addFlame(-0.38, 2.92, 1.05, 0.10, 0.78, flameCoreMat);
+        addFlame(0.38, 2.92, 1.05, 0.10, 0.78, flameCoreMat);
+        addFlame(-0.50, 0.62, 0.98, 0.14, 0.78, flameMat);
+        addFlame(0.50, 0.62, 0.98, 0.14, 0.78, flameMat);
+        scene.add(dashFlames);
+        const mechThrusterLight = new THREE.PointLight(0x38f2ff, 0, 7);
+        mechThrusterLight.position.set(0, 2.4, 1.1);
+        scene.add(mechThrusterLight);
+
         const rig = {
             root: scene,
             chassisId: 'light',
@@ -4837,8 +4943,8 @@ class Renderer3D {
             rArm: find('rArm'),
             lArm: find('lArm'),
             rifleGroup: find('rifleGroup') || new THREE.Group(),
-            dashFlames: { visible: false },
-            thrusterCores: [], thrusterFlames: [], reactorCore: null, mechThrusterLight: null,
+            dashFlames,
+            thrusterCores: [], thrusterFlames: [], reactorCore: null, mechThrusterLight,
             hydraulics: null,
             parts: {},
             materials: { mOlive: null, mVisor: null },
@@ -5400,12 +5506,22 @@ class Renderer3D {
         backpack.position.set(0, 2.92 + uy, -0.82);
         const dashFlames = new THREE.Group();
         dashFlames.visible = false;
-        const mFlame = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+        const mFlame = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+        const mFlameCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
         for (const sx of [-0.36, 0.36]) {
-            const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 8), mFlame);
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(0.20, 1.05, 8), mFlame);
             cone.rotation.x = -Math.PI / 2;
-            cone.position.set(sx, 2.75 + uy, -1.48);
+            cone.position.set(sx, 2.75 + uy, -1.55);
             dashFlames.add(cone);
+            const core = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.72, 8), mFlameCore);
+            core.rotation.x = -Math.PI / 2;
+            core.position.set(sx, 2.75 + uy, -1.38);
+            dashFlames.add(core);
+            // Calf booster plume low on each leg
+            const calf = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.72, 8), mFlame);
+            calf.rotation.x = -Math.PI / 2;
+            calf.position.set(sx * 1.35, 0.98 + uy, -0.82);
+            dashFlames.add(calf);
         }
 
         // Keep headGroup / visor anchor for cosmetic visor tinting
@@ -5833,6 +5949,13 @@ class Renderer3D {
             }
             if (rig.rArm) rig.rArm.rotation.x = (rig.rArm.rotation.x || 0) - reloadBlend * 0.35;
             if (rig.lArm) rig.lArm.rotation.x = (rig.lArm.rotation.x || 0) - reloadBlend * 0.55;
+
+            const dashing = !!p.isDashing;
+            if (rig.dashFlames) {
+                rig.dashFlames.visible = dashing;
+                if (dashing) rig.dashFlames.scale.set(1, 1, 0.9 + Math.sin(timeSec * 48) * 0.18);
+            }
+            if (rig.mechThrusterLight) rig.mechThrusterLight.intensity = dashing ? 3.6 : 0;
             return;
         }
 

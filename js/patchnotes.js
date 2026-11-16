@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.12',
+        date: '2026-11-16',
+        title: 'Thruster Dash VFX',
+        changes: [
+            'Dashing now kicks up a trail of ground dust behind your mech, with a larger burst when the boost cuts out.',
+            'All chassis booster plumes now flare with layered additive flame cones and a cyan point light while dashing, including the imported STRIDER-LX model.'
+        ]
+    },
+    {
         version: 'v0.9.11',
         date: '2026-11-16',
         title: '3D Cockpit HUD & Detailed Arm Models',
