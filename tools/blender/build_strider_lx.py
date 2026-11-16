@@ -10,7 +10,7 @@ Keeps the named pivot hierarchy expected by js/renderer3d.js:
 
 import math
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 OUT_BLEND = r"D:\orbital-perimeter\models\strider_lx.blend"
 OUT_GLB = r"D:\orbital-perimeter\models\strider_lx.glb"
@@ -379,6 +379,150 @@ for s, label in ((-1, "L"), (1, "R")):
     for i in range(4):
         cyl("Greave_Bolt_%s_%d" % (label, i), shin_obj, (x, -0.61, 0.58 + i * 0.13), 0.016, 0.016, chrome, (math.pi / 2, 0, 0), 8)
     box("Knee_Lamp_" + label, shin_obj, (x, 0.22, 1.28), (0.04, 0.02, 0.04), optic, 0.003)
+
+# ---------------------------------------------------------------------------
+# Upgrade catalog: every config upgrade modeled as a named attachable part.
+# Game code can toggle each group by name once the GLB is loaded.
+# ---------------------------------------------------------------------------
+# Softer emissive reserved for catalog parts (base armor optics stay bright).
+optic = material("LX_UpgradeGlow", (0.05, 0.45, 0.65), 0.3, 0.25, (0.06, 0.65, 0.9), 1.4)
+
+parents = {
+    "upper": upper, "head": head, "rArm": r_arm, "lArm": l_arm, "rifle": rifle,
+    "hipL": bpy.data.objects["legs.L.hip"], "hipR": bpy.data.objects["legs.R.hip"],
+    "shinL": bpy.data.objects["legs.L.shin"], "shinR": bpy.data.objects["legs.R.shin"],
+    "footL": bpy.data.objects["legs.L.foot"], "footR": bpy.data.objects["legs.R.foot"],
+}
+
+
+def upgrade_group(name, parent_key, loc):
+    g = bpy.data.objects.new(name, None)
+    collection.objects.link(g)
+    g.matrix_world = Matrix.Translation(Vector(loc))
+    world = g.matrix_world.copy()
+    g.parent = parents[parent_key]
+    g.matrix_parent_inverse = parents[parent_key].matrix_world.inverted()
+    g.matrix_world = world
+    return g
+
+
+def upgrade_shape(name, group, loc, size, shape, mat, rot=(0, 0, 0)):
+    if shape == "ring":
+        bpy.ops.mesh.primitive_torus_add(major_radius=size[0], minor_radius=size[1], location=loc, rotation=rot)
+        o = bpy.context.object
+        o.name = name
+        o.data.materials.append(mat)
+        return attach(o, group)
+    if shape in ("spike", "dish"):
+        return cone(name, group, loc, size[0], size[1], size[2], mat, rot, 10)
+    if shape in ("cylinder", "drum", "coil", "antenna", "capacitor", "barrel"):
+        return cyl(name, group, loc, size[0], size[1], mat, rot, 12, 0.006)
+    return box(name, group, loc, size, mat, 0.012, rot)
+
+
+def add_up(prefix, uid, parent_key, loc, shape, size, mat, rot=(0, 0, 0)):
+    name = prefix + "_" + uid
+    g = upgrade_group(name, parent_key, loc)
+    upgrade_shape(name + "_mesh", g, loc, size, shape, mat, rot)
+    return g
+
+
+# 16 Hangar meta upgrades
+meta_specs = [
+    ("hull_plating", "upper", (0, 0.68, 2.92), "plate", (1.02, 0.09, 0.62), steel),
+    ("thruster_tuning", "upper", (0, -0.74, 2.92), "fin", (0.52, 0.10, 0.44), optic),
+    ("scrap_magnet", "upper", (0, 0.70, 3.06), "ring", (0.30, 0.045), optic, (math.pi / 2, 0, 0)),
+    ("neural_tactics", "head", (0, 0.10, 4.14), "antenna", (0.022, 0.52), chrome),
+    ("kinetic_accelerators", "rArm", (0.92, 1.76, 2.46), "coil", (0.19, 0.05), optic, (0, math.pi / 2, 0)),
+    ("heavy_barrel_kit", "rArm", (0.92, 2.56, 2.34), "barrel", (0.075, 0.82), steel, (math.pi / 2, 0, 0)),
+    ("plasma_cleaver_edge", "lArm", (-1.06, 1.06, 2.72), "blade", (0.045, 0.66, 0.07), optic),
+    ("sidearm_mag_core", "lArm", (-0.92, 0.62, 2.18), "plate", (0.20, 0.30, 0.12), hazard),
+    ("shoulder_pod_rack", "rArm", (0.92, 0.10, 3.52), "plate", (0.46, 0.38, 0.52), hazard),
+    ("reactive_shield_array", "upper", (0, -0.70, 3.40), "fin", (0.56, 0.10, 0.34), optic),
+    ("cryo_heat_sinks", "upper", (0, -0.78, 2.66), "fin", (0.62, 0.08, 0.48), steel),
+    ("servo_leg_actuators", "hipL", (-0.66, 0.02, 1.54), "cylinder", (0.065, 0.60), chrome),
+    ("radar_sensor_array", "upper", (0, -0.34, 4.26), "antenna", (0.028, 0.72), chrome),
+    ("overdrive_reactor", "upper", (0, 0.74, 2.84), "ring", (0.24, 0.05), optic, (math.pi / 2, 0, 0)),
+    ("emp_shock_capacitors", "shinR", (0.62, -0.12, 1.06), "capacitor", (0.10, 0.30), optic),
+    ("nanite_repair_core", "upper", (0, -0.62, 3.06), "plate", (0.70, 0.08, 0.50), armor),
+]
+for spec in meta_specs:
+    add_up("UPG", *spec)
+
+# 30 tactical mods, routed to the body/gun region their bonus affects.
+mod_ids = [
+    "mod_sabot_rounds", "mod_hollow_point", "mod_ceramite_shins", "mod_vent_louvers",
+    "mod_magnet_coils", "mod_cleaver_serration", "mod_thruster_nozzle", "mod_shield_cell",
+    "mod_seeker_warhead", "mod_hydraulic_knees", "mod_stomp_spikes", "mod_sonar_amp",
+    "mod_du_jacket", "mod_shield_capacitor", "mod_cryo_manifold", "mod_tactical_uplink",
+    "mod_titanium_ribs", "mod_magnum_cylinder", "mod_plasma_filament", "mod_cluster_rack",
+    "mod_overclock_gyro", "mod_kinetic_core", "mod_aegis_emitter", "mod_hyper_coolant",
+    "mod_shockwave_sole", "mod_predator_optics", "mod_rail_accelerator", "mod_vanguard_plate",
+    "mod_warp_thrusters", "mod_apex_overdrive",
+]
+mod_shapes = ["plate", "coil", "fin", "cylinder", "lamp", "ring", "capacitor", "barrel"]
+mod_mats = [steel, optic, hazard, chrome, panel]
+for i, uid in enumerate(mod_ids):
+    low = uid.lower()
+    if any(k in low for k in ("barrel", "rifle", "rounds", "jacket", "rail", "sabot", "vent_louvers")):
+        parent, loc = "rArm", (0.92, 1.20 + (i % 5) * 0.22, 2.42 + (i % 2) * 0.09)
+    elif any(k in low for k in ("pistol", "magnum", "hollow")):
+        parent, loc = "lArm", (-0.92, 1.18 + (i % 4) * 0.24, 2.46)
+    elif any(k in low for k in ("knee", "shin", "sole", "stomp", "hydraulic")):
+        parent = "shinL" if i % 2 else "shinR"
+        loc = ((-0.5 if i % 2 else 0.5), -0.28, 0.66 + (i % 4) * 0.14)
+    elif any(k in low for k in ("thruster", "nozzle", "warp")):
+        parent, loc = "upper", ((-0.38 if i % 2 else 0.38), -0.76, 2.78 + (i % 3) * 0.20)
+    elif any(k in low for k in ("sonar", "optic", "predator")):
+        parent, loc = "head", ((-0.32 if i % 2 else 0.32), 0.52, 3.68 + (i % 3) * 0.11)
+    else:
+        parent, loc = "upper", ((-0.30 if i % 2 else 0.30), 0.64 if i % 2 else -0.66, 2.58 + (i % 6) * 0.15)
+    shape = mod_shapes[i % len(mod_shapes)]
+    sizes = {
+        "plate": (0.26, 0.06, 0.20), "coil": (0.13, 0.04), "fin": (0.28, 0.05, 0.22),
+        "cylinder": (0.05, 0.26), "lamp": (0.06, 0.04, 0.06), "ring": (0.13, 0.025),
+        "capacitor": (0.07, 0.22), "barrel": (0.035, 0.34),
+    }
+    rot = (math.pi / 2, 0, 0) if shape in ("coil", "ring", "barrel") else (0, 0, 0)
+    add_up("MOD", uid, parent, loc, shape, sizes[shape], mod_mats[i % len(mod_mats)], rot)
+
+# 10 cosmetic/mech attachments
+att_specs = [
+    ("att_spotlight", "lArm", (-1.02, 0.40, 3.36), "cylinder", (0.12, 0.22), optic, (math.pi / 2, 0, 0)),
+    ("att_antenna", "upper", (0.52, -0.42, 4.20), "antenna", (0.022, 0.92), chrome),
+    ("att_kneeguards", "shinL", (-0.50, 0.22, 1.18), "plate", (0.38, 0.12, 0.34), armor),
+    ("att_ammodrum", "upper", (0, -0.82, 2.84), "drum", (0.30, 0.44), hazard, (0, 0, math.pi / 2)),
+    ("att_exhaust", "upper", (0.58, -0.66, 3.30), "cylinder", (0.09, 0.74), steel),
+    ("att_reactor", "upper", (0, 0.78, 2.84), "ring", (0.28, 0.045), optic, (math.pi / 2, 0, 0)),
+    ("att_buckler", "lArm", (-1.30, 0.52, 2.42), "plate", (0.08, 0.62, 0.52), armor, (0, 0, -0.22)),
+    ("att_bayonets", "rArm", (0.92, 2.28, 2.10), "blade", (0.035, 0.44, 0.06), steel),
+    ("att_halo", "upper", (0, -0.10, 4.38), "ring", (0.46, 0.035), optic, (math.pi / 2, 0, 0)),
+    ("att_crown", "head", (0, 0.10, 4.10), "spike", (0.10, 0.02, 0.34), hazard),
+]
+for spec in att_specs:
+    add_up("ATT", *spec)
+
+# 16 weapon builds (rifle / pistol / melee / stomp kits)
+build_specs = [
+    ("standard_rotary", "rArm", (0.92, 1.60, 2.50), "plate", (0.12, 0.40, 0.12), steel),
+    ("burst_rail_rifle", "rArm", (0.92, 2.46, 2.34), "barrel", (0.045, 0.72), optic, (math.pi / 2, 0, 0)),
+    ("gatling_shredder", "rArm", (0.92, 1.98, 2.48), "coil", (0.17, 0.05), optic, (0, math.pi / 2, 0)),
+    ("incendiary_rotary", "rArm", (0.92, 1.34, 2.48), "cylinder", (0.07, 0.32), hazard),
+    ("standard_37mm", "lArm", (-0.92, 1.28, 2.48), "plate", (0.10, 0.36, 0.10), steel),
+    ("fan_hammer_37mm", "lArm", (-0.92, 2.30, 2.34), "barrel", (0.06, 0.30), hazard, (math.pi / 2, 0, 0)),
+    ("heavy_slug_37mm", "lArm", (-1.04, 1.46, 2.45), "cylinder", (0.085, 0.34), chrome),
+    ("smart_gyro_37mm", "lArm", (-0.92, 1.62, 2.60), "lamp", (0.07, 0.05, 0.07), optic),
+    ("standard_cleaver", "lArm", (-1.06, 0.92, 2.64), "plate", (0.06, 0.44, 0.10), steel),
+    ("twin_chainblades", "lArm", (-1.18, 1.02, 2.64), "blade", (0.04, 0.56, 0.05), steel),
+    ("plasma_greatsword", "lArm", (-1.06, 1.14, 2.68), "blade", (0.05, 0.72, 0.08), optic),
+    ("arc_halberd", "lArm", (-1.06, 1.00, 2.72), "spike", (0.08, 0.02, 0.62), optic),
+    ("standard_stomp", "footL", (-0.50, -0.30, 0.16), "plate", (0.42, 0.10, 0.30), steel),
+    ("tremor_slam", "footR", (0.50, -0.30, 0.16), "spike", (0.10, 0.02, 0.28), hazard),
+    ("pile_driver", "footL", (-0.50, -0.10, 0.12), "cylinder", (0.10, 0.30), chrome),
+    ("cryo_quake", "footR", (0.50, -0.10, 0.12), "ring", (0.16, 0.03), optic, (math.pi / 2, 0, 0)),
+]
+for spec in build_specs:
+    add_up("BUILD", *spec)
 
 # ---------------------------------------------------------------------------
 # Studio lighting / camera
