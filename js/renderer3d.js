@@ -3895,6 +3895,7 @@ class Renderer3D {
         const pLower = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.08, 0.34), matArmorOlive);
         pLower.position.set(0, 0.01, -0.16);
         const pSlide = new THREE.Mesh(new THREE.BoxGeometry(0.096, 0.095, 0.44), matGunmetal);
+        pSlide.name = 'PistolSlide';
         pSlide.position.set(0, 0.085, -0.22);
         const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.15, 0.09), matArmorDark);
         pGrip.position.set(0, -0.06, -0.02);
@@ -3974,6 +3975,7 @@ class Renderer3D {
         rightPistol37Group.position.set(-0.02, 0.04, -0.12);
         rightPistol37Group.visible = false;
         const rightMuzzleFlash = rightPistol37Group.getObjectByName('PistolMuzzleFlash');
+        const rightPSlide = rightPistol37Group.getObjectByName('PistolSlide');
         rWrist.add(rightPistol37Group);
 
         // JUGGERNAUT first-person rotary minigun in the right hand.
@@ -4135,6 +4137,7 @@ class Renderer3D {
             cleaverEdgeMat,
             pistol37Group,
             pSlide,
+            rightPSlide,
             dropMag,
             rightPistol37Group,
             minigunGroup,
@@ -4171,6 +4174,9 @@ class Renderer3D {
         if (!active || this.thirdPersonMode || !this.cockpitArms3D) return;
 
         const a = this.cockpitArms3D;
+        const dualFire = (p.pistolFireAnim || 0) / 0.25;
+        const leftShot = p.lastPistolHand === 'left' || p.lastPistolHand === 'both';
+        const rightShot = p.lastPistolHand === 'right' || p.lastPistolHand === 'both';
         // Chassis loadout visibility: Strider = dual pistols, Vanguard = rifle/pistol,
         // Bastion = autocannon + rotary minigun (no knife).
         if (a.rifleGroup) a.rifleGroup.visible = !!p.hasPrimary && !p.hasMinigun;
@@ -4195,8 +4201,9 @@ class Renderer3D {
         }
         if (a.pSlide) {
             const rack = p.pistolReloading ? Math.sin(reloadPhase * Math.PI) : 0;
-            a.pSlide.position.z = -0.22 - rack * 0.11;
+            a.pSlide.position.z = -0.22 - rack * 0.11 - (leftShot ? dualFire * 0.06 : 0);
         }
+        if (a.rightPSlide) a.rightPSlide.position.z = -0.22 - (rightShot ? dualFire * 0.06 : 0);
         const isMoving = Math.hypot(p.vx || 0, p.vy || 0) > 25;
         const bob = isMoving ? Math.sin(this.walkBobPhase || 0) : 0;
         const bobX = (isMoving ? Math.cos(this.walkBobPhase || 0) : 0) * 0.018;
@@ -4336,8 +4343,7 @@ class Renderer3D {
                 0.04
             );
             a.pistolCylinder.rotation.z = (p.pistolAmmo || 0) * (Math.PI / 3);
-            const rightShot = p.lastPistolHand === 'right';
-            a.pMuzzleFlash.visible = pFire > 0.72 && !rightShot;
+            a.pMuzzleFlash.visible = pFire > 0.72 && leftShot;
             if (a.rightMuzzleFlash) a.rightMuzzleFlash.visible = pFire > 0.72 && rightShot;
         } else if (p.carryingPayload) {
             // Carrying 155mm artillery shell
@@ -4740,6 +4746,12 @@ class Renderer3D {
                 }
                 hm.visible = !hz.detonated;
             }
+        }
+
+        // Per-hand recoil so each sidearm visibly kicks on its own shot.
+        if (dualFire > 0) {
+            if (leftShot && a.leftArm) a.leftArm.rotation.x -= dualFire * 0.22;
+            if (rightShot && a.rightArm) a.rightArm.rotation.x -= dualFire * 0.22;
         }
     }
 
@@ -5759,8 +5771,8 @@ class Renderer3D {
 
         // 37mm Sidearm Handcannon (shown when switching to secondary pistol mode)
         const pistolGroup = new THREE.Group();
-        pistolGroup.position.set(0.36, -0.58, 0.94);
-        pistolGroup.rotation.y = 0.48;
+        pistolGroup.position.set(0.42, -0.52, 1.05);
+        pistolGroup.rotation.y = 0.08;
         pistolGroup.visible = false;
         const pBody = outline(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.72), mDark));
         const pCyl = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.22, 10), mGold));
@@ -5778,8 +5790,8 @@ class Renderer3D {
 
         // RECON: matching sidearm in the right hand for true dual-wielding.
         const offPistolGroup = pistolGroup.clone(true);
-        offPistolGroup.position.set(-0.36, -0.58, 0.94);
-        offPistolGroup.rotation.y = -0.48;
+        offPistolGroup.position.set(-0.42, -0.52, 1.05);
+        offPistolGroup.rotation.y = -0.08;
         offPistolGroup.visible = false;
         rArm.add(offPistolGroup);
 
@@ -5819,6 +5831,21 @@ class Renderer3D {
             { mOlive, mSteel, mDark, mAccent, mHydraulic, mPanel, mHazard },
             legs, { rArm, lArm }, outline
         );
+
+        // Hangar turntable must show the correct loadout even before any animation frame runs.
+        if (profile.id === 'light') {
+            rifleGroup.visible = false;
+            pistolGroup.visible = true;
+            offPistolGroup.visible = true;
+            cleaverBase.visible = true;
+        } else if (profile.id === 'heavy') {
+            rifleGroup.visible = false;
+            pistolGroup.visible = false;
+            offPistolGroup.visible = false;
+            minigunGroup.visible = true;
+            autocannonGroup.visible = true;
+            cleaverBase.visible = false;
+        }
 
         return {
             root: mech,
@@ -6086,6 +6113,13 @@ class Renderer3D {
             const rack = Math.sin(prog * Math.PI);
             rig.rArm.rotation.x -= rack * 0.28;
             rig.lArm.rotation.x -= rack * 0.45;
+        }
+
+        // Recoil kick on whichever sidearm actually fired.
+        if ((p.pistolFireAnim || 0) > 0 && rig.chassisId === 'light') {
+            const kick = (p.pistolFireAnim / 0.25) * 0.2;
+            if (p.lastPistolHand === 'left' || p.lastPistolHand === 'both') rig.lArm.rotation.x -= kick;
+            if (p.lastPistolHand === 'right' || p.lastPistolHand === 'both') rig.rArm.rotation.x -= kick;
         }
     }
 

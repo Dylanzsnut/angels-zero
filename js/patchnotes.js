@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.16',
+        date: '2026-11-16',
+        title: 'True Dual-Wield Pistols',
+        changes: [
+            'STRIDER-LX now visibly holds two separate pistols side by side in both the Hangar and combat, each pointed forward instead of overlapping.',
+            'Left Mouse alternates shots between the two pistols; Right Mouse fires both at the same time (and remains ADS on other chassis).',
+            'Added per-hand slide kick, muzzle flash and arm recoil so each pistol visibly fires from its own hand.'
+        ]
+    },
+    {
         version: 'v0.9.15',
         date: '2026-11-16',
         title: 'Chassis Weapon Models & HUD Loadouts',

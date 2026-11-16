@@ -661,29 +661,32 @@ class Player {
     }
 
     triggerPistol37(hand = 'both') {
-        // Independent pistol controls on the STRIDER-LX: LMB = left, RMB = right.
+        // STRIDER-LX: M1 alternates hands, M2 fires both together.
         const independent = !!this.independentPistols;
-        const activeHand = hand === 'right' ? 'right' : 'left';
         const firesLeft = hand === 'both' || hand === 'left';
         const firesRight = hand === 'both' || hand === 'right';
+        const leftCd = this.leftPistolCooldownTimer || 0;
+        const rightCd = this.rightPistolCooldownTimer || 0;
         const cooldown = independent
-            ? (activeHand === 'left' ? this.leftPistolCooldownTimer : this.rightPistolCooldownTimer)
+            ? Math.max(firesLeft ? leftCd : 0, firesRight ? rightCd : 0)
             : this.clawCooldownTimer;
+        const shotCost = (firesLeft && firesRight) ? 2 : 1;
         if (cooldown > 0 || this.carryingPayload || this.pistolReloading) return false;
-        if (this.pistolAmmo <= 0) {
+        if (this.pistolAmmo < shotCost) {
             this.triggerSecondaryReload();
             return false;
         }
         const secCfg = (window.GAME_CONFIG.SECONDARY_WEAPONS && window.GAME_CONFIG.SECONDARY_WEAPONS.pistol37) || {};
+        const shotCooldown = secCfg.cooldown || 0.36;
         if (independent) {
-            if (activeHand === 'left') this.leftPistolCooldownTimer = secCfg.cooldown || 0.36;
-            else this.rightPistolCooldownTimer = secCfg.cooldown || 0.36;
+            if (firesLeft) this.leftPistolCooldownTimer = shotCooldown;
+            if (firesRight) this.rightPistolCooldownTimer = shotCooldown;
         } else {
-            this.clawCooldownTimer = secCfg.cooldown || 0.36;
+            this.clawCooldownTimer = shotCooldown;
         }
         this.pistolFireAnim = 0.25;
-        this.lastPistolHand = activeHand;
-        this.pistolAmmo = Math.max(0, this.pistolAmmo - 1);
+        this.lastPistolHand = hand;
+        this.pistolAmmo = Math.max(0, this.pistolAmmo - shotCost);
 
         if (window.soundManager && window.soundManager.playPistol37Shot) {
             window.soundManager.playPistol37Shot();

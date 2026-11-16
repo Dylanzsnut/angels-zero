@@ -426,8 +426,14 @@ class WeaponSystem {
                     ? !!(window.gameInstance && window.gameInstance.isRightFiring)
                     : false;
                 if (pistolActive && this.player.triggerPistol37) {
-                    if (leftPistolHeld) this.player.triggerPistol37('left');
-                    if (rightPistolHeld) this.player.triggerPistol37('right');
+                    if (rightPistolHeld) {
+                        // M2: both sidearms fire together.
+                        this.player.triggerPistol37('both');
+                    } else if (leftPistolHeld) {
+                        // M1: alternate hands for rapid dual-wield fire.
+                        this.pistolAlternate = !this.pistolAlternate;
+                        this.player.triggerPistol37(this.pistolAlternate ? 'left' : 'right');
+                    }
                 }
                 const triggerHeld = !pistolActive && !w.isVenting && !w.isReloading && isPrimaryFiring;
 

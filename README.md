@@ -77,8 +77,8 @@ The server binds to `http://127.0.0.1:8090/` (or automatically selects the next 
 | :--- | :--- |
 | **Click Viewport** | Lock cursor for 360-degree mouse look (`ESC` to release) |
 | **W / A / S / D** (or Arrows) | Move Forward / Strafe / Reverse |
-| **Left-Click (Hold)** | Fire active weapon — **STRIDER-LX: left pistol** |
-| **Right-Click (Hold)** | Optical ADS / **STRIDER-LX: right pistol** |
+| **Left-Click (Hold)** | Fire active weapon — **STRIDER-LX: alternating pistols** |
+| **Right-Click (Hold)** | Optical ADS / **STRIDER-LX: both pistols together** |
 | **Mouse Wheel** | Swap `120mm Autocannon` / `37mm Sidearm` |
 | **1 / 2** | Equip `120mm Autocannon` / `37mm Sidearm` |
 | **V / Shift / Mouse4** | Knife melee slash |
