@@ -1792,3 +1792,220 @@ body, html {
 .patch-list li + li {
     margin-top: 4px;
 }
+
+/* === UI Refinement Layer — spatial rhythm, legibility, tactile controls === */
+:root {
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --panel-shadow: 0 18px 46px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Machined double-bezel: a hairline tray around each primary panel. */
+.menu-box,
+.hangar-box {
+    position: relative;
+    border-radius: var(--radius-lg);
+}
+
+.hangar-stats-panel {
+    border-radius: var(--radius-lg);
+}
+
+.menu-box::before,
+.hangar-box::before,
+.hangar-stats-panel::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border: 1px solid rgba(56, 242, 255, 0.11);
+    border-radius: calc(var(--radius-lg) + 7px);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Main menu — calmer, better-proportioned typography. */
+#mainMenu .menu-box {
+    max-width: 520px;
+    padding: 30px 34px 32px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--panel-shadow), 0 0 30px rgba(0, 229, 255, 0.12);
+}
+
+.game-title {
+    font-size: clamp(34px, 3.4vw, 50px);
+    line-height: 1.06;
+    letter-spacing: 0.09em;
+    margin-bottom: 10px;
+}
+
+.game-subtitle {
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    line-height: 1.5;
+    margin-bottom: var(--space-5);
+    color: #ffc76b;
+}
+
+.menu-actions {
+    gap: 10px;
+    margin-bottom: var(--space-4);
+}
+
+/* Buttons — consistent geometry, spring-like feedback, inner highlight. */
+.btn-primary,
+.btn-secondary,
+.btn-upgrade,
+.btn-slot-buy {
+    border-radius: 10px;
+    transition:
+        transform 0.22s var(--ease-out),
+        box-shadow 0.22s var(--ease-out),
+        background-color 0.22s var(--ease-out),
+        border-color 0.22s var(--ease-out),
+        color 0.22s var(--ease-out),
+        filter 0.22s var(--ease-out);
+}
+
+.btn-primary,
+.btn-secondary {
+    min-height: 48px;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+}
+
+.btn-primary {
+    box-shadow: 0 8px 22px rgba(0, 180, 220, 0.24), 0 1px 0 rgba(255, 255, 255, 0.28) inset;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.01);
+    filter: brightness(1.12);
+    box-shadow: 0 12px 28px rgba(0, 200, 240, 0.36), 0 1px 0 rgba(255, 255, 255, 0.36) inset;
+}
+
+.btn-secondary {
+    background: rgba(11, 19, 30, 0.72);
+    border-color: rgba(255, 170, 51, 0.55);
+    color: #ffc76b;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 170, 51, 0.14);
+    color: #ffd89b;
+    border-color: #ffc76b;
+    box-shadow: 0 0 0 1px rgba(255, 199, 107, 0.16) inset;
+}
+
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.btn-upgrade:active:not(:disabled) {
+    transform: translateY(0) scale(0.985);
+}
+
+.btn-upgrade {
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    padding: 9px 14px;
+    border-radius: 9px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
+.btn-upgrade:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+    box-shadow: 0 8px 18px rgba(251, 191, 36, 0.4), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+/* Controls card — keycaps instead of loose text. */
+.controls-card {
+    font-size: 13.5px;
+    line-height: 1.85;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    color: #cbd5e1;
+}
+
+.controls-card b {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 0 1px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--accent-cyan);
+    background: rgba(56, 242, 255, 0.10);
+    border: 1px solid rgba(56, 242, 255, 0.28);
+    border-radius: 5px;
+}
+
+/* Hangar telemetry — readable at a glance. */
+.hangar-stats-panel {
+    width: 306px;
+    padding: 18px;
+    box-shadow: var(--panel-shadow), 0 0 26px rgba(0, 229, 255, 0.10);
+}
+
+.stats-panel-title {
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-3);
+}
+
+.stats-subhdr {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    margin: var(--space-3) 0 6px;
+}
+
+.stat-row {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* Hangar cards — breathing room and clearer hierarchy. */
+.hangar-card {
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+}
+
+.hangar-card-title {
+    font-size: 14.5px;
+}
+
+.hangar-card-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.hangar-threat-bar,
+.hangar-chassis-bar,
+.hangar-tabs-bar,
+.hangar-slot-bar {
+    border-radius: var(--radius-sm);
+}
+
+/* Motion is a preference, not a requirement. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

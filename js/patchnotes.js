@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.13',
+        date: '2026-11-16',
+        title: 'Interface Refinement',
+        changes: [
+            'Tighter typography and spacing across the main menu, Hangar and telemetry panel for better readability at a glance.',
+            'Keybinds now render as keycaps in the controls card, making the independent pistol controls and other inputs easier to scan.',
+            'Hangar cards and upgrade buttons gained clearer hierarchy, softer machined depth and smoother hover feedback; reduced-motion preferences are now respected.'
+        ]
+    },
+    {
         version: 'v0.9.12',
         date: '2026-11-16',
         title: 'Thruster Dash VFX',
