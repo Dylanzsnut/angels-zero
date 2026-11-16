@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.15',
+        date: '2026-11-16',
+        title: 'Chassis Weapon Models & HUD Loadouts',
+        changes: [
+            'RECON now carries twin 37mm pistols with a forearm knife, BRAWLER keeps the two-handed battle rifle, and JUGGERNAUT wields a belt-fed rotary minigun with an off-hand autocannon.',
+            'First-person HUD weapon models now match the selected chassis instead of always showing a rifle or minigun, including spinning minigun barrels and matching muzzle flashes.',
+            'HUD telemetry now labels the JUGGERNAUT primary as the 120mm autocannon.'
+        ]
+    },
+    {
         version: 'v0.9.14',
         date: '2026-11-16',
         title: 'Classic Procedural Mech Rendering',

@@ -3976,17 +3976,55 @@ class Renderer3D {
         const rightMuzzleFlash = rightPistol37Group.getObjectByName('PistolMuzzleFlash');
         rWrist.add(rightPistol37Group);
 
+        // JUGGERNAUT first-person rotary minigun in the right hand.
         const minigunGroup = new THREE.Group();
         minigunGroup.position.set(-0.02, 0.06, -0.12);
-        for (let i = 0; i < 6; i++) {
-            const a = (i / 6) * Math.PI * 2;
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 6), matGunmetal);
-            barrel.rotation.x = Math.PI * 0.5;
-            barrel.position.set(Math.cos(a) * 0.045, 0.05, -0.2 + Math.sin(a) * 0.045);
-            minigunGroup.add(barrel);
+        const mgReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.66), matGunmetal);
+        mgReceiver.position.set(0, 0.10, -0.16);
+        const mgDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 12), matBrassAmmo);
+        mgDrum.rotation.z = Math.PI / 2;
+        mgDrum.position.set(-0.17, 0.05, -0.10);
+        const mgShroud = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.38, 12, 1, true), matSteel);
+        mgShroud.rotation.x = Math.PI / 2;
+        mgShroud.position.set(0, 0.12, -0.44);
+        const minigunBarrels = new THREE.Group();
+        minigunBarrels.position.set(0, 0.12, -0.66);
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.62, 6), matChrome);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(Math.cos(a) * 0.075, Math.sin(a) * 0.075, 0);
+            minigunBarrels.add(barrel);
         }
+        const minigunFlash = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.19, 0),
+            new THREE.MeshBasicMaterial({ color: 0xffbb33, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, fog: false })
+        );
+        minigunFlash.position.set(0, 0.12, -1.02);
+        minigunFlash.visible = false;
+        minigunGroup.add(mgReceiver, mgDrum, mgShroud, minigunBarrels, minigunFlash);
         minigunGroup.visible = false;
-        lWrist.add(minigunGroup);
+        rWrist.add(minigunGroup);
+
+        // JUGGERNAUT belt-fed autocannon in the left hand.
+        const autocannonGroup = new THREE.Group();
+        autocannonGroup.position.set(0.02, 0.04, -0.10);
+        const acBody = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.68), matArmorOlive);
+        acBody.position.set(0, 0.10, -0.18);
+        const acBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.72, 10), matGunmetal);
+        acBarrel.rotation.x = Math.PI / 2;
+        acBarrel.position.set(0, 0.12, -0.66);
+        const acMag = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.28, 0.20), matBrassAmmo);
+        acMag.position.set(0, -0.08, -0.08);
+        const autocannonFlash = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.16, 0),
+            new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, fog: false })
+        );
+        autocannonFlash.position.set(0, 0.12, -1.02);
+        autocannonFlash.visible = false;
+        autocannonGroup.add(acBody, acBarrel, acMag, autocannonFlash);
+        autocannonGroup.visible = false;
+        lWrist.add(autocannonGroup);
 
         // 120mm Heavy Rail-Assault Rifle Assembly (sleek slab-sided gunmetal + olive receiver + red vents)
         const rifleGroup = new THREE.Group();
@@ -4100,6 +4138,10 @@ class Renderer3D {
             dropMag,
             rightPistol37Group,
             minigunGroup,
+            minigunBarrels,
+            minigunFlash,
+            autocannonGroup,
+            autocannonFlash,
             pistolCylinder,
             pMuzzleFlash,
             rightMuzzleFlash,
@@ -4131,9 +4173,11 @@ class Renderer3D {
         const a = this.cockpitArms3D;
         // Chassis loadout visibility: Strider = dual pistols, Vanguard = rifle/pistol,
         // Bastion = autocannon + rotary minigun (no knife).
-        if (a.rifleGroup) a.rifleGroup.visible = !!p.hasPrimary;
+        if (a.rifleGroup) a.rifleGroup.visible = !!p.hasPrimary && !p.hasMinigun;
         if (a.rightPistol37Group) a.rightPistol37Group.visible = !!p.dualPistols && !p.carryingPayload;
-        if (a.minigunGroup) a.minigunGroup.visible = !!p.hasMinigun;
+        if (a.minigunGroup) a.minigunGroup.visible = !!p.hasMinigun && !p.carryingPayload;
+        if (a.autocannonGroup) a.autocannonGroup.visible = !!p.hasMinigun && !p.carryingPayload;
+        if (a.minigunBarrels && p.hasMinigun && game.isPrimaryFiring) a.minigunBarrels.rotation.z += Math.min(0.05, dt || 0.016) * 30;
 
         // Pistol reload choreography: magazine drops, fresh mag rises, slide racks back.
         const reloadPhase = p.pistolReloading
@@ -4260,8 +4304,10 @@ class Renderer3D {
 
         const isSlashing = !p.carryingPayload && slashSwing > 0.02;
         a.cleaverGroup.visible = isSlashing;
-        a.pistol37Group.visible = pistolDrawn && !isSlashing;
+        a.pistol37Group.visible = pistolDrawn && !isSlashing && !!p.hasPistol;
         a.payloadGroup.visible = !!p.carryingPayload;
+        if (a.minigunFlash) a.minigunFlash.visible = !!p.hasMinigun && !!(game.isPrimaryFiring) && (this.muzzleFlashTimer || 0) > 0;
+        if (a.autocannonFlash) a.autocannonFlash.visible = !!p.hasMinigun && !!(game.isPrimaryFiring) && (this.muzzleFlashTimer || 0) > 0;
 
         if (isSlashing) {
             // Whip out Tactical Combat Knife in a fast diagonal slash
@@ -5481,6 +5527,37 @@ class Renderer3D {
         rifleGroup.add(rifleReceiver, rifleTopRail, rifleDrum, rotaryBarrels, rifleFlash);
         rArm.add(rifleGroup);
 
+        // JUGGERNAUT: oversized rotary minigun with a belt drum and shrouded barrel cluster.
+        const minigunGroup = new THREE.Group();
+        minigunGroup.position.set(-0.68, -0.52, 1.0);
+        minigunGroup.rotation.y = -1.05;
+        const mgBody = outline(new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 1.5), mDark));
+        const mgDrum = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.38, 14), mGold));
+        mgDrum.rotation.z = Math.PI / 2;
+        mgDrum.position.set(0.05, -0.38, 0.12);
+        const mgShroud = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.92, 12, 1, true), mSteel));
+        mgShroud.rotation.x = Math.PI / 2;
+        mgShroud.position.set(0, 0.06, 0.94);
+        const minigunBarrels = new THREE.Group();
+        minigunBarrels.position.set(0, 0.06, 1.58);
+        for (let bi = 0; bi < 8; bi++) {
+            const ang = (bi / 8) * Math.PI * 2;
+            const brl = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.42, 8), mSteel));
+            brl.rotation.x = Math.PI / 2;
+            brl.position.set(Math.cos(ang) * 0.14, Math.sin(ang) * 0.14, 0);
+            minigunBarrels.add(brl);
+        }
+        const minigunFlash = new THREE.Mesh(
+            new THREE.SphereGeometry(0.38, 6, 5),
+            new THREE.MeshBasicMaterial({ color: 0xffbb33 })
+        );
+        minigunFlash.scale.set(1, 1, 2.0);
+        minigunFlash.position.set(0, 0.06, 2.32);
+        minigunFlash.visible = false;
+        minigunGroup.add(mgBody, mgDrum, mgShroud, minigunBarrels, minigunFlash);
+        minigunGroup.visible = false;
+        rArm.add(minigunGroup);
+
         // Upgradeable: Extended 120mm Rail-Barrel + Coils
         const railBarrel = new THREE.Group();
         const extShroud = outline(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.82), mSteel));
@@ -5699,6 +5776,34 @@ class Renderer3D {
         pistolGroup.add(pBody, pCyl, pFlash);
         lArm.add(pistolGroup);
 
+        // RECON: matching sidearm in the right hand for true dual-wielding.
+        const offPistolGroup = pistolGroup.clone(true);
+        offPistolGroup.position.set(-0.36, -0.58, 0.94);
+        offPistolGroup.rotation.y = -0.48;
+        offPistolGroup.visible = false;
+        rArm.add(offPistolGroup);
+
+        // JUGGERNAUT: belt-fed autocannon in the off hand (no pistol, no knife).
+        const autocannonGroup = new THREE.Group();
+        autocannonGroup.position.set(0.38, -0.58, 1.0);
+        autocannonGroup.rotation.y = 0.5;
+        const acBody = outline(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 1.42), mOlive));
+        const acBarrel = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.16, 10), mSteel));
+        acBarrel.rotation.x = Math.PI / 2;
+        acBarrel.position.set(0, 0.04, 1.18);
+        const acMag = outline(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.52, 0.34), mGold));
+        acMag.position.set(0, -0.42, 0.1);
+        const autocannonFlash = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 6, 5),
+            new THREE.MeshBasicMaterial({ color: 0xffcc44 })
+        );
+        autocannonFlash.scale.set(1, 1, 1.7);
+        autocannonFlash.position.set(0, 0.04, 1.82);
+        autocannonFlash.visible = false;
+        autocannonGroup.add(acBody, acBarrel, acMag, autocannonFlash);
+        autocannonGroup.visible = false;
+        lArm.add(autocannonGroup);
+
         const hardpointsGroup = new THREE.Group();
         hardpointsGroup.position.set(0, -2.2, 0);
         hardpointsGroup.add(
@@ -5729,6 +5834,13 @@ class Renderer3D {
             rifleGroup,
             rotaryBarrels,
             pistolGroup,
+            offPistolGroup,
+            minigunGroup,
+            minigunBarrels,
+            minigunFlash,
+            autocannonGroup,
+            autocannonFlash,
+            cleaverBase,
             rifleFlash,
             pistolFlash: pFlash,
             dashFlames,
@@ -5915,21 +6027,35 @@ class Renderer3D {
         this.weaponSwitchBlend += (targetSwitch - this.weaponSwitchBlend) * Math.min(1, dt * 11);
         const sw = this.weaponSwitchBlend;
         const switchDip = Math.sin(sw * Math.PI) * 0.35;
-        rig.rifleGroup.visible = (sw < 0.55) && p.hasPrimary !== false;
-        rig.pistolGroup.visible = sw >= 0.45;
+        const chassisId = rig.chassisId || p.chassisId || 'medium';
+        const isRecon = chassisId === 'light';
+        const isJuggernaut = chassisId === 'heavy';
+        if (rig.rifleGroup) rig.rifleGroup.visible = !isRecon && !isJuggernaut && (sw < 0.55);
+        if (rig.pistolGroup) rig.pistolGroup.visible = isRecon || (!isJuggernaut && sw >= 0.45);
+        if (rig.offPistolGroup) rig.offPistolGroup.visible = isRecon;
+        if (rig.minigunGroup) rig.minigunGroup.visible = isJuggernaut;
+        if (rig.autocannonGroup) rig.autocannonGroup.visible = isJuggernaut;
+        if (rig.cleaverBase) rig.cleaverBase.visible = !isJuggernaut;
 
         // 4) Shooting Recoil & Muzzle Flash
         const recoilKick = (this.recoilPunchZ || 0) * 0.45;
         const firing = (this.muzzleFlashTimer || 0) > 0;
         rig.rifleFlash.visible = firing && rig.rifleGroup.visible;
         rig.pistolFlash.visible = firing && rig.pistolGroup.visible;
+        if (rig.minigunFlash) rig.minigunFlash.visible = firing && isJuggernaut;
+        if (rig.autocannonFlash) rig.autocannonFlash.visible = firing && isJuggernaut;
         if (firing) {
             const fScale = 0.8 + Math.random() * 0.65;
             rig.rifleFlash.scale.set(fScale, fScale, fScale * 1.8);
             rig.pistolFlash.scale.set(fScale, fScale, fScale * 1.6);
+            if (rig.minigunFlash) rig.minigunFlash.scale.set(fScale, fScale, fScale * 2.0);
+            if (rig.autocannonFlash) rig.autocannonFlash.scale.set(fScale, fScale, fScale * 1.7);
         }
         if (rig.rotaryBarrels && rig.rifleGroup.visible && (firing || (this.recoilPunchZ || 0) > 0.015)) {
             rig.rotaryBarrels.rotation.z += dt * 24;
+        }
+        if (rig.minigunBarrels && isJuggernaut && (firing || (this.recoilPunchZ || 0) > 0.015)) {
+            rig.minigunBarrels.rotation.z += dt * 30;
         }
 
         // 5) Smoothly Damped Right & Left Arm Poses (Rifle vs Pistol vs Melee Slash)

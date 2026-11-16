@@ -4736,7 +4736,9 @@ class Game {
             const blinkAlert = Math.floor(timeSec * 8) % 2 === 0;
             const rifleLabel = !p.hasPrimary
                 ? (isPistolMode ?'> ':'') + '[1] DUAL 37MM'
-                : (isPistolMode ?'':'>') + (isDURifle ?'[1] 120MM DU RIFLE':'[1] 120MM RIFLE');
+                : p.hasMinigun
+                    ? (isPistolMode ?'':'>') + '[1] 120MM AUTOCANNON'
+                    : (isPistolMode ?'':'>') + (isDURifle ?'[1] 120MM DU RIFLE':'[1] 120MM RIFLE');
             const rifleStatus = isReloading ?'RELOADING':`${ammo} / ${maxAmmo}`;
             const rifleCol = isReloading
                 ? (blinkAlert ? amber :'#6a4810')
