@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.24',
+        date: '2026-11-16',
+        title: 'Cockpaint Paint Sync & Recon Silhouette',
+        changes: [
+            'First-person arms and gauntlets now follow the Hangar armor paint and visor color instead of staying olive-tan.',
+            'Brawler rifle and Juggernaut minigun share the Hangar dark gunmetal PBR finish, recessed panel maps, hazard stripes and chassis accent trim.',
+            'STRIDER-LX gained a tapered recon torso, sloped sensor head with wraparound visor, swept antennas, longer vented Magnum pistols and reverse-joint scout legs.'
+        ]
+    },
+    {
         version: 'v0.9.23',
         date: '2026-11-16',
         title: 'Real Rotary Barrels in Cockpit',

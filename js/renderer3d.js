@@ -3764,16 +3764,46 @@ class Renderer3D {
                 fog: false
             });
 
-        const matArmorOlive = makeMat(texArmorOlive);
+        // Cockpit materials share the Hangar's PBR surface maps and livery colors.
+        const surf = this.createMechSurfaceTextures ? this.createMechSurfaceTextures() : null;
+        const cosmetics = (window.hangarSystem && window.hangarSystem.data && window.hangarSystem.data.cosmetics) || {};
+        const cosmeticsCfg = (window.GAME_CONFIG && window.GAME_CONFIG.MECH_COSMETICS) || {};
+        const livery = (cosmeticsCfg.liveries || []).find((l) => l.id === (cosmetics.livery || 'olive'));
+        const visor = (cosmeticsCfg.visors || []).find((v) => v.id === (cosmetics.visor || 'cyan'));
+        const profile = this.getChassisProfile();
+        const paintHex = livery ? livery.hex : 0x4e5b48;
+        const visorHex = visor ? visor.hex : 0x00f5ff;
+        const trimHex = new THREE.Color(profile.cockpitAccent || '#ffaa33').getHex();
+
+        const matArmorOlive = new THREE.MeshStandardMaterial({
+            color: paintHex, map: texArmorOlive,
+            bumpMap: surf ? surf.bump : null, bumpScale: 0.02,
+            roughnessMap: surf ? surf.roughness : null,
+            metalness: 0.72, roughness: 0.38, flatShading: true, fog: false
+        });
         const matArmorDark = makeMat(texArmorDark);
-        const matGunmetal = makeMat(texGunmetal);
-        const matSteel = makeMat(texClawSteel);
-        const matHazard = makeMat(texHazard);
+        const matGunmetal = new THREE.MeshStandardMaterial({
+            color: 0x1e2630, map: texGunmetal,
+            bumpMap: surf ? surf.bump : null, bumpScale: 0.022,
+            roughnessMap: surf ? surf.roughness : null,
+            metalness: 0.82, roughness: 0.28, flatShading: true, fog: false
+        });
+        const matSteel = new THREE.MeshStandardMaterial({
+            color: 0x3a424c, map: texClawSteel,
+            bumpMap: surf ? surf.bump : null, bumpScale: 0.018,
+            roughnessMap: surf ? surf.roughness : null,
+            metalness: 0.8, roughness: 0.3, flatShading: true, fog: false
+        });
+        const matHazard = new THREE.MeshStandardMaterial({
+            map: surf ? surf.hazard : texHazard,
+            metalness: 0.7, roughness: 0.36, flatShading: true, fog: false
+        });
         const matBrassAmmo = makeMat(texBrassAmmo);
         const matChrome = makeMat(texSteelBarrel, 0xd8dde6);
         const matShell = makeMat(texShell155);
         const matVentGlow = new THREE.MeshBasicMaterial({ color: 0xff4422, fog: false });
-        const matOpticGlow = new THREE.MeshBasicMaterial({ color: 0x33ffcc, fog: false });
+        const matOpticGlow = new THREE.MeshBasicMaterial({ color: visorHex, fog: false });
+        const matTrim = new THREE.MeshBasicMaterial({ color: trimHex, fog: false });
 
         // Key + fill lighting for crisp low-poly faceted shading on cockpit arms
         const cockpitFill = new THREE.PointLight(0xffe2be, 1.05, 5.5, 1.2);
@@ -4205,12 +4235,29 @@ class Renderer3D {
             rTier5Coils,
             rEvolvedCoilMat,
             muzzleFlashGroup,
-            flashMat
+            flashMat,
+            liveryMat: matArmorOlive,
+            visorMat: matOpticGlow,
+            trimMat: matTrim
         };
+    }
+
+    syncCockpitLivery() {
+        const a = this.cockpitArms3D;
+        if (!a) return;
+        const cosmetics = (window.hangarSystem && window.hangarSystem.data && window.hangarSystem.data.cosmetics) || {};
+        const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.MECH_COSMETICS) || {};
+        const livery = (cfg.liveries || []).find((l) => l.id === (cosmetics.livery || 'olive'));
+        const visor = (cfg.visors || []).find((v) => v.id === (cosmetics.visor || 'cyan'));
+        const profile = this.getChassisProfile();
+        if (a.liveryMat && livery) a.liveryMat.color.setHex(livery.hex);
+        if (a.visorMat && visor) a.visorMat.color.setHex(visor.hex);
+        if (a.trimMat) a.trimMat.color.set(new THREE.Color(profile.cockpitAccent || '#ffaa33'));
     }
 
     updateCockpitArms3D(game, dt, timeSec) {
         if (!this.cockpitGroup) return;
+        this.syncCockpitLivery();
         const p = game && game.player;
         const active = !!(p && (game.state === 'PLAYING' || game.state === 'LEVELUP'));
         this.cockpitGroup.visible = active && !this.thirdPersonMode;
@@ -4933,7 +4980,7 @@ class Renderer3D {
 
     _chassisBuildParams(profile) {
         if (profile.id === 'light') {
-            return { torsoWidth: 0.82, legSpread: 0.50, limbScale: 0.80, pauldronScale: 0.72, headWidth: 0.78, hipBase: -0.18, shinBase: -0.42, footBase: 0.22 };
+            return { torsoWidth: 0.78, legSpread: 0.48, limbScale: 0.74, pauldronScale: 0.62, headWidth: 0.72, hipBase: -0.24, shinBase: -0.52, footBase: 0.26 };
         }
         if (profile.id === 'heavy') {
             return { torsoWidth: 1.35, legSpread: 0.73, limbScale: 1.28, pauldronScale: 1.42, headWidth: 1.12, hipBase: 0, shinBase: 0.10, footBase: -0.06 };
@@ -5303,7 +5350,7 @@ class Renderer3D {
         // Layered industrial PBR: polished armor over dark gunmetal joints and hydraulics.
         const tex = this.createMechSurfaceTextures();
         const mOlive = new THREE.MeshStandardMaterial({ color: 0x7c785c, map: armorTex, bumpMap: tex.bump, bumpScale: 0.028, roughnessMap: tex.roughness, metalness: 0.72, roughness: 0.34 });
-        const mSteel = new THREE.MeshStandardMaterial({ color: 0x4c5256, map: steelTex, bumpMap: tex.bump, bumpScale: 0.022, roughnessMap: tex.roughness, metalness: 0.78, roughness: 0.30 });
+        const mSteel = new THREE.MeshStandardMaterial({ color: 0x1e2630, map: steelTex, bumpMap: tex.bump, bumpScale: 0.022, roughnessMap: tex.roughness, metalness: 0.82, roughness: 0.28 });
         const mDark = new THREE.MeshStandardMaterial({ color: 0x1b1d1f, metalness: 0.68, roughness: 0.38 });
         const mPanel = new THREE.MeshStandardMaterial({ color: 0x2e343a, bumpMap: tex.bump, bumpScale: 0.02, roughnessMap: tex.roughness, metalness: 0.74, roughness: 0.36 });
         const mHydraulic = new THREE.MeshStandardMaterial({ color: 0x121518, metalness: 0.8, roughness: 0.28 });
@@ -5880,6 +5927,29 @@ class Renderer3D {
         offPistolGroup.rotation.y = -0.08;
         offPistolGroup.visible = false;
         rArm.add(offPistolGroup);
+
+        if (profile.id === 'light') {
+            // RECON: longer, ventilated 37mm Magnum hand-cannons with laser sights.
+            for (const group of [pistolGroup, offPistolGroup]) {
+                group.scale.set(1.12, 1, 1.18);
+                const longBarrel = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.66, 10), mSteel));
+                longBarrel.rotation.x = Math.PI / 2;
+                longBarrel.position.set(0, 0.02, 0.98);
+                const vent = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.02, 0.42), mDark);
+                vent.position.set(0, 0.075, 0.86);
+                const laser = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.12), mAccent);
+                laser.position.set(0, -0.12, 0.78);
+                const magStripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.1), mHazard);
+                magStripe.position.set(0, 0.1, 0.2);
+                group.add(longBarrel, vent, laser, magStripe);
+            }
+            for (const arm of [lArm, rArm]) {
+                const fin = outline(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.36, 0.5), mOlive));
+                fin.position.set(0, 0.34, -0.18);
+                fin.rotation.x = -0.35;
+                arm.add(fin);
+            }
+        }
 
         // JUGGERNAUT: belt-fed autocannon in the off hand (no pistol, no knife).
         const autocannonGroup = new THREE.Group();
