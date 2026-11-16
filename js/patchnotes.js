@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.23',
+        date: '2026-11-16',
+        title: 'Real Rotary Barrels in Cockpit',
+        changes: [
+            'The JUGGERNAUT first-person minigun now shows its full eight-barrel rotary cluster down the sightline instead of a flat slab.',
+            'Slimmed the heavy gauntlets in first person so the spinning gun stays visible while aiming.'
+        ]
+    },
+    {
         version: 'v0.9.22',
         date: '2026-11-16',
         title: 'Unified Minigun Model',
