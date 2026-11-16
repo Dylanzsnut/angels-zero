@@ -3983,12 +3983,34 @@ class Renderer3D {
         minigunGroup.position.set(-0.02, 0.06, -0.12);
         const mgReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.66), matGunmetal);
         mgReceiver.position.set(0, 0.10, -0.16);
-        const mgDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 12), matBrassAmmo);
+        const mgDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 12), matArmorOlive);
         mgDrum.rotation.z = Math.PI / 2;
         mgDrum.position.set(-0.17, 0.05, -0.10);
+        const mgDrumBand = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.07, 12), matHazard);
+        mgDrumBand.rotation.z = Math.PI / 2;
+        mgDrumBand.position.set(-0.17, 0.05, -0.10);
+        const mgHazardL = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.07, 0.52), matHazard);
+        mgHazardL.position.set(-0.146, 0.10, -0.16);
+        const mgHazardR = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.07, 0.52), matHazard);
+        mgHazardR.position.set(0.146, 0.10, -0.16);
+        const mgAccent = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.012, 0.5), matOpticGlow);
+        mgAccent.position.set(0, 0.225, -0.16);
         const mgShroud = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.38, 12, 1, true), matSteel);
         mgShroud.rotation.x = Math.PI / 2;
         mgShroud.position.set(0, 0.12, -0.44);
+        const mgVents = new THREE.Group();
+        for (let v = 0; v < 5; v++) {
+            const rib = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.018, 0.03), matGunmetal);
+            rib.position.set(0, 0.12, -0.30 - v * 0.07);
+            mgVents.add(rib);
+        }
+        const mgMuzzleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.08, 10), matGunmetal);
+        mgMuzzleRing.rotation.x = Math.PI / 2;
+        mgMuzzleRing.position.set(0, 0.12, -0.99);
+        const mgOptic = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.16), matArmorDark);
+        mgOptic.position.set(0, 0.27, -0.13);
+        const mgOpticLens = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.04), matOpticGlow);
+        mgOpticLens.position.set(0, 0.30, -0.13);
         const minigunBarrels = new THREE.Group();
         minigunBarrels.position.set(0, 0.12, -0.66);
         for (let i = 0; i < 8; i++) {
@@ -4004,7 +4026,7 @@ class Renderer3D {
         );
         minigunFlash.position.set(0, 0.12, -1.02);
         minigunFlash.visible = false;
-        minigunGroup.add(mgReceiver, mgDrum, mgShroud, minigunBarrels, minigunFlash);
+        minigunGroup.add(mgReceiver, mgDrum, mgDrumBand, mgHazardL, mgHazardR, mgAccent, mgShroud, mgVents, mgMuzzleRing, mgOptic, mgOpticLens, minigunBarrels, minigunFlash);
         minigunGroup.visible = false;
         rWrist.add(minigunGroup);
 
@@ -5578,9 +5600,31 @@ class Renderer3D {
         minigunGroup.position.set(-0.68, -0.52, 1.0);
         minigunGroup.rotation.y = -1.05;
         const mgBody = outline(new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 1.5), mDark));
-        const mgDrum = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.38, 14), mGold));
+        const mgDrum = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.38, 14), mOlive));
         mgDrum.rotation.z = Math.PI / 2;
         mgDrum.position.set(0.05, -0.38, 0.12);
+        const mgDrumBand = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.345, 0.345, 0.10, 14), mHazard));
+        mgDrumBand.rotation.z = Math.PI / 2;
+        mgDrumBand.position.set(0.05, -0.38, 0.12);
+        const mgHazardL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.34, 1.1), mHazard);
+        mgHazardL.position.set(-0.25, 0.02, 0.10);
+        const mgHazardR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.34, 1.1), mHazard);
+        mgHazardR.position.set(0.25, 0.02, 0.10);
+        const mgAccent = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 1.1), mAccent);
+        mgAccent.position.set(0, 0.30, 0.10);
+        const mgOptic = outline(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.28), mDark));
+        mgOptic.position.set(0, 0.34, -0.12);
+        const mgOpticLens = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.04, 0.05), mOptic);
+        mgOpticLens.position.set(0, 0.34, 0.04);
+        const mgVents = new THREE.Group();
+        for (let v = 0; v < 6; v++) {
+            const rib = outline(new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.05), mDark));
+            rib.position.set(0, 0.06, 0.58 + v * 0.13);
+            mgVents.add(rib);
+        }
+        const mgMuzzleRing = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.1, 12), mDark));
+        mgMuzzleRing.rotation.x = Math.PI / 2;
+        mgMuzzleRing.position.set(0, 0.06, 2.32);
         const mgShroud = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.92, 12, 1, true), mSteel));
         mgShroud.rotation.x = Math.PI / 2;
         mgShroud.position.set(0, 0.06, 0.94);
@@ -5600,7 +5644,7 @@ class Renderer3D {
         minigunFlash.scale.set(1, 1, 2.0);
         minigunFlash.position.set(0, 0.06, 2.32);
         minigunFlash.visible = false;
-        minigunGroup.add(mgBody, mgDrum, mgShroud, minigunBarrels, minigunFlash);
+        minigunGroup.add(mgBody, mgDrum, mgDrumBand, mgHazardL, mgHazardR, mgAccent, mgOptic, mgOpticLens, mgVents, mgMuzzleRing, mgShroud, minigunBarrels, minigunFlash);
         minigunGroup.visible = false;
         rArm.add(minigunGroup);
 

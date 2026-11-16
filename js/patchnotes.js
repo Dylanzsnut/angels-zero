@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.22',
+        date: '2026-11-16',
+        title: 'Unified Minigun Model',
+        changes: [
+            'The JUGGERNAUT rotary minigun now uses one shared design in third-person and first-person: olive drum with hazard band, striped receiver, vented shroud, optic and eight-barrel cluster.',
+            'Matching hazard stripes, accent trim and muzzle rings make the HUD weapon read as the same gun the mech carries.'
+        ]
+    },
+    {
         version: 'v0.9.21',
         date: '2026-11-16',
         title: 'Juggernaut Siege Fist',
