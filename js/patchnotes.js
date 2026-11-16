@@ -3,6 +3,14 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.28',
+        date: '2026-11-17',
+        title: 'Dual Pistol Ammo Readout',
+        changes: [
+            'The STRIDER-LX weapon telemetry now shows the shared 37mm magazine (ammo, reload state and bar fill) instead of the rifle mag it does not have.'
+        ]
+    },
+    {
         version: 'v0.9.27',
         date: '2026-11-16',
         title: 'First-Person Freeze & Gun-Aim Fix',

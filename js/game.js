@@ -4754,16 +4754,26 @@ class Game {
 
             const isPistolMode = (p.activeHandheld ==='pistol37');
             const blinkAlert = Math.floor(timeSec * 8) % 2 === 0;
+            // STRIDER-LX has no rifle mag — its primary telemetry is the shared 37mm sidearm ammo.
+            const isDualPistols = !!p.dualPistols;
+            const sideMag = p.pistolMaxAmmo || 6;
+            const sideAmmo = typeof p.pistolAmmo === 'number' ? p.pistolAmmo : sideMag;
+            const sideReloading = !!p.pistolReloading;
+            const sideRatio = sideReloading
+                ? Math.max(0, Math.min(1, 1 - (p.pistolReloadTimer || 0) / 1.0))
+                : sideAmmo / Math.max(1, sideMag);
             const rifleLabel = !p.hasPrimary
                 ? (isPistolMode ?'> ':'') + '[1] DUAL 37MM'
                 : p.hasMinigun
                     ? (isPistolMode ?'':'>') + '[1] 120MM AUTOCANNON'
                     : (isPistolMode ?'':'>') + (isDURifle ?'[1] 120MM DU RIFLE':'[1] 120MM RIFLE');
-            const rifleStatus = isReloading ?'RELOADING':`${ammo} / ${maxAmmo}`;
-            const rifleCol = isReloading
-                ? (blinkAlert ? amber :'#6a4810')
-                : (ammo <= Math.ceil(maxAmmo * 0.25) ? alertRed : green);
-            drawTelBar(panelY + 34, rifleLabel, rifleStatus, reloadProg, rifleCol);
+            const rifleStatus = isDualPistols
+                ? (sideReloading ? 'RELOADING' : `${sideAmmo} / ${sideMag}`)
+                : (isReloading ? 'RELOADING' : `${ammo} / ${maxAmmo}`);
+            const rifleCol = isDualPistols
+                ? (sideReloading ? (blinkAlert ? amber :'#6a4810') : (sideAmmo <= Math.ceil(sideMag * 0.25) ? alertRed : green))
+                : (isReloading ? (blinkAlert ? amber :'#6a4810') : (ammo <= Math.ceil(maxAmmo * 0.25) ? alertRed : green));
+            drawTelBar(panelY + 34, rifleLabel, rifleStatus, isDualPistols ? sideRatio : reloadProg, rifleCol);
 
             // Compact barrel heat sub-bar right under magazine bar (rifle chassis only)
             if (p.hasPrimary) {
