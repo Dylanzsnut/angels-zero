@@ -269,6 +269,16 @@ const GAME_CONFIG = {
             arc: Math.PI * 0.85,
             knockback: 460
         },
+        fist: {
+            id: 'fist',
+            name: 'SIEGE FIST',
+            key: '1',
+            range: 112,
+            damage: 78,
+            cooldown: 0.78,
+            arc: Math.PI * 0.72,
+            knockback: 340
+        },
         pistol37: {
             id: 'pistol37',
             name: '37MM PISTOL',
@@ -1033,7 +1043,7 @@ const GAME_CONFIG = {
             waistLimitRad: 1.30,
             damageMult: 1.18,
             cockpitAccent: '#ff3848',
-            weapons: { primary: 'autocannon', secondary: 'minigun', dualPistols: false, melee: null }
+            weapons: { primary: 'autocannon', secondary: 'minigun', dualPistols: false, melee: 'fist' }
         }
     },
 

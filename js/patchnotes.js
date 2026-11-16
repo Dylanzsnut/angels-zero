@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.21',
+        date: '2026-11-16',
+        title: 'Juggernaut Siege Fist',
+        changes: [
+            'BASTION-IX now has a hydraulic siege fist on [V] / [Shift]: 78 damage on a 0.78s cooldown, faster and lighter than the knife.',
+            'The siege fist can grab 155mm artillery shells, so Juggernaut can now complete artillery-load objectives.',
+            'Added armored fist geometry and punch animation to both the third-person mech and first-person cockpit.'
+        ]
+    },
+    {
         version: 'v0.9.20',
         date: '2026-11-16',
         title: 'Neural Comms Voice Lines',

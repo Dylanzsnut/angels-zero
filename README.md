@@ -81,7 +81,7 @@ The server binds to `http://127.0.0.1:8090/` (or automatically selects the next 
 | **Right-Click (Hold)** | Optical ADS / **STRIDER-LX: both pistols together** |
 | **Mouse Wheel** | Swap `120mm Autocannon` / `37mm Sidearm` |
 | **1 / 2** | Equip `120mm Autocannon` / `37mm Sidearm` |
-| **V / Shift / Mouse4** | Knife melee slash |
+| **V / Shift / Mouse4** | Knife slash / JUGGERNAUT siege fist (also grabs shells) |
 | **R** | Manual Coolant Purge / Sidearm Reload |
 | **Space** | Thruster Dash (with invulnerability frames) |
 | **E** | Interact / Active Thermal Sonar Ping |

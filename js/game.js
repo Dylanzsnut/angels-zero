@@ -4795,7 +4795,7 @@ class Game {
                 : !p.hasPrimary
                     ? (p.hasMelee ? '[V] COMBAT KNIFE' : '[2] SIDEARM')
                     : (isPistolMode ?'>':'') + '[2] 37MM PISTOL';
-            const secondaryStatus = p.hasMinigun ? 'LINKED / READY'
+            const secondaryStatus = p.hasMinigun ? 'LINKED / [V] FIST'
                 : !p.hasPrimary ? 'READY'
                 : (pReloading ?'RELOADING':`${pAmmo} / ${pMax}`);
             drawTelBar(panelY + 78, secondaryLabel, secondaryStatus, pRatio, pCol);

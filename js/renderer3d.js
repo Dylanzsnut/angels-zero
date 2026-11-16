@@ -4028,6 +4028,22 @@ class Renderer3D {
         autocannonGroup.visible = false;
         lWrist.add(autocannonGroup);
 
+        // JUGGERNAUT siege fist in the first-person view.
+        const fistGroup = new THREE.Group();
+        fistGroup.position.set(0.02, 0.0, -0.14);
+        const fpPalm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.18), matSteel);
+        fpPalm.position.set(0, 0.02, -0.1);
+        const fpCuff = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.1, 0.2), matArmorOlive);
+        fpCuff.position.set(0, -0.06, 0.04);
+        fistGroup.add(fpPalm, fpCuff);
+        for (let f = 0; f < 4; f++) {
+            const fpKnuckle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.08), matChrome);
+            fpKnuckle.position.set(-0.055 + f * 0.037, 0.08, -0.18);
+            fistGroup.add(fpKnuckle);
+        }
+        fistGroup.visible = false;
+        lWrist.add(fistGroup);
+
         // 120mm Heavy Rail-Assault Rifle Assembly (sleek slab-sided gunmetal + olive receiver + red vents)
         const rifleGroup = new THREE.Group();
         rifleGroup.position.set(-0.02, 0.06, -0.08);
@@ -4145,6 +4161,7 @@ class Renderer3D {
             minigunFlash,
             autocannonGroup,
             autocannonFlash,
+            fistGroup,
             pistolCylinder,
             pMuzzleFlash,
             rightMuzzleFlash,
@@ -4376,6 +4393,12 @@ class Renderer3D {
         if (dualFire > 0) {
             if (leftShot && a.leftArm) a.leftArm.rotation.x -= dualFire * 0.22;
             if (rightShot && a.rightArm) a.rightArm.rotation.x -= dualFire * 0.22;
+        }
+        if (a.fistGroup) a.fistGroup.visible = !!p.hasMinigun && !p.carryingPayload;
+        if (p.meleeType === 'fist' && (p.clawPunchAnim || 0) > 0 && a.leftArm) {
+            const punch = p.clawPunchAnim / 0.28;
+            a.leftArm.position.z -= punch * 0.22;
+            a.leftArm.rotation.x -= punch * 0.32;
         }
     }
 
@@ -5827,6 +5850,21 @@ class Renderer3D {
         autocannonGroup.visible = false;
         lArm.add(autocannonGroup);
 
+        // JUGGERNAUT siege fist — heavy armored hand for punching and shell handling.
+        const fistGroup = new THREE.Group();
+        fistGroup.position.set(0.38, -0.62, 0.92);
+        const fistPalm = outline(new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.3), mSteel));
+        const fistGauntlet = outline(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.36), mOlive));
+        fistGauntlet.position.set(0, -0.1, -0.1);
+        fistGroup.add(fistPalm, fistGauntlet);
+        for (let f = 0; f < 4; f++) {
+            const knuckle = outline(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.14), mChrome));
+            knuckle.position.set(-0.12 + f * 0.08, 0.08, 0.2);
+            fistGroup.add(knuckle);
+        }
+        fistGroup.visible = profile.id === 'heavy';
+        lArm.add(fistGroup);
+
         const hardpointsGroup = new THREE.Group();
         hardpointsGroup.position.set(0, -2.2, 0);
         hardpointsGroup.add(
@@ -5878,6 +5916,7 @@ class Renderer3D {
             minigunFlash,
             autocannonGroup,
             autocannonFlash,
+            fistGroup,
             cleaverBase,
             rifleFlash,
             pistolFlash: pFlash,
@@ -6073,6 +6112,7 @@ class Renderer3D {
         if (rig.offPistolGroup) rig.offPistolGroup.visible = isRecon;
         if (rig.minigunGroup) rig.minigunGroup.visible = isJuggernaut;
         if (rig.autocannonGroup) rig.autocannonGroup.visible = isJuggernaut;
+        if (rig.fistGroup) rig.fistGroup.visible = isJuggernaut && !p.carryingPayload;
         if (rig.cleaverBase) rig.cleaverBase.visible = !isJuggernaut;
 
         // 4) Shooting Recoil & Muzzle Flash
@@ -6131,6 +6171,13 @@ class Renderer3D {
             const kick = (p.pistolFireAnim / 0.25) * 0.2;
             if (p.lastPistolHand === 'left' || p.lastPistolHand === 'both') rig.lArm.rotation.x -= kick;
             if (p.lastPistolHand === 'right' || p.lastPistolHand === 'both') rig.rArm.rotation.x -= kick;
+        }
+
+        // Siege fist punch drives the left arm forward.
+        if (p.meleeType === 'fist' && (p.clawPunchAnim || 0) > 0 && rig.lArm) {
+            const punch = p.clawPunchAnim / 0.28;
+            rig.lArm.rotation.x -= punch * 0.55;
+            rig.lArm.position.z += punch * 0.3;
         }
     }
 

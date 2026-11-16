@@ -82,6 +82,7 @@ class Player {
         this.rightPistolCooldownTimer = 0;
         this.lastPistolHand = 'left';
         this.independentPistols = false;
+        this.meleeType = 'cleaver';
         this.cleaverSlashAnim = 0;
 
         this.clawCooldownTimer = 0;
@@ -267,6 +268,7 @@ class Player {
         this.hasPistol = loadout.secondary === 'pistol37';
         this.hasMinigun = loadout.secondary === 'minigun';
         this.hasMelee = !!loadout.melee;
+        this.meleeType = loadout.melee || 'cleaver';
         this.dualPistols = !!loadout.dualPistols;
         this.independentPistols = this.dualPistols;
         if (!this.hasPrimary) this.activeHandheld = 'pistol37';
@@ -786,6 +788,7 @@ class Player {
 
     triggerKnifeMelee() {
         if (!this.hasMelee) return false;
+        if (this.meleeType === 'fist') return this.triggerFistPunch();
         if (this.clawCooldownTimer > 0 || this.carryingPayload) return false;
         const pcfg = window.GAME_CONFIG.PLAYER;
         const cleaverCfg = (window.GAME_CONFIG.SECONDARY_WEAPONS && window.GAME_CONFIG.SECONDARY_WEAPONS.cleaver) || {};
@@ -868,6 +871,68 @@ class Player {
             window.poolManager.spawnSparks(tipX, tipY, 14, hitCount > 0 ?'#ffdd44':'#00e5ff', 180);
         }
         if (window.gameInstance && typeof window.gameInstance.onPlayerClawStrike ==='function') {
+            window.gameInstance.onPlayerClawStrike(this, tipX, tipY);
+        }
+        return true;
+    }
+
+    // JUGGERNAUT hydraulic siege fist: weaker than the knife, faster, and still grabs shells.
+    triggerFistPunch() {
+        if (!this.hasMelee || this.meleeType !== 'fist') return false;
+        if (this.clawCooldownTimer > 0 || this.carryingPayload) return false;
+        const pcfg = window.GAME_CONFIG.PLAYER;
+        const fistCfg = (window.GAME_CONFIG.SECONDARY_WEAPONS && window.GAME_CONFIG.SECONDARY_WEAPONS.fist) || {};
+        const meta = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
+        this.clawCooldownTimer = (fistCfg.cooldown || 0.78) * Math.max(0.45, meta.meleeCooldownMult || 1.0);
+        this.clawPunchAnim = 0.28;
+        this.cleaverSlashAnim = 0;
+        this.vx = (this.vx || 0) + Math.cos(this.facingAngle) * 90;
+        this.vy = (this.vy || 0) + Math.sin(this.facingAngle) * 90;
+
+        if (window.soundManager && window.soundManager.playClawMelee) {
+            window.soundManager.playClawMelee();
+        }
+        if (window.gameInstance && window.gameInstance.triggerScreenShake) {
+            window.gameInstance.triggerScreenShake(4, 0.14);
+        }
+        const r3d = window.gameInstance && window.gameInstance.renderer3d;
+        if (r3d) {
+            if (r3d.applyWeaponRecoil) r3d.applyWeaponRecoil(0.03, -0.12, -0.01, false);
+            if (r3d.applyCockpitSuspensionImpulse) r3d.applyCockpitSuspensionImpulse(-8, 12, 0.008);
+        }
+
+        const range = (fistCfg.range || 112) * this.getAreaMultiplier();
+        const halfArc = (fistCfg.arc || Math.PI * 0.72) * 0.5;
+        const damage = (fistCfg.damage || 78) * this.getDamageMultiplier() * (meta.cleaverDamageMult || 1.0) / (meta.rifleDamageMult || 1.0);
+        const knockback = fistCfg.knockback || 340;
+        if (window.poolManager && window.poolManager.enemies) {
+            window.poolManager.enemies.forEachActive((e) => {
+                if (!e || e.active === false) return;
+                const dx = e.x - this.x;
+                const dy = e.y - this.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > range + (e.radius || 12)) return;
+                const ang = Math.atan2(dy, dx);
+                const diff = Math.atan2(Math.sin(ang - this.facingAngle), Math.cos(ang - this.facingAngle));
+                if (Math.abs(diff) > halfArc && dist > 40) return;
+                e.takeDamage(Math.round(damage), this, 'Kinetic');
+                e.vx = (e.vx || 0) + Math.cos(ang) * knockback;
+                e.vy = (e.vy || 0) + Math.sin(ang) * knockback;
+                if (e.isBurrowed) {
+                    e.burrowState = 'ERUPTING';
+                    e.eruptTimer = 0.4;
+                }
+                if (window.poolManager.spawnSparks) {
+                    window.poolManager.spawnSparks(e.x, e.y, 8, '#ffaa44', ang + Math.PI);
+                }
+            });
+        }
+        const tipX = this.x + Math.cos(this.facingAngle) * 40;
+        const tipY = this.y + Math.sin(this.facingAngle) * 40;
+        if (window.poolManager && window.poolManager.spawnSparks) {
+            window.poolManager.spawnSparks(tipX, tipY, 10, '#ffcc55', this.facingAngle);
+        }
+        if (window.gameInstance && typeof window.gameInstance.onPlayerClawStrike === 'function') {
             window.gameInstance.onPlayerClawStrike(this, tipX, tipY);
         }
         return true;
