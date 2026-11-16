@@ -2,5 +2,7 @@
 __pycache__/
 *.pyc
 *.rar
+assets/
+screenshot*.png
 .DS_Store
 Thumbs.db

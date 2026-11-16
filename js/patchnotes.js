@@ -2,6 +2,15 @@
 // Prepend a new entry at the top of this array before every web deployment.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.3',
+        date: '2026-11-16',
+        title: 'Repository & Build Footprint Cleanup (170MB -> ~1.2MB)',
+        changes: [
+            'Removed 170MB of unused static model/texture archives (assets/) and unreferenced FBX/GLTF/OBJ loaders from Git and web deployment.',
+            'Kept 100% procedural Three.js geometry and canvas pixel-art rendering intact for fast page loads and instant repo cloning.'
+        ]
+    },
+    {
         version: 'v0.9.2',
         date: '2026-11-16',
         title: 'Field Manual, Pointer-Lock Fallback & Pause Menu Controls',
