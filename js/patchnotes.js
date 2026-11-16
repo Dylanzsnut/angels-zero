@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.6',
+        date: '2026-11-16',
+        title: 'High-Detail Chassis Mechs & Live Rig Rebuilds',
+        changes: [
+            'Rebuilt the Hangar turntable and third-person mech rigs per chassis: STRIDER-LX gains a sloped sensor cowling, panoramic optic strip, swept antennas and reverse-joint legs; BASTION-IX gains slab siege armor, fortress pauldrons, reactor stacks and pillar legs.',
+            'Upgraded procedural mech materials to layered metallic PBR with dark gunmetal joints, exposed hydraulic pistons, recessed panel trim and chassis-colored emissive optics.',
+            'Switching chassis in the Hangar now rebuilds both 3D mechs instantly and re-frames the turntable camera. First-person canopy struts, brow armor and status trim change with the selected frame.'
+        ]
+    },
+    {
         version: 'v0.9.5',
         date: '2026-11-16',
         title: 'Selectable Mech Chassis Classes',

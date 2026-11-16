@@ -4011,6 +4011,7 @@ class Renderer3D {
         const p = game && game.player;
         const active = !!(p && (game.state === 'PLAYING' || game.state === 'LEVELUP'));
         this.cockpitGroup.visible = active && !this.thirdPersonMode;
+        if (this.canopyGroup) this.canopyGroup.visible = active && !this.thirdPersonMode;
         if (!active || this.thirdPersonMode || !this.cockpitArms3D) return;
 
         const a = this.cockpitArms3D;
@@ -4592,6 +4593,209 @@ class Renderer3D {
         this.renderer.render(this.scene, this.camera);
     }
 
+    // Resolve the active chassis profile for procedural mech construction.
+    getChassisProfile() {
+        const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+        const hs = window.hangarSystem;
+        const id = (hs && typeof hs.getSelectedChassis === 'function') ? hs.getSelectedChassis() : 'medium';
+        return Object.assign({ id }, cfg[id] || cfg.medium || {});
+    }
+
+    _chassisBuildParams(profile) {
+        if (profile.id === 'light') {
+            return { torsoWidth: 0.82, legSpread: 0.50, limbScale: 0.80, pauldronScale: 0.72, headWidth: 0.78, hipBase: -0.18, shinBase: -0.42, footBase: 0.22 };
+        }
+        if (profile.id === 'heavy') {
+            return { torsoWidth: 1.35, legSpread: 0.73, limbScale: 1.28, pauldronScale: 1.42, headWidth: 1.12, hipBase: 0, shinBase: 0.10, footBase: -0.06 };
+        }
+        return { torsoWidth: 1.0, legSpread: 0.60, limbScale: 1.0, pauldronScale: 1.0, headWidth: 1.0, hipBase: 0, shinBase: 0, footBase: 0 };
+    }
+
+    _disposeObject3D(root) {
+        if (!root) return;
+        root.traverse((obj) => {
+            if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+            const mats = obj.material ? (Array.isArray(obj.material) ? obj.material : [obj.material]) : [];
+            mats.forEach((m) => { if (m && m.dispose) m.dispose(); });
+        });
+    }
+
+    // Adds high-detail, chassis-specific armor, optics, actuators and reactor geometry.
+    _addChassisDetails(mech, upperBody, profile, dims, mats, legs, arms, outline) {
+        const mOlive = mats.mOlive;
+        const mSteel = mats.mSteel;
+        const mDark = mats.mDark;
+        const mAccent = mats.mAccent;
+        const mHydraulic = mats.mHydraulic;
+        const mPanel = mats.mPanel;
+        const uy = -2.2; // upperBody local space
+
+        // Shared recessed panel-line trim and glowing reactor vents on every frame.
+        for (const sx of [-1, 1]) {
+            const seam = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.92, 0.06), mPanel);
+            seam.position.set(sx * 0.62 * dims.torsoWidth, 2.95 + uy, 0.76);
+            upperBody.add(seam);
+            const vent = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.05), mAccent);
+            vent.position.set(sx * 0.46 * dims.torsoWidth, 2.66 + uy, 0.9);
+            upperBody.add(vent);
+        }
+
+        if (profile.id === 'light') {
+            // Sloped sensor-head cowling, panoramic optic strip and swept comm antennas.
+            const cowling = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.36, 0.62, 6), mSteel));
+            cowling.rotation.x = Math.PI / 2;
+            cowling.rotation.z = 0.1;
+            cowling.position.set(0, 3.5 + uy, 0.52);
+            const optic = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.1, 0.1), mAccent);
+            optic.position.set(0, 3.42 + uy, 0.84);
+            upperBody.add(cowling, optic);
+            for (const sx of [-1, 1]) {
+                const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.025, 0.86, 6), mSteel);
+                ant.position.set(sx * 0.46, 3.92 + uy, -0.18);
+                ant.rotation.set(-0.62, 0, sx * 0.18);
+                upperBody.add(ant);
+                // Exposed reverse-joint hydraulic dampers.
+                const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.72, 8), mHydraulic);
+                piston.position.set(sx * 0.06, -0.42, 0.14);
+                piston.rotation.x = 0.28;
+                (sx < 0 ? legs.L.hip : legs.R.hip).add(piston);
+            }
+        } else if (profile.id === 'heavy') {
+            // Slab-sided siege hull, sloped glacis, fortress pauldrons and reactor stacks.
+            for (const sx of [-1, 1]) {
+                const slab = outline(new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.34, 1.42), mOlive));
+                slab.position.set(sx * 0.98, 2.94 + uy, -0.04);
+                upperBody.add(slab);
+                const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.24, 1.02, 10), mDark);
+                stack.position.set(sx * 0.72, 3.78 + uy, -0.78);
+                const core = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.86, 8), mAccent);
+                core.position.set(sx * 0.72, 3.86 + uy, -0.78);
+                upperBody.add(stack, core);
+                const brow = outline(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.34), mSteel));
+                brow.position.set(sx * 1.1, 3.42 + uy, 0.26);
+                upperBody.add(brow);
+                const greave = outline(new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.0, 0.68), mOlive));
+                greave.position.set(0, -0.44, 0.08);
+                (sx < 0 ? legs.L.shin : legs.R.shin).add(greave);
+                const shoulderPlate = outline(new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.74, 0.92), mOlive));
+                shoulderPlate.position.set(0, 0.12, -0.04);
+                (sx < 0 ? arms.lArm : arms.rArm).add(shoulderPlate);
+            }
+            const glacis = outline(new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.42, 0.72), mPanel));
+            glacis.position.set(0, 2.5 + uy, 0.76);
+            glacis.rotation.x = -0.42;
+            upperBody.add(glacis);
+            const cyclops = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.1), mAccent);
+            cyclops.position.set(0, 3.36 + uy, 0.98);
+            upperBody.add(cyclops);
+        } else {
+            // Balanced brawler: layered reactive plates, hazard-stripe pauldron trim, CRT hood.
+            for (let i = 0; i < 3; i++) {
+                const plate = outline(new THREE.Mesh(new THREE.BoxGeometry(1.42 - i * 0.12, 0.2, 0.14), i === 1 ? mSteel : mOlive));
+                plate.position.set(0, 2.82 + uy - i * 0.24, 0.7 + i * 0.03);
+                plate.rotation.x = -0.12 + i * 0.07;
+                upperBody.add(plate);
+            }
+            for (const arm of [arms.lArm, arms.rArm]) {
+                const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.1, 0.06), mAccent);
+                stripe.position.set(0, 0.16, 0.42);
+                arm.add(stripe);
+            }
+            const hood = outline(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.18, 0.28), mDark));
+            hood.position.set(0, 3.44 + uy, 0.7);
+            upperBody.add(hood);
+        }
+    }
+
+    _buildCanopyFrame(profile) {
+        const frame = new THREE.Group();
+        const steel = new THREE.MeshStandardMaterial({ color: 0x343a40, metalness: 0.78, roughness: 0.3 });
+        const accent = new THREE.MeshBasicMaterial({ color: new THREE.Color(profile.cockpitAccent || '#ffaa33') });
+        const pillar = (x, width, tilt) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, 0.06), steel);
+            m.position.set(x, -0.05, -1.25);
+            m.rotation.z = tilt;
+            return m;
+        };
+        if (profile.id === 'light') {
+            frame.add(pillar(-0.72, 0.035, 0.13), pillar(0.72, 0.035, -0.13));
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.025, 0.05), accent);
+            trim.position.set(0, 0.55, -1.25);
+            frame.add(trim);
+        } else if (profile.id === 'heavy') {
+            frame.add(pillar(-0.78, 0.15, 0.2), pillar(0.78, 0.15, -0.2));
+            const brow = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.24, 0.16), steel);
+            brow.position.set(0, 0.64, -1.24);
+            const status = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.05), accent);
+            status.position.set(0, 0.52, -1.18);
+            frame.add(brow, status);
+        } else {
+            frame.add(pillar(-0.7, 0.08, 0.16), pillar(0.7, 0.08, -0.16));
+            const hood = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.16, 0.14), steel);
+            hood.position.set(0, 0.44, -1.18);
+            frame.add(hood);
+        }
+        frame.visible = false;
+        return frame;
+    }
+
+    // Rebuilds both 3D mech rigs and the first-person canopy after a chassis switch.
+    rebuildChassisMechs() {
+        const profile = this.getChassisProfile();
+        const id = profile.id;
+        this._positionHangarCamera(profile);
+        if (this.hangarScene && this.hangarMechGroup) {
+            this.hangarScene.remove(this.hangarMechGroup);
+            this._disposeObject3D(this.hangarMechGroup);
+            const rig = this._createProceduralMechRig();
+            this.hangarScene.add(rig.root);
+            this.hangarMechGroup = rig.root;
+            this.hangarProceduralMech = rig.root;
+            this.hangarHardpointsGroup = rig.hardpointsGroup;
+            this.hangarMaterials = rig.materials;
+            this.hangarParts = rig.parts;
+        }
+        if (this.scene && this.playerMechGroup) {
+            const wasVisible = this.playerMechGroup.visible;
+            this.scene.remove(this.playerMechGroup);
+            this._disposeObject3D(this.playerMechGroup);
+            const rig = this._createProceduralMechRig();
+            rig.root.scale.setScalar(1.18);
+            rig.root.rotation.y = Math.PI;
+            const wrapper = new THREE.Group();
+            wrapper.add(rig.root);
+            wrapper.visible = wasVisible;
+            this.scene.add(wrapper);
+            this.playerMechGroup = wrapper;
+            this.playerMechRig = rig;
+            this.mechAnimState = {
+                walkBlend: 0, dashBlend: 0, meleeBlend: 0,
+                hipL: 0, hipR: 0, shinL: 0, shinR: 0,
+                torsoX: 0, torsoY: 0, torsoZ: 0,
+                rArmX: 0, rArmY: 0, lArmX: 0, lArmY: 0
+            };
+        }
+        if (this.camera) {
+            if (this.canopyGroup) {
+                this.camera.remove(this.canopyGroup);
+                this._disposeObject3D(this.canopyGroup);
+            }
+            this.canopyGroup = this._buildCanopyFrame(profile);
+            this.camera.add(this.canopyGroup);
+        }
+        this.currentRigChassisId = id;
+        this.syncHangarMechUpgrades();
+    }
+
+    _positionHangarCamera(profile) {
+        if (!this.hangarCamera) return;
+        // Wider siege frames need more standoff so the full mech stays on the turntable.
+        const distance = profile.id === 'heavy' ? 8.7 : profile.id === 'light' ? 6.2 : 6.85;
+        const height = profile.id === 'heavy' ? 2.75 : 2.35;
+        this.hangarCamera.position.set(1.15, height, distance);
+        this.hangarCamera.lookAt(1.05, 1.9, 0);
+    }
+
     buildHangarMech3D() {
         if (this.hangarScene) return;
         this.hangarScene = new THREE.Scene();
@@ -4600,8 +4804,7 @@ class Renderer3D {
 
         this.hangarCamera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 100);
         // Offset camera right so the mech sits cleanly in the center gap between Telemetry & Hangar UI
-        this.hangarCamera.position.set(1.15, 2.35, 6.85);
-        this.hangarCamera.lookAt(1.05, 1.9, 0);
+        this._positionHangarCamera(this.getChassisProfile());
 
         const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.95);
         const keyLight = new THREE.DirectionalLight(0xffe4b8, 1.45);
@@ -4641,11 +4844,14 @@ class Renderer3D {
         this.hangarHardpointsGroup = rig.hardpointsGroup;
         this.hangarMaterials = rig.materials;
         this.hangarParts = rig.parts;
+        this.currentRigChassisId = rig.chassisId;
         this.syncHangarMechUpgrades();
     }
 
     _createProceduralMechRig() {
         const mech = new THREE.Group();
+        const profile = this.getChassisProfile();
+        const dims = this._chassisBuildParams(profile);
 
         // Procedural weathered olive-khaki industrial armor texture (grit, seams, hazard trim)
         const makeArmorTex = (baseHex, withHazard) => {
@@ -4694,9 +4900,13 @@ class Renderer3D {
         const armorTex = makeArmorTex('#848064', true);
         const steelTex = makeArmorTex('#5a5e5c', false);
 
-        const mOlive = new THREE.MeshStandardMaterial({ color: 0x7c785c, map: armorTex, metalness: 0.35, roughness: 0.68 });
-        const mSteel = new THREE.MeshStandardMaterial({ color: 0x4c5256, map: steelTex, metalness: 0.62, roughness: 0.45 });
-        const mDark = new THREE.MeshStandardMaterial({ color: 0x1b1d1f, metalness: 0.6, roughness: 0.5 });
+        // Layered industrial PBR: polished armor over dark gunmetal joints and hydraulics.
+        const mOlive = new THREE.MeshStandardMaterial({ color: 0x7c785c, map: armorTex, metalness: 0.72, roughness: 0.34 });
+        const mSteel = new THREE.MeshStandardMaterial({ color: 0x4c5256, map: steelTex, metalness: 0.78, roughness: 0.30 });
+        const mDark = new THREE.MeshStandardMaterial({ color: 0x1b1d1f, metalness: 0.68, roughness: 0.38 });
+        const mPanel = new THREE.MeshStandardMaterial({ color: 0x2e343a, metalness: 0.74, roughness: 0.36 });
+        const mHydraulic = new THREE.MeshStandardMaterial({ color: 0x121518, metalness: 0.8, roughness: 0.28 });
+        const mAccent = new THREE.MeshBasicMaterial({ color: new THREE.Color(profile.cockpitAccent || '#ffaa33') });
         const mVisor = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
         const mGlass = new THREE.MeshStandardMaterial({ color: 0x12161c, emissive: 0x1c2833, emissiveIntensity: 0.35, metalness: 0.9, roughness: 0.14 });
         const mGold = new THREE.MeshStandardMaterial({ color: 0xb88635, metalness: 0.78, roughness: 0.32 });
@@ -4715,7 +4925,8 @@ class Renderer3D {
         const legs = {};
         for (const sx of [-1, 1]) {
             const hip = new THREE.Group();
-            hip.position.set(sx * 0.6, 1.94, 0);
+            hip.position.set(sx * dims.legSpread, 1.94, 0);
+            hip.rotation.x = dims.hipBase;
 
             const hipJoint = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.36, 10), mDark));
             hipJoint.rotation.z = Math.PI / 2;
@@ -4724,6 +4935,7 @@ class Renderer3D {
             const thigh = outline(new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.84, 0.62), mOlive));
             thigh.position.set(0, -0.32, 0.02);
             thigh.rotation.x = 0.16;
+            thigh.scale.set(dims.limbScale, 1, dims.limbScale);
 
             const shinPivot = new THREE.Group();
             shinPivot.position.set(sx * 0.02, -0.76, -0.04);
@@ -4737,9 +4949,11 @@ class Renderer3D {
             const shin = outline(new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.92, 0.5), mOlive));
             shin.position.set(0, -0.46, -0.02);
             shin.rotation.x = -0.16;
+            shin.scale.set(dims.limbScale, 1, dims.limbScale);
             const shinFront = outline(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.66, 0.18), mSteel));
             shinFront.position.set(0, -0.44, 0.22);
             shinFront.rotation.x = -0.16;
+            shinFront.scale.set(dims.limbScale, 1, 1);
 
             const footPivot = new THREE.Group();
             footPivot.position.set(0, -0.92, 0.04);
@@ -4776,6 +4990,7 @@ class Renderer3D {
 
         const upperBody = new THREE.Group();
         upperBody.position.set(0, 2.2, 0);
+        upperBody.scale.x = dims.torsoWidth;
         const uy = -2.2;
 
         // Main faceted octagonal cockpit hull
@@ -4836,6 +5051,7 @@ class Renderer3D {
         // Keep headGroup / visor anchor for cosmetic visor tinting
         const headGroup = new THREE.Group();
         headGroup.position.set(0, 3.56 + uy, 0.08);
+        headGroup.scale.x = dims.headWidth;
         const visor = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.07, 0.08), mVisor);
         visor.position.set(0, -0.18, 0.78);
         headGroup.add(visor);
@@ -4870,6 +5086,7 @@ class Renderer3D {
         rArm.position.set(1.12, 0.86, 0.08);
         const rPauldron = outline(new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.58, 0.82), mOlive));
         rPauldron.rotation.z = -0.18;
+        rPauldron.scale.set(dims.pauldronScale, dims.pauldronScale, 1);
         const rUpperArm = outline(new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.56, 0.3), mSteel));
         rUpperArm.position.set(0.06, -0.34, 0.06);
         rUpperArm.rotation.set(0.22, 0, -0.12);
@@ -4933,6 +5150,7 @@ class Renderer3D {
         lArm.position.set(-1.12, 0.86, 0.08);
         const lPauldron = outline(new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.58, 0.82), mOlive));
         lPauldron.rotation.z = 0.18;
+        lPauldron.scale.set(dims.pauldronScale, dims.pauldronScale, 1);
         const lUpperArm = outline(new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.56, 0.3), mSteel));
         lUpperArm.position.set(-0.06, -0.34, 0.06);
         lUpperArm.rotation.set(0.22, 0, 0.12);
@@ -5108,8 +5326,19 @@ class Renderer3D {
         );
         upperBody.add(rArm, lArm, hardpointsGroup);
 
+        // Chassis-specific high-detail geometry is constructed fresh on every rebuild.
+        this._addChassisDetails(
+            mech, upperBody, profile, dims,
+            { mOlive, mSteel, mDark, mAccent, mHydraulic, mPanel },
+            legs, { rArm, lArm }, outline
+        );
+
         return {
             root: mech,
+            chassisId: profile.id,
+            legBaseHipRot: dims.hipBase,
+            legBaseShinRot: dims.shinBase,
+            legBaseFootRot: dims.footBase,
             upperBody,
             headGroup,
             legs,
@@ -5143,12 +5372,17 @@ class Renderer3D {
         this.scene.add(wrapper);
         this.playerMechGroup = wrapper;
         this.playerMechRig = rig;
+        this.currentRigChassisId = rig.chassisId;
         this.mechAnimState = {
             walkBlend: 0, dashBlend: 0, meleeBlend: 0,
             hipL: 0, hipR: 0, shinL: 0, shinR: 0,
             torsoX: 0, torsoY: 0, torsoZ: 0,
             rArmX: 0, rArmY: 0, lArmX: 0, lArmY: 0
         };
+        if (this.camera && !this.canopyGroup) {
+            this.canopyGroup = this._buildCanopyFrame(this.getChassisProfile());
+            this.camera.add(this.canopyGroup);
+        }
         this.syncHangarMechUpgrades();
     }
 
@@ -5198,10 +5432,12 @@ class Renderer3D {
         st.hipR = smooth(st.hipR, tgtHipR, 16);
         st.shinR = smooth(st.shinR, tgtShinR, 16);
 
-        rig.legs.L.hip.rotation.x = st.hipL;
-        rig.legs.L.shin.rotation.x = st.shinL;
-        rig.legs.R.hip.rotation.x = st.hipR;
-        rig.legs.R.shin.rotation.x = st.shinR;
+        const baseHip = rig.legBaseHipRot || 0;
+        const baseShin = rig.legBaseShinRot || 0;
+        rig.legs.L.hip.rotation.x = baseHip + st.hipL;
+        rig.legs.L.shin.rotation.x = baseShin + st.shinL;
+        rig.legs.R.hip.rotation.x = baseHip + st.hipR;
+        rig.legs.R.shin.rotation.x = baseShin + st.shinR;
 
         // Hip vertical lift so swinging foot clearly lifts off the ground before planting
         rig.legs.L.hip.position.y = 1.94 + swingLiftL * 0.2 * w * (1 - d);
@@ -5209,8 +5445,9 @@ class Renderer3D {
 
         // Ankle articulation: toe-down push-off -> level clearance -> heel-strike -> flat planted sole
         if (rig.legs.L.foot && rig.legs.R.foot) {
-            const flatL = -(st.hipL + st.shinL);
-            const flatR = -(st.hipR + st.shinR);
+            const baseFoot = rig.legBaseFootRot || 0;
+            const flatL = -(st.hipL + st.shinL) + baseFoot;
+            const flatR = -(st.hipR + st.shinR) + baseFoot;
             const ankleSwingL = (strideSin < 0 ? 0.32 : -0.22) * swingLiftL * w;
             const ankleSwingR = (strideSin > 0 ? 0.32 : -0.22) * swingLiftR * w;
             rig.legs.L.foot.rotation.x = flatL + ankleSwingL + d * 0.35;
@@ -5331,6 +5568,13 @@ class Renderer3D {
     }
 
     syncHangarMechUpgrades() {
+        const activeId = this.getChassisProfile().id;
+        if (this.currentRigChassisId && this.currentRigChassisId !== activeId &&
+            (this.playerMechGroup || this.hangarMechGroup)) {
+            this.rebuildChassisMechs();
+            return;
+        }
+        this.currentRigChassisId = activeId;
         this._applyUpgradesToRig(this.hangarParts, this.hangarMaterials);
         if (this.playerMechRig) {
             this._applyUpgradesToRig(this.playerMechRig.parts, this.playerMechRig.materials);

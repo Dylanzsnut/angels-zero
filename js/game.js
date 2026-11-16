@@ -313,8 +313,8 @@ class Game {
                     if (window.soundManager && window.soundManager.playTerminalSuccess) {
                         window.soundManager.playTerminalSuccess();
                     }
-                    if (this.renderer3d && this.renderer3d.syncHangarMechUpgrades) {
-                        this.renderer3d.syncHangarMechUpgrades();
+                    if (this.renderer3d && this.renderer3d.rebuildChassisMechs) {
+                        this.renderer3d.rebuildChassisMechs();
                     }
                     this.updateHangarUI();
                 }
