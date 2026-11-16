@@ -33,6 +33,12 @@ class SoundManager {
         this._soundCooldowns = new Map();
         this._voiceEndTimes = [];
         this._maxGlobalVoices = 26;
+
+        // Pre-rendered neural comms (manifest + decoded buffers)
+        this.commsManifest = null;
+        this.commsLookups = {};
+        this.commsBuffers = {};
+        this.commsLoadStarted = false;
     }
 
     canPlayVoice(key, minIntervalSec = 0.05, voiceDurationSec = 0.25, maxGlobalVoices = this._maxGlobalVoices) {
@@ -218,6 +224,9 @@ class SoundManager {
 
             // Generate procedural White, Pink, and Brownian noise buffers
             this.initNoiseBuffers();
+
+            // Fetch and decode pre-rendered neural comms in the background.
+            this.loadCommsManifest();
 
             // Continuous mouse-look torso turret servo synthesizer
             this.initTorsoServo();
@@ -2435,6 +2444,109 @@ class SoundManager {
         osc.stop(now + 0.032);
     }
 
+    // Loads the pre-rendered neural comms manifest and decodes every clip once.
+    loadCommsManifest() {
+        if (this.commsLoadStarted || typeof fetch === 'undefined') return;
+        this.commsLoadStarted = true;
+        fetch('audio/comms/manifest.json')
+            .then((res) => res && res.ok ? res.json() : null)
+            .then((manifest) => {
+                if (!manifest || !manifest.clips) return;
+                this.commsManifest = manifest;
+                this.commsLookups = manifest.lookups || {};
+                Object.entries(manifest.clips).forEach(([id, clip]) => {
+                    fetch(clip.file)
+                        .then((res) => res && res.ok ? res.arrayBuffer() : null)
+                        .then((data) => {
+                            if (!data || !this.ctx) return;
+                            this.ctx.decodeAudioData(data).then((buffer) => {
+                                this.commsBuffers[id] = buffer;
+                            }).catch(() => {});
+                        })
+                        .catch(() => {});
+                });
+            })
+            .catch(() => {});
+    }
+
+    normalizeCommsKey(value) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    findCommsClip(text, opts) {
+        if (opts.id && this.commsBuffers[opts.id]) return opts.id;
+        const keys = [opts.id, text, opts.cooldownKey];
+        for (const key of keys) {
+            const id = this.commsLookups[this.normalizeCommsKey(key)];
+            if (id && this.commsBuffers[id]) return id;
+        }
+        return null;
+    }
+
+    // Plays a decoded clip through a walkie-talkie DSP chain with a quiet carrier bed.
+    playCommsClip(id) {
+        const buffer = this.commsBuffers[id];
+        if (!buffer || !this.ctx) return false;
+        this.resume();
+        const now = this.ctx.currentTime;
+        const out = this.getInteriorBus ? this.getInteriorBus() : (this.masterOut || this.ctx.destination);
+
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        src.playbackRate.value = 0.985 + Math.random() * 0.03;
+
+        const highpass = this.ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.setValueAtTime(320, now);
+        highpass.Q.value = 0.7;
+
+        const lowpass = this.ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.setValueAtTime(3100, now);
+        lowpass.Q.value = 0.7;
+
+        const saturation = this.ctx.createWaveShaper();
+        saturation.curve = this.makeDistortionCurve(8);
+        saturation.oversample = '2x';
+
+        const voiceGain = this.ctx.createGain();
+        voiceGain.gain.setValueAtTime(0.92 * this.masterVolume, now);
+
+        src.connect(highpass);
+        highpass.connect(lowpass);
+        lowpass.connect(saturation);
+        saturation.connect(voiceGain);
+        voiceGain.connect(out);
+
+        // Subtle radio carrier static under the voice.
+        let staticSrc = null;
+        if (this.whiteNoiseBuffer) {
+            staticSrc = this.ctx.createBufferSource();
+            staticSrc.buffer = this.whiteNoiseBuffer;
+            staticSrc.loop = true;
+            const carrier = this.ctx.createBiquadFilter();
+            carrier.type = 'bandpass';
+            carrier.frequency.setValueAtTime(1850, now);
+            carrier.Q.value = 0.8;
+            const staticGain = this.ctx.createGain();
+            staticGain.gain.setValueAtTime(0.0001, now);
+            staticGain.gain.linearRampToValueAtTime(0.012 * this.masterVolume, now + 0.06);
+            staticGain.gain.setValueAtTime(0.012 * this.masterVolume, now + Math.max(0.06, buffer.duration - 0.08));
+            staticGain.gain.linearRampToValueAtTime(0.0001, now + buffer.duration);
+            staticSrc.connect(carrier);
+            carrier.connect(staticGain);
+            staticGain.connect(out);
+            staticSrc.start(now);
+            staticSrc.stop(now + buffer.duration + 0.02);
+        }
+
+        src.onended = () => {
+            if (!this.muted) this.playCommsSquelch(true);
+        };
+        src.start(now);
+        return true;
+    }
+
     // Tactical AI & Orbital Commander Voice Narration (Web Speech API + HUD Subtitles)
     speakComms(text, opts = {}) {
         if (!text || this.muted || this.commsMuted) return false;
@@ -2476,7 +2588,14 @@ class SoundManager {
 
         this.playCommsSquelch(false);
 
-        if (hasTTS) {
+        // Prefer the pre-rendered neural clip; dynamic lines fall back to browser TTS.
+        let playedClip = false;
+        if (this.ctx) {
+            const clipId = this.findCommsClip(text, opts);
+            if (clipId) playedClip = this.playCommsClip(clipId);
+        }
+
+        if (!playedClip && hasTTS) {
             try {
                 if (priority >= 2) window.speechSynthesis.cancel();
                 const utt = new SpeechSynthesisUtterance(text);

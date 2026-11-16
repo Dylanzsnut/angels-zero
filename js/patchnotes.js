@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.20',
+        date: '2026-11-16',
+        title: 'Neural Comms Voice Lines',
+        changes: [
+            'Tactical radio callouts now use pre-generated natural neural voices for TAC-AI and ORBITAL CMD instead of browser speech synthesis.',
+            'Comms audio runs through a walkie-talkie DSP chain with bandwidth filtering, warm saturation and quiet carrier static; dynamic lines still fall back to speech synthesis.'
+        ]
+    },
+    {
         version: 'v0.9.19',
         date: '2026-11-16',
         title: 'First-Person Cockpit Refinement',

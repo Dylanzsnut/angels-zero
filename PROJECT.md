@@ -91,8 +91,9 @@ hardpoints, audio routing, HQ/extraction and boss encounters. Current state: all
 3. Commit and push to `origin/main`.
 4. Deploy with Wrangler (a push alone does not trigger a Pages deployment):
    `npx.cmd wrangler pages deploy <clean-stage-dir> --project-name=orbital-perimeter --branch=main`.
-   Stage only web files (`index.html`, `style.css`, `js/`) — no screenshots, caches,
-   local server files or test harness.
+   Stage only web files (`index.html`, `style.css`, `js/`, `js/lib/`, `audio/comms/`)
+   — no screenshots, caches, local server files or test harness. Regenerate neural
+   comms with `python tools/generate_voices.py` (requires `pip install edge-tts`).
 5. Verify the live site at https://orbital-perimeter.pages.dev/ shows the new patch
    notes version and loads with no console errors.
 
