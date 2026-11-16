@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.26',
+        date: '2026-11-16',
+        title: 'Shared Weapon Models & Gun-Arm Aiming',
+        changes: [
+            'Battle rifle, rotary minigun and 37mm Magnum now come from one shared 3D factory used by the Hangar, third-person mech and first-person cockpit.',
+            'Third-person gun arms now raise and track the crosshair pitch, with two-handed rifle support, alternating Recon pistol recoil and chassis-specific aim poses.'
+        ]
+    },
+    {
         version: 'v0.9.25',
         date: '2026-11-16',
         title: 'Mech Scene-Graph Parenting Fix',
