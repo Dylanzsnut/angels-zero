@@ -5451,7 +5451,15 @@ class Renderer3D {
             shinRod.position.set(sx * dims.legSpread, 0.56, 0.13);
             const ankleBall = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), mFrame);
             ankleBall.position.set(sx * dims.legSpread, 0.34, 0);
-            mech.add(hipBall, thighBarrel, thighRod, kneeBall, shinBarrel, shinRod, ankleBall);
+            // Attach each frame part to the exact pivot that animates it.
+            const leg = sx < 0 ? legs.L : legs.R;
+            leg.hip.attach(hipBall);
+            leg.hip.attach(thighBarrel);
+            leg.hip.attach(thighRod);
+            leg.shin.attach(kneeBall);
+            leg.shin.attach(shinBarrel);
+            leg.shin.attach(shinRod);
+            leg.foot.attach(ankleBall);
             if (sx < 0) hydraulics.L = { thighRod, shinRod };
             else hydraulics.R = { thighRod, shinRod };
         }
@@ -5463,7 +5471,12 @@ class Renderer3D {
         groinSkirt.position.set(0, 1.92, 0.44);
         const waistRing = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.62, 0.22, 10), mDark));
         waistRing.position.set(0, 2.22, 0);
-        mech.add(pelvisBase, groinSkirt, waistRing);
+        const pelvisGroup = new THREE.Group();
+        pelvisGroup.name = 'pelvisGroup';
+        mech.add(pelvisGroup);
+        pelvisGroup.attach(pelvisBase);
+        pelvisGroup.attach(groinSkirt);
+        pelvisGroup.attach(waistRing);
 
         const upperBody = new THREE.Group();
         upperBody.position.set(0, 2.2, 0);
@@ -5567,7 +5580,10 @@ class Renderer3D {
             flame.rotation.x = Math.PI / 2;
             flame.position.set(sx * 0.46, 0.95, -1.0);
             flame.visible = false;
-            mech.add(bell, core, flame);
+            const calfLeg = sx < 0 ? legs.L : legs.R;
+            calfLeg.shin.attach(bell);
+            calfLeg.shin.attach(core);
+            calfLeg.shin.attach(flame);
             thrusterCores.push(core);
             thrusterFlames.push(flame);
         }
@@ -5921,6 +5937,11 @@ class Renderer3D {
         pistolGroup.add(pBody, pCyl, pFlash);
         lArm.add(pistolGroup);
 
+        // Weapon accessories must ride with the weapon group, not the bare arm.
+        pistolGroup.attach(magnumComp);
+        pistolGroup.attach(plasmaCleaver);
+        cleaverBase.attach(cleaverGlow);
+
         // RECON: matching sidearm in the right hand for true dual-wielding.
         const offPistolGroup = pistolGroup.clone(true);
         offPistolGroup.position.set(-0.42, -0.52, 1.05);
@@ -6026,6 +6047,7 @@ class Renderer3D {
             legBaseFootRot: dims.footBase,
             upperBody,
             headGroup,
+            pelvisGroup,
             legs,
             rArm,
             lArm,

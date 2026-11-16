@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.25',
+        date: '2026-11-16',
+        title: 'Mech Scene-Graph Parenting Fix',
+        changes: [
+            'Fixed leg pistons, ankle joints and calf boosters floating away from their leg pivots during the walk cycle.',
+            'Grouped pelvis armor under a dedicated pelvis pivot so the waist stays rigid with the chassis.',
+            'Pinned weapon accessories such as the magnum compensator and cleaver glow to their weapon groups so they no longer separate when arms aim or recoil.'
+        ]
+    },
+    {
         version: 'v0.9.24',
         date: '2026-11-16',
         title: 'Cockpaint Paint Sync & Recon Silhouette',
