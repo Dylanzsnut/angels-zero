@@ -1004,7 +1004,8 @@ const GAME_CONFIG = {
             strideCadence: 4.3,
             waistLimitRad: Math.PI,
             damageMult: 0.92,
-            cockpitAccent: '#38f2ff'
+            cockpitAccent: '#38f2ff',
+            weapons: { primary: null, secondary: 'pistol37', dualPistols: true, melee: 'cleaver' }
         },
         medium: {
             name: 'VANGUARD-01 // BRAWLER',
@@ -1017,7 +1018,8 @@ const GAME_CONFIG = {
             strideCadence: 3.4,
             waistLimitRad: 1.75,
             damageMult: 1.0,
-            cockpitAccent: '#ffaa33'
+            cockpitAccent: '#ffaa33',
+            weapons: { primary: 'autocannon', secondary: 'pistol37', dualPistols: false, melee: 'cleaver' }
         },
         heavy: {
             name: 'BASTION-IX // JUGGERNAUT',
@@ -1030,7 +1032,8 @@ const GAME_CONFIG = {
             strideCadence: 2.45,
             waistLimitRad: 1.30,
             damageMult: 1.18,
-            cockpitAccent: '#ff3848'
+            cockpitAccent: '#ff3848',
+            weapons: { primary: 'autocannon', secondary: 'minigun', dualPistols: false, melee: null }
         }
     },
 

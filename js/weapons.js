@@ -474,6 +474,34 @@ class WeaponSystem {
                 }
             }
         }
+
+        // BASTION-IX: a second rotary minigun fires alongside the autocannon.
+        if (this.player && this.player.hasMinigun) {
+            if (!this.minigunWeapon) {
+                const base = (window.GAME_CONFIG && window.GAME_CONFIG.WEAPONS && window.GAME_CONFIG.WEAPONS.autocannon) || {};
+                const levels = [{ damage: 17, cooldown: 0.075, count: 1, speed: 1250, spread: 0.055, pierce: 1 }];
+                this.minigunWeapon = {
+                    id: 'autocannon',
+                    config: Object.assign({}, base, { levels, name: 'BASTION Rotary Minigun', magSize: 1 }),
+                    level: 1,
+                    cooldownTimer: 0,
+                    timeSinceLastShot: 999,
+                    heat: 0,
+                    isVenting: false,
+                    isReloading: false,
+                    noAmmo: true,
+                    spinSpeed: 1,
+                    barrelAngle: 0
+                };
+            }
+            const mg = this.minigunWeapon;
+            if (mg.cooldownTimer > 0) mg.cooldownTimer -= dt;
+            mg.timeSinceLastShot += dt;
+            if (isPrimaryFiring && !this.player.carryingPayload && mg.cooldownTimer <= 0) {
+                mg.cooldownTimer = 0.075;
+                this.fireWeapon(mg, enemies, isAutoAim);
+            }
+        }
     }
 
     fireWeapon(weapon, enemies, isAutoAim) {
@@ -495,7 +523,7 @@ class WeaponSystem {
 
                 // Magazine consumption & auto-reload on empty (enabled in live game or when enableMagazines=true)
                 const magazinesActive = this.enableMagazines || (typeof window !=='undefined'&& window.gameInstance && window.gameInstance.canvas);
-                if (magazinesActive) {
+                if (magazinesActive && !weapon.noAmmo) {
                     const maxAmmo = weapon.maxAmmo || weapon.config.magSize || (isEvolved ? 64 : 32);
                     if (weapon.ammo === undefined) weapon.ammo = maxAmmo;
                     weapon.ammo = Math.max(0, weapon.ammo - 1);

@@ -168,7 +168,14 @@ class Game {
 
         window.addEventListener('wheel', (e) => {
             if (this.state !=='PLAYING'|| this.introActive || !this.player || !this.player.switchHandheld) return;
-            const nextMode = this.player.activeHandheld ==='pistol37'?'rifle':'pistol37';
+            let nextMode;
+            if (this.player.hasMinigun) {
+                nextMode = this.player.activeHandheld === 'minigun' ? 'rifle' : 'minigun';
+            } else if (!this.player.hasPrimary) {
+                nextMode = 'pistol37';
+            } else {
+                nextMode = this.player.activeHandheld === 'pistol37' ? 'rifle' : 'pistol37';
+            }
             this.player.switchHandheld(nextMode);
         }, { passive: true });
 
@@ -441,7 +448,7 @@ class Game {
 
         // Combat Knife melee (V / Shift) and Terminal Uplink / full-mech seismic stomp (F)
         if ((e.code ==='KeyV'|| e.code ==='ShiftLeft') && !e.repeat) {
-            if (this.state ==='PLAYING'&& !this.introActive && this.player) {
+            if (this.state ==='PLAYING'&& !this.introActive && this.player && this.player.hasMelee) {
                 if (this.player.triggerKnifeMelee) this.player.triggerKnifeMelee();
                 else if (this.player.triggerClawMelee) this.player.triggerClawMelee();
             }
@@ -482,13 +489,15 @@ class Game {
             }
         }
         if ((e.code ==='Digit1'|| e.code ==='Numpad1') && !e.repeat) {
-            if (this.state ==='PLAYING'&& !this.introActive && this.player && this.player.switchHandheld) {
+            if (this.state ==='PLAYING'&& !this.introActive && this.player && this.player.hasPrimary) {
                 this.player.switchHandheld('rifle');
+            } else if (this.player && !this.player.hasPrimary) {
+                this.showBanner('STRIDER-LX: DUAL 37MM SIDEARMS ONLY','#38f2ff', 1400);
             }
         }
         if ((e.code ==='Digit2'|| e.code ==='Numpad2') && !e.repeat) {
             if (this.state ==='PLAYING'&& !this.introActive && this.player && this.player.switchHandheld) {
-                this.player.switchHandheld('pistol37');
+                this.player.switchHandheld(this.player.hasMinigun ? 'minigun' : 'pistol37');
             }
         }
         if (e.code ==='KeyX'&& !e.repeat) {
@@ -4713,14 +4722,17 @@ class Game {
 
             const isPistolMode = (p.activeHandheld ==='pistol37');
             const blinkAlert = Math.floor(timeSec * 8) % 2 === 0;
-            const rifleLabel = (isPistolMode ?'':'>') + (isDURifle ?'[1] 120MM DU RIFLE':'[1] 120MM RIFLE');
+            const rifleLabel = !p.hasPrimary
+                ? (isPistolMode ?'> ':'') + '[1] DUAL 37MM'
+                : (isPistolMode ?'':'>') + (isDURifle ?'[1] 120MM DU RIFLE':'[1] 120MM RIFLE');
             const rifleStatus = isReloading ?'RELOADING':`${ammo} / ${maxAmmo}`;
             const rifleCol = isReloading
                 ? (blinkAlert ? amber :'#6a4810')
                 : (ammo <= Math.ceil(maxAmmo * 0.25) ? alertRed : green);
             drawTelBar(panelY + 34, rifleLabel, rifleStatus, reloadProg, rifleCol);
 
-            // Compact barrel heat sub-bar right under magazine bar
+            // Compact barrel heat sub-bar right under magazine bar (rifle chassis only)
+            if (p.hasPrimary) {
             const heatX = panelX + 10;
             const heatY = panelY + 45;
             const heatW = panelW - 20;
@@ -4736,6 +4748,7 @@ class Game {
             ctx.textAlign ='right';
             ctx.fillStyle = heatCol;
             ctx.fillText(isVenting ?'BARREL OVERHEAT':`TEMP ${Math.round(heat * 100)}%`, heatX + heatW, heatY + 6);
+            }
 
             // L-Arm 37mm Anti-Armor Pistol (RMB) & Thermal Cleaver / Q-Salvo Status
             const pMax = p.pistolMaxAmmo || 6;
@@ -4743,13 +4756,15 @@ class Game {
             const pReloading = !!p.pistolReloading;
             const pRatio = pReloading ? Math.max(0, Math.min(1, 1 - (p.pistolReloadTimer || 0) / 1.0)) : (pAmmo / pMax);
             const pCol = pReloading ? (blinkAlert ? amber :'#6a4810') : (pAmmo === 0 ? alertRed : cyan);
-            drawTelBar(
-                panelY + 78,
-                (isPistolMode ?'>':'') +'[2] 37MM PISTOL',
-                pReloading ?'RELOADING':`${pAmmo} / ${pMax}`,
-                pRatio,
-                pCol
-            );
+            const secondaryLabel = p.hasMinigun
+                ? (p.activeHandheld === 'minigun' ? '> ':'') + '[2] ROTARY MINIGUN'
+                : !p.hasPrimary
+                    ? (p.hasMelee ? '[V] COMBAT KNIFE' : '[2] SIDEARM')
+                    : (isPistolMode ?'>':'') + '[2] 37MM PISTOL';
+            const secondaryStatus = p.hasMinigun ? 'LINKED / READY'
+                : !p.hasPrimary ? 'READY'
+                : (pReloading ?'RELOADING':`${pAmmo} / ${pMax}`);
+            drawTelBar(panelY + 78, secondaryLabel, secondaryStatus, pRatio, pCol);
 
             // Q Micro-Missile Salvo + Thruster Fuel
             const mMax = Math.max(0.1, p.missileCooldownMax || 10.0);

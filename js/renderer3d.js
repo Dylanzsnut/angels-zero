@@ -3879,6 +3879,24 @@ class Renderer3D {
         const rHand = buildGauntletHand(true);
         rWrist.add(rHand);
 
+        // STRIDER-LX off-hand sidearm and BASTION-IX rotary minigun visuals.
+        const rightPistol37Group = pistol37Group.clone(true);
+        rightPistol37Group.position.set(-0.02, 0.04, -0.12);
+        rightPistol37Group.visible = false;
+        rWrist.add(rightPistol37Group);
+
+        const minigunGroup = new THREE.Group();
+        minigunGroup.position.set(-0.02, 0.06, -0.12);
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2;
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 6), matGunmetal);
+            barrel.rotation.x = Math.PI * 0.5;
+            barrel.position.set(Math.cos(a) * 0.045, 0.05, -0.2 + Math.sin(a) * 0.045);
+            minigunGroup.add(barrel);
+        }
+        minigunGroup.visible = false;
+        lWrist.add(minigunGroup);
+
         // 120mm Heavy Rail-Assault Rifle Assembly (sleek slab-sided gunmetal + olive receiver + red vents)
         const rifleGroup = new THREE.Group();
         rifleGroup.position.set(-0.02, 0.06, -0.08);
@@ -3987,6 +4005,8 @@ class Renderer3D {
             cleaverGroup,
             cleaverEdgeMat,
             pistol37Group,
+            rightPistol37Group,
+            minigunGroup,
             pistolCylinder,
             pMuzzleFlash,
             lTier2Plate,
@@ -4015,6 +4035,11 @@ class Renderer3D {
         if (!active || this.thirdPersonMode || !this.cockpitArms3D) return;
 
         const a = this.cockpitArms3D;
+        // Chassis loadout visibility: Strider = dual pistols, Vanguard = rifle/pistol,
+        // Bastion = autocannon + rotary minigun (no knife).
+        if (a.rifleGroup) a.rifleGroup.visible = !!p.hasPrimary;
+        if (a.rightPistol37Group) a.rightPistol37Group.visible = !!p.dualPistols && !p.carryingPayload;
+        if (a.minigunGroup) a.minigunGroup.visible = !!p.hasMinigun;
         const isMoving = Math.hypot(p.vx || 0, p.vy || 0) > 25;
         const bob = isMoving ? Math.sin(this.walkBobPhase || 0) : 0;
         const bobX = (isMoving ? Math.cos(this.walkBobPhase || 0) : 0) * 0.018;
@@ -5764,7 +5789,7 @@ class Renderer3D {
         this.weaponSwitchBlend += (targetSwitch - this.weaponSwitchBlend) * Math.min(1, dt * 11);
         const sw = this.weaponSwitchBlend;
         const switchDip = Math.sin(sw * Math.PI) * 0.35;
-        rig.rifleGroup.visible = sw < 0.55;
+        rig.rifleGroup.visible = (sw < 0.55) && p.hasPrimary !== false;
         rig.pistolGroup.visible = sw >= 0.45;
 
         // 4) Shooting Recoil & Muzzle Flash

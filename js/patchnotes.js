@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.8',
+        date: '2026-11-16',
+        title: 'Chassis-Specific Weapon Loadouts',
+        changes: [
+            'STRIDER-LX now dual-wields 37mm pistols with a combat knife and no battle rifle; VANGUARD-01 keeps the standard rifle, pistol and knife loadout.',
+            'BASTION-IX now carries an autocannon plus a linked rotary minigun and has no knife or pistol.',
+            'Weapon switching, HUD labels and 3D cockpit weapon visuals now follow the selected chassis instead of showing the same rifle on every frame.'
+        ]
+    },
+    {
         version: 'v0.9.7',
         date: '2026-11-16',
         title: 'Industrial Mech Surfaces & Cinematic Hangar',

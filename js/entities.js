@@ -200,6 +200,20 @@ class Player {
         this.hardpoints.coreVent.visualTier = Math.min(6, coreMaxLvl);
     }
 
+    getChassisLoadout() {
+        const cfg = window.GAME_CONFIG || {};
+        const chassis = cfg.CHASSIS || {};
+        const hs = window.hangarSystem;
+        const id = (hs && typeof hs.getSelectedChassis === 'function') ? hs.getSelectedChassis() : 'medium';
+        const w = (chassis[id] || chassis.medium || {}).weapons || {};
+        return {
+            primary: Object.prototype.hasOwnProperty.call(w, 'primary') ? w.primary : 'autocannon',
+            secondary: w.secondary || 'pistol37',
+            dualPistols: !!w.dualPistols,
+            melee: Object.prototype.hasOwnProperty.call(w, 'melee') ? w.melee : 'cleaver'
+        };
+    }
+
     applyMetaUpgrades() {
         const meta = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
         if (meta.maxHp) {
@@ -240,6 +254,19 @@ class Player {
             this.strideCadence = meta.chassisStrideCadence || this.strideCadence;
             this.waistLimitRad = meta.chassisWaistLimitRad || this.waistLimitRad;
         }
+
+        // Chassis-specific weapon loadout (light: dual pistols + knife,
+        // medium: rifle + pistol + knife, heavy: autocannon + minigun, no knife).
+        const loadout = this.getChassisLoadout();
+        this.chassisLoadout = loadout;
+        this.hasPrimary = !!loadout.primary;
+        this.hasPistol = loadout.secondary === 'pistol37';
+        this.hasMinigun = loadout.secondary === 'minigun';
+        this.hasMelee = !!loadout.melee;
+        this.dualPistols = !!loadout.dualPistols;
+        if (!this.hasPrimary) this.activeHandheld = 'pistol37';
+        else if (this.hasMinigun && this.activeHandheld === 'pistol37') this.activeHandheld = 'rifle';
+        if (!this.hasMelee) this.secondaryMode = this.hasMinigun ? 'minigun' : 'cleaver';
     }
 
     addPassive(passiveId) {
@@ -573,12 +600,17 @@ class Player {
     }
 
     switchSecondary(mode) {
+        // Heavy chassis has no knife: cycle autocannon / minigun instead.
+        if (!this.hasMelee) {
+            const next = this.activeHandheld === 'minigun' ? 'rifle' : 'minigun';
+            return this.switchHandheld(next);
+        }
         const next = (mode ==='cleaver'|| mode ==='pistol37')
             ? mode
             : (this.secondaryMode ==='cleaver'?'pistol37':'cleaver');
         if (this.secondaryMode === next) return false;
         this.secondaryMode = next;
-        this.activeHandheld = next ==='pistol37'?'pistol37':'rifle';
+        this.activeHandheld = next ==='pistol37' ? 'pistol37' : (this.hasPrimary ? 'rifle' : 'pistol37');
         if (window.soundManager && window.soundManager.playBootBeep) {
             window.soundManager.playBootBeep(next ==='pistol37'? 2 : 1);
         }
@@ -586,12 +618,16 @@ class Player {
     }
 
     switchHandheld(mode) {
-        const next = mode ==='pistol37'?'pistol37':'rifle';
+        const next = (mode ==='pistol37'|| mode ==='minigun') ? mode : 'rifle';
+        if ((next === 'rifle' && !this.hasPrimary) ||
+            (next === 'pistol37' && !this.hasPistol) ||
+            (next === 'minigun' && !this.hasMinigun)) return false;
         if (this.activeHandheld === next) return false;
         this.activeHandheld = next;
-        this.secondaryMode = next ==='pistol37'?'pistol37':'cleaver';
+        if (next === 'minigun') this.secondaryMode = 'minigun';
+        else this.secondaryMode = next === 'pistol37' ? 'pistol37' : (this.hasMelee ? 'cleaver' : 'minigun');
         if (window.soundManager && window.soundManager.playBootBeep) {
-            window.soundManager.playBootBeep(next ==='pistol37'? 2 : 1);
+            window.soundManager.playBootBeep(next ==='rifle'? 1 : 2);
         }
         return true;
     }
@@ -714,6 +750,36 @@ class Player {
         if (r3d && r3d.spawnHitscanTracer3D) {
             r3d.spawnHitscanTracer3D(this.x, this.y, endX, endY, true);
         }
+
+        // STRIDER-LX dual-wield: second sidearm fires with a slight spread at reduced damage.
+        if (this.dualPistols) {
+            const offA = this.facingAngle + 0.05;
+            const dx2 = Math.cos(offA);
+            const dy2 = Math.sin(offA);
+            let ex2 = this.x + dx2 * range;
+            let ey2 = this.y + dy2 * range;
+            let nearest = null;
+            if (window.poolManager && window.poolManager.enemies) {
+                window.poolManager.enemies.forEachActive((e) => {
+                    if (!e || e.active === false || e.isBurrowed) return;
+                    const vx = e.x - this.x;
+                    const vy = e.y - this.y;
+                    const proj = vx * dx2 + vy * dy2;
+                    if (proj < 0 || proj > range) return;
+                    if (Math.abs(vx * dy2 - vy * dx2) > (e.radius || 14) + 12) return;
+                    if (!nearest || proj < nearest.dist) nearest = { enemy: e, dist: proj };
+                });
+            }
+            if (nearest) {
+                nearest.enemy.takeDamage(Math.round(baseDmg * 0.65), this, 'Ballistic');
+                ex2 = nearest.enemy.x;
+                ey2 = nearest.enemy.y;
+            }
+            if (r3d && r3d.spawnHitscanTracer3D) {
+                r3d.spawnHitscanTracer3D(this.x, this.y, ex2, ey2, true);
+            }
+        }
+
         if (this.pistolAmmo <= 0) {
             this.triggerSecondaryReload();
         }
@@ -721,6 +787,7 @@ class Player {
     }
 
     triggerClawMelee() {
+        if (!this.hasMelee) return false;
         if (this.secondaryMode ==='pistol37') {
             return this.triggerPistol37();
         }
@@ -728,6 +795,7 @@ class Player {
     }
 
     triggerKnifeMelee() {
+        if (!this.hasMelee) return false;
         if (this.clawCooldownTimer > 0 || this.carryingPayload) return false;
         const pcfg = window.GAME_CONFIG.PLAYER;
         const cleaverCfg = (window.GAME_CONFIG.SECONDARY_WEAPONS && window.GAME_CONFIG.SECONDARY_WEAPONS.cleaver) || {};
