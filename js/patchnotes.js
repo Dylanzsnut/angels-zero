@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.10',
+        date: '2026-11-16',
+        title: 'Independent Pistol Controls',
+        changes: [
+            'STRIDER-LX now has independent sidearms: hold Left Mouse to fire the left pistol and Right Mouse to fire the right pistol, with separate cooldowns.',
+            'Right Mouse remains optical ADS on VANGUARD-01 and BASTION-IX; SHIFT / V / Mouse4 stays the knife on frames that have one.',
+            'Added hand-specific muzzle flashes and brass ejection so each pistol reads as its own weapon.'
+        ]
+    },
+    {
         version: 'v0.9.9',
         date: '2026-11-16',
         title: 'Blender Mech Model In-Game, Casings & Reload',

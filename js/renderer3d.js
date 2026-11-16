@@ -3832,6 +3832,7 @@ class Renderer3D {
             new THREE.OctahedronGeometry(0.15, 0),
             new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, fog: false })
         );
+        pMuzzleFlash.name = 'PistolMuzzleFlash';
         pMuzzleFlash.position.set(0, 0.085, -0.52);
         pMuzzleFlash.visible = false;
         pistol37Group.add(pMuzzleFlash);
@@ -3887,8 +3888,10 @@ class Renderer3D {
 
         // STRIDER-LX off-hand sidearm and BASTION-IX rotary minigun visuals.
         const rightPistol37Group = pistol37Group.clone(true);
+        rightPistol37Group.name = 'RightPistol37';
         rightPistol37Group.position.set(-0.02, 0.04, -0.12);
         rightPistol37Group.visible = false;
+        const rightMuzzleFlash = rightPistol37Group.getObjectByName('PistolMuzzleFlash');
         rWrist.add(rightPistol37Group);
 
         const minigunGroup = new THREE.Group();
@@ -4017,6 +4020,7 @@ class Renderer3D {
             minigunGroup,
             pistolCylinder,
             pMuzzleFlash,
+            rightMuzzleFlash,
             lTier2Plate,
             lTier4Piston,
             payloadGroup,
@@ -4204,7 +4208,9 @@ class Renderer3D {
                 0.04
             );
             a.pistolCylinder.rotation.z = (p.pistolAmmo || 0) * (Math.PI / 3);
-            a.pMuzzleFlash.visible = pFire > 0.72;
+            const rightShot = p.lastPistolHand === 'right';
+            a.pMuzzleFlash.visible = pFire > 0.72 && !rightShot;
+            if (a.rightMuzzleFlash) a.rightMuzzleFlash.visible = pFire > 0.72 && rightShot;
         } else if (p.carryingPayload) {
             // Carrying 155mm artillery shell
             a.leftArm.position.set(

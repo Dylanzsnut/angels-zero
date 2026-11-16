@@ -18,6 +18,8 @@ class Game {
         this.currentMode ='siege'; //'siege'or'endless'
         this.isAutoAim = false; // Default: Pure Doom FPS Manual Aim (TAB toggles Smart Auto-Fire)
         this.isPrimaryFiring = false;
+        this.isLeftFiring = false;
+        this.isRightFiring = false;
         this.rerollsRemaining = 0;
 
         // Input tracking
@@ -151,10 +153,13 @@ class Game {
 
             if (e.button === 0) {
                 this.isPrimaryFiring = true;
+                this.isLeftFiring = true;
             } else if (e.button === 2) {
-                // Right mouse (Hold) = ADS Optical Zoom & Weapon Bracing
                 e.preventDefault();
-                if (this.player && this.player.setAdsActive) {
+                // STRIDER-LX: right mouse fires the off-hand pistol; everyone else gets ADS.
+                if (this.player && this.player.independentPistols) {
+                    this.isRightFiring = true;
+                } else if (this.player && this.player.setAdsActive) {
                     this.player.setAdsActive(true);
                 }
             } else if (e.button === 3) {
@@ -182,8 +187,11 @@ class Game {
         window.addEventListener('mouseup', (e) => {
             if (e.button === 0) {
                 this.isPrimaryFiring = false;
+                this.isLeftFiring = false;
             } else if (e.button === 2) {
-                if (this.player && this.player.setAdsActive) {
+                if (this.player && this.player.independentPistols) {
+                    this.isRightFiring = false;
+                } else if (this.player && this.player.setAdsActive) {
                     this.player.setAdsActive(false);
                 }
             }
@@ -221,6 +229,8 @@ class Game {
 
     releasePointerLock() {
         this.isPrimaryFiring = false;
+        this.isLeftFiring = false;
+        this.isRightFiring = false;
         if (document.pointerLockElement && document.exitPointerLock) {
             document.exitPointerLock();
         }
@@ -610,6 +620,8 @@ class Game {
         this.introDoorAudioPlayed = false;
         this.sandPlumes2D = [];
         this.isPrimaryFiring = false;
+        this.isLeftFiring = false;
+        this.isRightFiring = false;
         if (this.renderer3d && this.renderer3d.updateDropBayIntro) {
             this.renderer3d.updateDropBayIntro(true, 0);
         }

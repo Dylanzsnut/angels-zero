@@ -418,8 +418,16 @@ class WeaponSystem {
                 }
 
                 const pistolActive = (this.player && this.player.activeHandheld ==='pistol37');
-                if (pistolActive && isPrimaryFiring && this.player.triggerPistol37) {
-                    this.player.triggerPistol37();
+                const independent = !!(this.player && this.player.independentPistols);
+                const leftPistolHeld = independent
+                    ? !!(window.gameInstance && window.gameInstance.isLeftFiring)
+                    : isPrimaryFiring;
+                const rightPistolHeld = independent
+                    ? !!(window.gameInstance && window.gameInstance.isRightFiring)
+                    : false;
+                if (pistolActive && this.player.triggerPistol37) {
+                    if (leftPistolHeld) this.player.triggerPistol37('left');
+                    if (rightPistolHeld) this.player.triggerPistol37('right');
                 }
                 const triggerHeld = !pistolActive && !w.isVenting && !w.isReloading && isPrimaryFiring;
 

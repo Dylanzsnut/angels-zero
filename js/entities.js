@@ -78,6 +78,10 @@ class Player {
         this.pistolReloading = false;
         this.pistolReloadTimer = 0;
         this.pistolFireAnim = 0;
+        this.leftPistolCooldownTimer = 0;
+        this.rightPistolCooldownTimer = 0;
+        this.lastPistolHand = 'left';
+        this.independentPistols = false;
         this.cleaverSlashAnim = 0;
 
         this.clawCooldownTimer = 0;
@@ -264,6 +268,7 @@ class Player {
         this.hasMinigun = loadout.secondary === 'minigun';
         this.hasMelee = !!loadout.melee;
         this.dualPistols = !!loadout.dualPistols;
+        this.independentPistols = this.dualPistols;
         if (!this.hasPrimary) this.activeHandheld = 'pistol37';
         else if (this.hasMinigun && this.activeHandheld === 'pistol37') this.activeHandheld = 'rifle';
         if (!this.hasMelee) this.secondaryMode = this.hasMinigun ? 'minigun' : 'cleaver';
@@ -655,15 +660,29 @@ class Player {
         return true;
     }
 
-    triggerPistol37() {
-        if (this.clawCooldownTimer > 0 || this.carryingPayload || this.pistolReloading) return false;
+    triggerPistol37(hand = 'both') {
+        // Independent pistol controls on the STRIDER-LX: LMB = left, RMB = right.
+        const independent = !!this.independentPistols;
+        const activeHand = hand === 'right' ? 'right' : 'left';
+        const firesLeft = hand === 'both' || hand === 'left';
+        const firesRight = hand === 'both' || hand === 'right';
+        const cooldown = independent
+            ? (activeHand === 'left' ? this.leftPistolCooldownTimer : this.rightPistolCooldownTimer)
+            : this.clawCooldownTimer;
+        if (cooldown > 0 || this.carryingPayload || this.pistolReloading) return false;
         if (this.pistolAmmo <= 0) {
             this.triggerSecondaryReload();
             return false;
         }
         const secCfg = (window.GAME_CONFIG.SECONDARY_WEAPONS && window.GAME_CONFIG.SECONDARY_WEAPONS.pistol37) || {};
-        this.clawCooldownTimer = secCfg.cooldown || 0.36;
+        if (independent) {
+            if (activeHand === 'left') this.leftPistolCooldownTimer = secCfg.cooldown || 0.36;
+            else this.rightPistolCooldownTimer = secCfg.cooldown || 0.36;
+        } else {
+            this.clawCooldownTimer = secCfg.cooldown || 0.36;
+        }
         this.pistolFireAnim = 0.25;
+        this.lastPistolHand = activeHand;
         this.pistolAmmo = Math.max(0, this.pistolAmmo - 1);
 
         if (window.soundManager && window.soundManager.playPistol37Shot) {
@@ -683,108 +702,70 @@ class Player {
         if (r3d && r3d.triggerMuzzleLight3D) {
             r3d.triggerMuzzleLight3D(0xff8833);
         }
-        if (r3d && r3d.spawnShellCasing) {
-            r3d.spawnShellCasing(this, this.facingAngle, this.pitch || 0, 'brass_37mm');
-        }
 
         const range = secCfg.range || 950;
         const meta = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
         const baseDmg = (secCfg.damage || 135) * this.getDamageMultiplier() * (meta.pistolDamageMult || 1.0) / (meta.rifleDamageMult || 1.0);
         const pierce = secCfg.pierce || 2;
         const knockback = secCfg.knockback || 280;
-        const dirX = Math.cos(this.facingAngle);
-        const dirY = Math.sin(this.facingAngle);
-        let endX = this.x + dirX * range;
-        let endY = this.y + dirY * range;
 
-        // Check shootable canyon hazards (Volatile Fuel Drums & Coolant Tanks)
-        const gi = (typeof window !=='undefined') ? window.gameInstance : null;
-        if (gi && Array.isArray(gi.hazards)) {
-            for (const hz of gi.hazards) {
-                if (!hz || hz.detonated) continue;
-                const vx = hz.x - this.x;
-                const vy = hz.y - this.y;
-                const proj = vx * dirX + vy * dirY;
-                if (proj > 0 && proj <= range) {
-                    const perp = Math.abs(vx * dirY - vy * dirX);
-                    if (perp <= (hz.radius || 16) + 12) {
+        const fireRay = (offset, damageScale) => {
+            const angle = this.facingAngle + offset;
+            const dirX = Math.cos(angle);
+            const dirY = Math.sin(angle);
+            let endX = this.x + dirX * range;
+            let endY = this.y + dirY * range;
+            const gi = (typeof window !=='undefined') ? window.gameInstance : null;
+            if (gi && Array.isArray(gi.hazards)) {
+                for (const hz of gi.hazards) {
+                    if (!hz || hz.detonated) continue;
+                    const vx = hz.x - this.x;
+                    const vy = hz.y - this.y;
+                    const proj = vx * dirX + vy * dirY;
+                    if (proj > 0 && proj <= range && Math.abs(vx * dirY - vy * dirX) <= (hz.radius || 16) + 12) {
                         gi.detonateHazard(hz);
                         endX = hz.x;
                         endY = hz.y;
                     }
                 }
             }
-        }
-
-        if (window.poolManager && window.poolManager.enemies) {
-            const hits = [];
-            window.poolManager.enemies.forEachActive((e) => {
-                if (!e || e.active === false || e.isBurrowed) return;
-                const vx = e.x - this.x;
-                const vy = e.y - this.y;
-                const proj = vx * dirX + vy * dirY;
-                if (proj < 0 || proj > range) return;
-                const perp = Math.abs(vx * dirY - vy * dirX);
-                if (perp <= (e.radius || 14) + 12) {
-                    hits.push({ enemy: e, dist: proj });
-                }
-            });
-            hits.sort((a, b) => a.dist - b.dist);
-            let count = 0;
-            for (const h of hits) {
-                const e = h.enemy;
-                const hasWeakpoint = (e.type ==='acid_spitter'|| e.type ==='pheromone_scout'|| (e.type ==='siege_beetle'&& !!e.armorShattered));
-                const wpMult = ((this.adsBlend || 0) > 0.25 && hasWeakpoint) ? (pcfg.ADS_WEAKPOINT_MULT || 1.35) : 1.0;
-                e.takeDamage(Math.round(baseDmg * wpMult), this,'Ballistic');
-                if (wpMult > 1.0 && window.poolManager.spawnDamageNumber) {
-                    window.poolManager.spawnDamageNumber(e.x, e.y - 20,'WEAKPOINT!','#ffbb33', 14);
-                }
-                e.vx = (e.vx || 0) + dirX * knockback;
-                e.vy = (e.vy || 0) + dirY * knockback;
-                if (window.poolManager.spawnSparks) {
-                    window.poolManager.spawnSparks(e.x, e.y, 12,'#ffaa44', this.facingAngle + Math.PI);
-                }
-                endX = e.x;
-                endY = e.y;
-                count++;
-                if (count >= pierce) break;
-            }
-        }
-        if (r3d && r3d.spawnHitscanTracer3D) {
-            r3d.spawnHitscanTracer3D(this.x, this.y, endX, endY, true);
-        }
-
-        // STRIDER-LX dual-wield: second sidearm fires with a slight spread at reduced damage.
-        if (this.dualPistols) {
-            const offA = this.facingAngle + 0.05;
-            const dx2 = Math.cos(offA);
-            const dy2 = Math.sin(offA);
-            let ex2 = this.x + dx2 * range;
-            let ey2 = this.y + dy2 * range;
-            let nearest = null;
             if (window.poolManager && window.poolManager.enemies) {
+                const hits = [];
                 window.poolManager.enemies.forEachActive((e) => {
                     if (!e || e.active === false || e.isBurrowed) return;
                     const vx = e.x - this.x;
                     const vy = e.y - this.y;
-                    const proj = vx * dx2 + vy * dy2;
+                    const proj = vx * dirX + vy * dirY;
                     if (proj < 0 || proj > range) return;
-                    if (Math.abs(vx * dy2 - vy * dx2) > (e.radius || 14) + 12) return;
-                    if (!nearest || proj < nearest.dist) nearest = { enemy: e, dist: proj };
+                    if (Math.abs(vx * dirY - vy * dirX) <= (e.radius || 14) + 12) hits.push({ enemy: e, dist: proj });
                 });
+                hits.sort((a, b) => a.dist - b.dist);
+                let count = 0;
+                for (const h of hits) {
+                    const e = h.enemy;
+                    const hasWeakpoint = (e.type ==='acid_spitter'|| e.type ==='pheromone_scout'|| (e.type ==='siege_beetle'&& !!e.armorShattered));
+                    const wpMult = ((this.adsBlend || 0) > 0.25 && hasWeakpoint) ? (pcfg.ADS_WEAKPOINT_MULT || 1.35) : 1.0;
+                    e.takeDamage(Math.round(baseDmg * damageScale * wpMult), this, 'Ballistic');
+                    if (wpMult > 1.0 && window.poolManager.spawnDamageNumber) {
+                        window.poolManager.spawnDamageNumber(e.x, e.y - 20,'WEAKPOINT!','#ffbb33', 14);
+                    }
+                    e.vx = (e.vx || 0) + dirX * knockback;
+                    e.vy = (e.vy || 0) + dirY * knockback;
+                    if (window.poolManager.spawnSparks) {
+                        window.poolManager.spawnSparks(e.x, e.y, 12,'#ffaa44', angle + Math.PI);
+                    }
+                    endX = e.x;
+                    endY = e.y;
+                    count++;
+                    if (count >= pierce) break;
+                }
             }
-            if (nearest) {
-                nearest.enemy.takeDamage(Math.round(baseDmg * 0.65), this, 'Ballistic');
-                ex2 = nearest.enemy.x;
-                ey2 = nearest.enemy.y;
-            }
-            if (r3d && r3d.spawnHitscanTracer3D) {
-                r3d.spawnHitscanTracer3D(this.x, this.y, ex2, ey2, true);
-            }
-            if (r3d && r3d.spawnShellCasing) {
-                r3d.spawnShellCasing(this, offA, this.pitch || 0, 'brass_37mm');
-            }
-        }
+            if (r3d && r3d.spawnHitscanTracer3D) r3d.spawnHitscanTracer3D(this.x, this.y, endX, endY, true);
+            if (r3d && r3d.spawnShellCasing) r3d.spawnShellCasing(this, angle, this.pitch || 0, 'brass_37mm');
+        };
+
+        if (firesLeft) fireRay(-0.028, 1.0);
+        if (firesRight) fireRay(0.032, firesLeft ? 0.72 : 1.0);
 
         if (this.pistolAmmo <= 0) {
             this.triggerSecondaryReload();
@@ -1005,6 +986,8 @@ class Player {
 
         // Close-Quarters Combat & Secondary Timers
         if (this.clawCooldownTimer > 0) this.clawCooldownTimer -= dt;
+        if (this.leftPistolCooldownTimer > 0) this.leftPistolCooldownTimer -= dt;
+        if (this.rightPistolCooldownTimer > 0) this.rightPistolCooldownTimer -= dt;
         if (this.stompCooldownTimer > 0) this.stompCooldownTimer -= dt;
         if (this.missileCooldownTimer > 0) this.missileCooldownTimer = Math.max(0, this.missileCooldownTimer - dt);
         if (this.missileLocking && window.poolManager && window.poolManager.enemies) {
