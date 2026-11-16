@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.9',
+        date: '2026-11-16',
+        title: 'Blender Mech Model In-Game, Casings & Reload',
+        changes: [
+            'The detailed STRIDER-LX Blender model now loads in-game for the light chassis, including its authored walk cycle and attachable upgrade parts that appear as you unlock them.',
+            'Sidearms eject brass casings on every shot, including the off-hand dual-wield shot.',
+            'Pistol reloads now play a proper choreography: magazine drops away, a fresh mag rises, the slide racks back, and the pilot arm cocks with the motion.'
+        ]
+    },
+    {
         version: 'v0.9.8',
         date: '2026-11-16',
         title: 'Chassis-Specific Weapon Loadouts',

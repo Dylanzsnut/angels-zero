@@ -683,6 +683,9 @@ class Player {
         if (r3d && r3d.triggerMuzzleLight3D) {
             r3d.triggerMuzzleLight3D(0xff8833);
         }
+        if (r3d && r3d.spawnShellCasing) {
+            r3d.spawnShellCasing(this, this.facingAngle, this.pitch || 0, 'brass_37mm');
+        }
 
         const range = secCfg.range || 950;
         const meta = window.hangarSystem ? window.hangarSystem.getActiveBonuses() : {};
@@ -777,6 +780,9 @@ class Player {
             }
             if (r3d && r3d.spawnHitscanTracer3D) {
                 r3d.spawnHitscanTracer3D(this.x, this.y, ex2, ey2, true);
+            }
+            if (r3d && r3d.spawnShellCasing) {
+                r3d.spawnShellCasing(this, offA, this.pitch || 0, 'brass_37mm');
             }
         }
 
