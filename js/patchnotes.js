@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.27',
+        date: '2026-11-16',
+        title: 'First-Person Freeze & Gun-Aim Fix',
+        changes: [
+            'Fixed a runtime error in the shared rifle material that froze the game when switching to first person.',
+            'Added real shoulder/elbow pivot groups on the third-person mech so both gun arms raise and track camera pitch together with their weapons.'
+        ]
+    },
+    {
         version: 'v0.9.26',
         date: '2026-11-16',
         title: 'Shared Weapon Models & Gun-Arm Aiming',

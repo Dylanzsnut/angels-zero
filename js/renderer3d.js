@@ -53,7 +53,7 @@ function buildBattleRifle3D(p) {
     const tier3 = new THREE.Group();
     const tier5 = new THREE.Group();
     group.add(tier3, tier5);
-    const evolvedMat = new THREE.MeshBasicMaterial({ color: 0x44ff88 });
+    const evolvedMat = new THREE.MeshLambertMaterial({ color: 0x44ff88, emissive: 0x44ff88, emissiveIntensity: 0.8 });
     return { group, barrels, flash, flashGroup, flashMat: flashGroup.children[0].material, mag, bolt,
         barrelMat, tier3, tier5, evolvedMat, scope };
 }
@@ -5913,6 +5913,25 @@ class Renderer3D {
             att_spotlight, att_antenna, att_kneeguards, att_ammodrum, att_exhaust,
             att_reactor, att_buckler, att_bayonets, att_halo, att_crown
         );
+        // Elbow pivots: forearms and all weapon groups hang off these so they aim as one rigid unit.
+        const rElbowPivot = new THREE.Group();
+        rElbowPivot.name = 'rElbowPivot';
+        rElbowPivot.position.set(0.08, -0.62, 0.16);
+        rArm.add(rElbowPivot);
+        rElbowPivot.attach(rForearm);
+        if (rifleGroup) rElbowPivot.attach(rifleGroup);
+        if (minigunGroup) rElbowPivot.attach(minigunGroup);
+        if (offPistolGroup) rElbowPivot.attach(offPistolGroup);
+
+        const lElbowPivot = new THREE.Group();
+        lElbowPivot.name = 'lElbowPivot';
+        lElbowPivot.position.set(-0.08, -0.62, 0.16);
+        lArm.add(lElbowPivot);
+        lElbowPivot.attach(lForearm);
+        if (pistolGroup) lElbowPivot.attach(pistolGroup);
+        if (autocannonGroup) lElbowPivot.attach(autocannonGroup);
+        if (fistGroup) lElbowPivot.attach(fistGroup);
+
         upperBody.add(rArm, lArm, hardpointsGroup);
 
         // Chassis-specific high-detail geometry is constructed fresh on every rebuild.
@@ -5949,6 +5968,8 @@ class Renderer3D {
             legs,
             rArm,
             lArm,
+            rElbowPivot,
+            lElbowPivot,
             rForearm,
             lForearm,
             rifleGroup,
@@ -6219,8 +6240,15 @@ class Renderer3D {
             rig.lArm.rotation.y += 0.10;
             rig.lArm.position.z -= 0.12;
         }
-        if (rig.rForearm) rig.rForearm.rotation.x = -aimPitch * 0.32 + recoilKick * 0.35;
-        if (rig.lForearm) rig.lForearm.rotation.x = -aimPitch * 0.32;
+        // Elbow pivots finish the aiming solution; weapon groups are attached to them.
+        if (rig.rElbowPivot) {
+            rig.rElbowPivot.rotation.x = -aimPitch * 0.55 + recoilKick * 0.45;
+            rig.rElbowPivot.rotation.y = isRecon ? -0.12 : 0;
+        }
+        if (rig.lElbowPivot) {
+            rig.lElbowPivot.rotation.x = -aimPitch * 0.55;
+            rig.lElbowPivot.rotation.y = isRecon ? 0.12 : 0;
+        }
 
         // Reload choreography on the third-person arms as well.
         if (p.pistolReloading) {
