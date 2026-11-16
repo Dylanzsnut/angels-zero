@@ -991,6 +991,49 @@ const GAME_CONFIG = {
         { id: 'OMEGA-PRIME', name: 'OMEGA-PRIME', icon: 'APX', minRank: 20, cost: 150 }
     ],
 
+    // Selectable Mech Chassis Classes (medium is the baseline profile)
+    CHASSIS: {
+        light: {
+            name: 'STRIDER-LX // RECON',
+            shortName: 'STRIDER-LX',
+            role: 'RECON',
+            hpMult: 0.72,
+            shieldMult: 0.85,
+            speedMult: 1.32,
+            dashCooldownMult: 0.72,
+            strideCadence: 4.3,
+            waistLimitRad: Math.PI,
+            damageMult: 0.92,
+            cockpitAccent: '#38f2ff'
+        },
+        medium: {
+            name: 'VANGUARD-01 // BRAWLER',
+            shortName: 'VANGUARD-01',
+            role: 'BRAWLER',
+            hpMult: 1.0,
+            shieldMult: 1.0,
+            speedMult: 1.0,
+            dashCooldownMult: 1.0,
+            strideCadence: 3.4,
+            waistLimitRad: 1.75,
+            damageMult: 1.0,
+            cockpitAccent: '#ffaa33'
+        },
+        heavy: {
+            name: 'BASTION-IX // JUGGERNAUT',
+            shortName: 'BASTION-IX',
+            role: 'JUGGERNAUT',
+            hpMult: 1.65,
+            shieldMult: 1.45,
+            speedMult: 0.76,
+            dashCooldownMult: 1.35,
+            strideCadence: 2.45,
+            waistLimitRad: 1.30,
+            damageMult: 1.18,
+            cockpitAccent: '#ff3848'
+        }
+    },
+
     LOADOUT_SLOTS: {
         BASE_SLOTS: 4,
         MAX_RANK_SLOTS: 4,

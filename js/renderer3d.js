@@ -1542,13 +1542,26 @@ class Renderer3D {
         this.cockpitRollVel = (this.cockpitRollVel || 0) + vRoll;
     }
 
+    // Chassis mass scales how heavily the cockpit heaves and slams with each stride.
+    getChassisCockpitScale() {
+        const hs = (typeof window !== 'undefined') ? window.hangarSystem : null;
+        let id = (hs && typeof hs.getSelectedChassis === 'function') ? hs.getSelectedChassis() : null;
+        if (!id && hs && typeof hs.getActiveBonuses === 'function') {
+            id = (hs.getActiveBonuses() || {}).chassisId;
+        }
+        if (id === 'heavy') return 1.35;
+        if (id === 'light') return 0.75;
+        return 1.0;
+    }
+
     // Beat 2 Gravity Slam Impact: drops 3D camera onto shock absorbers, lurches Conn-Pod & stamps 12s footprint
     triggerFootstepSlam(isLeftFoot, player) {
         const pcfg = (typeof window !== 'undefined' && window.GAME_CONFIG && window.GAME_CONFIG.PLAYER) || {};
+        const feel = this.getChassisCockpitScale();
         this.stepLegLeft = !!isLeftFoot;
-        this.stepJoltY = pcfg.STRIDE_SLAM_DROP || 0.24;
-        this.stepRoll = (isLeftFoot ? -1 : 1) * (pcfg.STRIDE_ROLL_RAD || 0.032);
-        this.applyCockpitSuspensionImpulse((isLeftFoot ? -1 : 1) * 38, 155, (isLeftFoot ? -1 : 1) * 0.35);
+        this.stepJoltY = (pcfg.STRIDE_SLAM_DROP || 0.24) * feel;
+        this.stepRoll = (isLeftFoot ? -1 : 1) * (pcfg.STRIDE_ROLL_RAD || 0.032) * feel;
+        this.applyCockpitSuspensionImpulse((isLeftFoot ? -1 : 1) * 38 * feel, 155 * feel, (isLeftFoot ? -1 : 1) * 0.35 * feel);
 
         if (player && typeof window !== 'undefined' && window.poolManager) {
             const legAng = player.chassisAngle !== undefined ? player.chassisAngle : player.facingAngle;
@@ -2856,8 +2869,9 @@ class Renderer3D {
         // Keep renderer stride phase synchronized with Player.update()'s Two-Beat stride physics
         this.walkBobPhase = p.gaitPhase !== undefined ? p.gaitPhase : this.walkBobPhase;
 
-        const bobY = isMoving && !p.isDashing ? Math.sin(this.walkBobPhase * 2) * 0.12 : 0;
-        const bobX = isMoving && !p.isDashing ? Math.cos(this.walkBobPhase) * 0.07 : 0;
+        const cockpitFeel = this.getChassisCockpitScale();
+        const bobY = isMoving && !p.isDashing ? Math.sin(this.walkBobPhase * 2) * 0.12 * cockpitFeel : 0;
+        const bobX = isMoving && !p.isDashing ? Math.cos(this.walkBobPhase) * 0.07 * cockpitFeel : 0;
 
         let shakeX = 0;
         let shakeY = 0;
@@ -2911,9 +2925,9 @@ class Renderer3D {
             this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 16);
             this.camera.updateProjectionMatrix();
         }
-        const finalPitch = pitch + dropPitchOffset + this.recoilPitch + (p.strideCameraPitch || 0);
+        const finalPitch = pitch + dropPitchOffset + this.recoilPitch + (p.strideCameraPitch || 0) * cockpitFeel;
         const finalYaw = yaw + this.recoilYaw;
-        const finalRoll = this.recoilRoll + this.stepRoll + (p.strideCameraRoll || 0);
+        const finalRoll = this.recoilRoll + this.stepRoll + (p.strideCameraRoll || 0) * cockpitFeel;
 
         if (this.playerMechGroup) {
             this.playerMechGroup.visible = !!this.thirdPersonMode;

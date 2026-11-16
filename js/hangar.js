@@ -6,6 +6,7 @@ class HangarSystem {
         this.data = {
             credits: 0,
             extraSlots: 0,
+            selectedChassis: 'medium',
             upgrades: {
                 hull_plating: 0,
                 thruster_tuning: 0,
@@ -69,6 +70,8 @@ class HangarSystem {
                 const defaultPurchasedBuilds = Object.assign({}, this.data.purchasedBuilds);
                 this.data = Object.assign(this.data, parsed);
                 this.data.extraSlots = parsed.extraSlots || 0;
+                const chassisCfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+                this.data.selectedChassis = chassisCfg[parsed.selectedChassis] ? parsed.selectedChassis : 'medium';
                 this.data.upgrades = Object.assign(defaultUpgrades, parsed.upgrades || {});
                 this.data.cosmetics = Object.assign(defaultCosmetics, parsed.cosmetics || {});
                 this.data.stats = Object.assign(defaultStats, parsed.stats || {});
@@ -91,6 +94,26 @@ class HangarSystem {
         } catch (e) {
             console.warn('Could not save hangar data', e);
         }
+    }
+
+    getSelectedChassis() {
+        const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+        const id = this.data.selectedChassis || 'medium';
+        return cfg[id] ? id : 'medium';
+    }
+
+    getActiveChassis() {
+        const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+        return cfg[this.getSelectedChassis()] || cfg.medium || {};
+    }
+
+    setChassis(chassisId) {
+        const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+        if (!cfg[chassisId]) return false;
+        if (this.data.selectedChassis === chassisId) return true;
+        this.data.selectedChassis = chassisId;
+        this.save();
+        return true;
     }
 
     addCredits(amt) {
@@ -398,6 +421,20 @@ class HangarSystem {
             sonarDurationBonus: 0
         };
 
+        // Selected chassis profile is a free, persistent choice layered under all upgrades.
+        const chassis = this.getActiveChassis();
+        bonuses.chassisId = this.getSelectedChassis();
+        bonuses.chassis = chassis;
+        bonuses.chassisHpMult = chassis.hpMult || 1;
+        bonuses.chassisShieldMult = chassis.shieldMult || 1;
+        bonuses.chassisSpeedMult = chassis.speedMult || 1;
+        bonuses.chassisDashCooldownMult = chassis.dashCooldownMult || 1;
+        bonuses.chassisStrideCadence = chassis.strideCadence || 3.4;
+        bonuses.chassisWaistLimitRad = chassis.waistLimitRad || 1.75;
+        bonuses.chassisDamageMult = chassis.damageMult || 1;
+        bonuses.damageMult *= bonuses.chassisDamageMult;
+        bonuses.moveSpeedMult *= bonuses.chassisSpeedMult;
+
         for (const [key, rank] of Object.entries(this.data.upgrades)) {
             const cfg = window.GAME_CONFIG.META_UPGRADES[key];
             if (cfg && rank > 0) {
@@ -430,15 +467,21 @@ class HangarSystem {
         const scale = this.getExtractionScaling();
         const p37 = (cfg.SECONDARY_WEAPONS && cfg.SECONDARY_WEAPONS.pistol37) || {};
         const clv = (cfg.SECONDARY_WEAPONS && cfg.SECONDARY_WEAPONS.cleaver) || {};
+        const chassis = this.getActiveChassis();
         return {
             opRank: this.getOperatorRank(),
+            chassisId: this.getSelectedChassis(),
+            chassisName: chassis.name || 'VANGUARD-01 // BRAWLER',
+            chassisRole: chassis.role || 'BRAWLER',
+            chassisAccent: chassis.cockpitAccent || '#ffaa33',
+            chassisDamageMult: Number((chassis.damageMult || 1).toFixed(2)),
             slotsUsed: this.getUsedLoadoutSlots(),
             slotsMax: this.getMaxLoadoutSlots(),
-            maxHp: Math.round((pcfg.BASE_HP || 120) + b.maxHp),
-            maxShield: Math.round((pcfg.BASE_SHIELD || 100) + b.maxShieldBonus),
+            maxHp: Math.round((pcfg.BASE_HP || 120) * (chassis.hpMult || 1) + b.maxHp),
+            maxShield: Math.round((pcfg.BASE_SHIELD || 100) * (chassis.shieldMult || 1) + b.maxShieldBonus),
             shieldRegen: Number(((pcfg.SHIELD_REGEN_RATE || 12) * b.shieldRegenMult).toFixed(1)),
             moveSpeed: Math.round((pcfg.BASE_SPEED || 240) * b.moveSpeedMult),
-            dashCooldown: Number(Math.max(1.0, (pcfg.DASH_COOLDOWN || 2.8) - b.dashCooldownReduction).toFixed(2)),
+            dashCooldown: Number(Math.max(1.0, (pcfg.DASH_COOLDOWN || 2.8) * (chassis.dashCooldownMult || 1) - b.dashCooldownReduction).toFixed(2)),
             rifleDmgMult: Number((b.damageMult * b.rifleDamageMult).toFixed(2)),
             rifleCooldownMult: Number(Math.max(0.55, b.rifleCooldownMult).toFixed(2)),
             heatDissipMult: Number(b.heatDissipationMult.toFixed(2)),

@@ -304,6 +304,23 @@ class Game {
                 }
             });
         }
+        const chassisBar = document.getElementById('hangarChassisBar');
+        if (chassisBar) {
+            chassisBar.addEventListener('click', (e) => {
+                const btn = (e.target && e.target.closest) ? e.target.closest('.chassis-btn') : null;
+                if (!btn || !window.hangarSystem) return;
+                if (window.hangarSystem.setChassis(btn.dataset.chassis)) {
+                    if (window.soundManager && window.soundManager.playTerminalSuccess) {
+                        window.soundManager.playTerminalSuccess();
+                    }
+                    if (this.renderer3d && this.renderer3d.syncHangarMechUpgrades) {
+                        this.renderer3d.syncHangarMechUpgrades();
+                    }
+                    this.updateHangarUI();
+                }
+            });
+        }
+
         this.hangarTab ='systems';
         const tabsBar = document.getElementById('hangarTabsBar');
         if (tabsBar) {
@@ -769,6 +786,18 @@ class Game {
             : { totalRanks: 0, totalSpent: 0, enemyScale: 1, holdoutSeconds: 20, threatLabel:'STANDARD'};
         const stats = hs.getComputedMechStats ? hs.getComputedMechStats() : null;
 
+        const chassisBar = document.getElementById('hangarChassisBar');
+        if (chassisBar) {
+            const chassisCfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
+            const activeId = hs.getSelectedChassis ? hs.getSelectedChassis() : 'medium';
+            chassisBar.innerHTML = '<span class="hangar-chassis-label">CHASSIS FRAME</span>' +
+                Object.entries(chassisCfg).map(([id, c]) => `
+                    <button class="chassis-btn ${id === activeId ?'active':''}" data-chassis="${id}" style="--chassis-accent:${c.cockpitAccent || '#00e5ff'}">
+                        <span>${c.shortName || c.name}</span><small>${c.role || ''}</small>
+                    </button>
+                `).join('');
+        }
+
         const statsPanel = document.getElementById('hangarStatsPanel');
         if (statsPanel && stats) {
             const pipsHtml = Array.from({ length: stats.slotsMax }, (_, i) =>
@@ -780,6 +809,8 @@ class Game {
                 <div class="stat-row highlight"><span>MOD SLOTS</span><b>${stats.slotsUsed} / ${stats.slotsMax}</b></div>
                 <div class="slot-pips">${pipsHtml}</div>
                 <div class="stats-subhdr">CHASSIS & MOBILITY</div>
+                <div class="stat-row highlight"><span>FRAME</span><b style="color:${stats.chassisAccent || '#ffaa33'}">${stats.chassisName || 'VANGUARD-01 // BRAWLER'}</b></div>
+                <div class="stat-row"><span>FRAME DAMAGE</span><b>x${(stats.chassisDamageMult || 1).toFixed(2)}</b></div>
                 <div class="stat-row"><span>MAX HULL HP</span><b>${stats.maxHp}</b></div>
                 <div class="stat-row"><span>MAX SHIELD</span><b>${stats.maxShield} (${stats.shieldRegen}/s)</b></div>
                 <div class="stat-row"><span>MOVE SPEED</span><b>${stats.moveSpeed} u/s</b></div>

@@ -60,6 +60,12 @@ class Player {
         this.shieldRegenTimer = 0;
         this.baseSpeed = pcfg.BASE_SPEED;
 
+        // Selectable chassis profile (medium values are the baseline)
+        this.chassisId = 'medium';
+        this.chassisSpeedMult = 1.0;
+        this.strideCadence = pcfg.STRIDE_CADENCE || 3.4;
+        this.waistLimitRad = pcfg.WAIST_LIMIT_RAD || 1.75;
+
         // Secondary Weapon System, Handheld Switching (1 / 2) & ADS Optical Zoom (RMB)
         this.activeHandheld ='rifle'; //'rifle'|'pistol37'
         this.adsActive = false;
@@ -219,6 +225,20 @@ class Player {
         }
         if (meta.stompCooldownDelta) {
             this.stompCooldownMax = Math.max(1.8, this.stompCooldownMax + meta.stompCooldownDelta);
+        }
+
+        // Free chassis profile choice from the Hangar shapes hull, shield, stride and agility.
+        const chassis = meta.chassis;
+        if (chassis) {
+            this.chassisId = meta.chassisId || this.chassisId;
+            this.maxHp = Math.round(this.maxHp * (meta.chassisHpMult || 1));
+            this.hp = this.maxHp;
+            this.maxShield = Math.round(this.maxShield * (meta.chassisShieldMult || 1));
+            this.shield = this.maxShield;
+            this.dashCooldownMax = Math.max(1.0, this.dashCooldownMax * (meta.chassisDashCooldownMult || 1));
+            this.chassisSpeedMult = meta.chassisSpeedMult || 1;
+            this.strideCadence = meta.chassisStrideCadence || this.strideCadence;
+            this.waistLimitRad = meta.chassisWaistLimitRad || this.waistLimitRad;
         }
     }
 
@@ -995,7 +1015,7 @@ class Player {
 
         // 2) Mechanical Waist Twist Limit (85 degrees = 1.4835 rad)
         let waistDiff = Math.atan2(Math.sin(this.facingAngle - this.chassisAngle), Math.cos(this.facingAngle - this.chassisAngle));
-        const waistLimit = window.GAME_CONFIG.PLAYER.WAIST_LIMIT_RAD || 1.4835;
+        const waistLimit = this.waistLimitRad || window.GAME_CONFIG.PLAYER.WAIST_LIMIT_RAD || 1.4835;
         if (Math.abs(waistDiff) > waistLimit) {
             // Turret ring forcibly drags walking chassis legs
             this.chassisAngle = this.facingAngle - Math.sign(waistDiff) * waistLimit;
@@ -1026,7 +1046,7 @@ class Player {
         // Rhythmic Two-Beat Pacific Rim Hydraulic Stride Cycle (0 -> 2π)
         const isWalking = (inLen > 0.01 || curSpeedPre > 22) && !this.isDashing;
         if (isWalking) {
-            const cadence = (pcfg.STRIDE_CADENCE || 3.4) * (this.introStrideMult || 1.0);
+            const cadence = (this.strideCadence || pcfg.STRIDE_CADENCE || 3.4) * (this.introStrideMult || 1.0);
             this.gaitPhase = (this.gaitPhase + dt * cadence) % (Math.PI * 2);
 
             const halfIdx = Math.floor(this.gaitPhase / Math.PI); // 0 = Left leg, 1 = Right leg
@@ -1092,9 +1112,10 @@ class Player {
             const payloadMult = this.carryingPayload ? (pcfg.PAYLOAD_SPEED_MULT || 0.70) : 1.0;
             const speedBonus = (1 + thrustersLvl * 0.08) * payloadMult;
 
-            const fwdMax = (pcfg.FORWARD_SPEED || 185) * speedBonus;
-            const revMax = (pcfg.REVERSE_SPEED || 135) * speedBonus;
-            const strafeMax = (pcfg.STRAFE_SPEED || 155) * speedBonus;
+            const chassisSpd = this.chassisSpeedMult || 1;
+            const fwdMax = (pcfg.FORWARD_SPEED || 185) * speedBonus * chassisSpd;
+            const revMax = (pcfg.REVERSE_SPEED || 135) * speedBonus * chassisSpd;
+            const strafeMax = (pcfg.STRAFE_SPEED || 155) * speedBonus * chassisSpd;
 
             if (inLen > 0.01) {
                 // Direction-dependent maximum speed based on torso heading

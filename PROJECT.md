@@ -39,7 +39,8 @@ Cross-module access is via globals (`window.gameInstance`, `window.soundManager`
 | Area | Implementation |
 |---|---|
 | Player movement | Two-beat hydraulic stride, separate torso/chassis yaw, waist twist limit, dash with i-frames (`entities.js`) |
-| Damage model | 100 shield + 150 hull, 12 HP/s regen after 3 s, armor-zone wear paper-doll (`Player.takeDamage`, `applyArmorZoneWear`) |
+| Damage model | 100 shield + 150 hull (VANGUARD baseline), 12 HP/s regen after 3 s, armor-zone wear paper-doll (`Player.takeDamage`, `applyArmorZoneWear`) |
+| Chassis classes | `GAME_CONFIG.CHASSIS`: light `STRIDER-LX`, medium `VANGUARD-01` (default), heavy `BASTION-IX`; selected in the Hangar, persisted in `HangarSystem`, applied in `Player.applyMetaUpgrades()` and `Renderer3D.getChassisCockpitScale()` |
 | Weapons | Hitscan rotary, 37mm sidearm, cleaver, 5 starter weapons → 5 evolved forms (`config.WEAPONS`) |
 | Melee | Cleaver slash (`triggerKnifeMelee`) and fallback claw crush (`triggerClawMelee`) |
 | Stomp | 360° radial shockwave that also unburrows Sand-Stalkers (`triggerMechStomp`) |

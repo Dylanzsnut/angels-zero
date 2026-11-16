@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.5',
+        date: '2026-11-16',
+        title: 'Selectable Mech Chassis Classes',
+        changes: [
+            'Added three persistent Hangar chassis frames: STRIDER-LX // RECON (fast, agile, full 360-degree waist twist), VANGUARD-01 // BRAWLER (baseline), and BASTION-IX // JUGGERNAUT (heavy armor, slower stride).',
+            'Chassis choice now changes hull and shield, movement and dash cooldown, stride cadence, waist twist limit and weapon damage. Cockpit heave and footfall slam scale with frame mass.',
+            'Added a CHASSIS FRAME selector bar to the Hangar with live telemetry updates. Existing saves keep the VANGUARD-01 baseline.'
+        ]
+    },
+    {
         version: 'v0.9.4',
         date: '2026-11-16',
         title: 'Intro Skip Fix, Accurate Controls & Cleaner Build',
