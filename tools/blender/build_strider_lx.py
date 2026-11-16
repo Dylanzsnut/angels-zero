@@ -239,41 +239,62 @@ for s, arm in ((-1, l_arm), (1, r_arm)):
     cyl("Arm_Piston_%s" % tag, arm, (x + s * 0.11, 0.32, 2.54), 0.042, 0.52, chrome, (0.9, 0, 0), 10)
     hose("Arm_Hose_%s" % tag, arm, [(x + s * 0.10, -0.12, 3.18), (x + s * 0.16, 0.10, 2.90), (x + s * 0.12, 0.34, 2.66)], 0.024)
 
-# Rotary cannon: receiver, rail, barrels, muzzle rings, heat shroud, drum, chute, optic
-box("Rifle_Receiver", rifle, (0.92, 1.36, 2.32), (0.28, 1.04, 0.34), frame, 0.03)
-box("Rifle_Top_Rail", rifle, (0.92, 1.42, 2.54), (0.20, 0.92, 0.09), steel, 0.012)
-box("Rifle_Barrel_Clamp", rifle, (0.92, 2.02, 2.32), (0.26, 0.15, 0.28), steel, 0.018)
-for i in range(6):
-    a = (i / 6.0) * math.pi * 2
-    bx = 0.92 + math.cos(a) * 0.085
-    bz = 2.32 + math.sin(a) * 0.085
-    cyl("Rotary_Barrel_%d" % i, rifle, (bx, 2.52, bz), 0.028, 0.92, steel, (math.pi / 2, 0, 0), 8)
-    cyl("Muzzle_Ring_%d" % i, rifle, (bx, 2.98, bz), 0.038, 0.08, frame, (math.pi / 2, 0, 0), 8)
-for i in range(12):
-    a = (i / 12.0) * math.pi * 2
-    cyl(
-        "Heat_Vent_%d" % i,
-        rifle,
-        (0.92 + math.cos(a) * 0.16, 2.16, 2.32 + math.sin(a) * 0.16),
-        0.016,
-        0.10,
-        frame,
-        (math.pi / 2, 0, 0),
-        6,
-    )
-cyl("Ammo_Drum", rifle, (1.05, 1.10, 2.32), 0.23, 0.26, hazard, (0, 0, math.pi / 2), 14)
-cyl("Ammo_Drum_Hub", rifle, (1.20, 1.10, 2.32), 0.09, 0.30, frame, (0, 0, math.pi / 2), 12)
-hose("Ammo_Feed_Chute", rifle, [(1.06, 1.22, 2.32), (1.12, 1.42, 2.22), (0.98, 1.58, 2.30)], 0.045, rubber)
-box("Rifle_Optic_Housing", rifle, (0.92, 1.52, 2.56), (0.18, 0.32, 0.13), frame, 0.012)
-box("Rifle_Optic_Lens", rifle, (0.92, 1.70, 2.56), (0.12, 0.02, 0.09), optic, 0.004)
+# Twin 37mm machine pistols: one per hand, no rifle on the STRIDER-LX.
+for s, arm in ((-1, l_arm), (1, r_arm)):
+    x = s * 0.92
+    tag = "L" if s < 0 else "R"
+    box("Pistol_Receiver_" + tag, arm, (x, 1.26, 2.30), (0.23, 0.86, 0.31), frame, 0.025)
+    box("Pistol_Slide_" + tag, arm, (x, 1.40, 2.45), (0.21, 0.98, 0.21), steel, 0.018)
+    box("Pistol_Slide_Plate_" + tag, arm, (x + s * 0.115, 1.42, 2.45), (0.025, 0.72, 0.16), panel, 0.006)
+    # Rear slide serrations
+    for i in range(7):
+        box(
+            "Slide_Serration_%s_%d" % (tag, i),
+            arm,
+            (x + s * 0.126, 1.02 + i * 0.055, 2.45),
+            (0.018, 0.02, 0.17),
+            frame,
+            0.003,
+        )
+    # Barrel, muzzle brake and bore
+    cyl("Pistol_Barrel_" + tag, arm, (x, 2.02, 2.34), 0.052, 0.74, steel, (math.pi / 2, 0, 0), 12)
+    cyl("Pistol_Muzzle_" + tag, arm, (x, 2.44, 2.34), 0.082, 0.17, frame, (math.pi / 2, 0, 0), 12, 0.012)
+    cyl("Pistol_Bore_" + tag, arm, (x, 2.53, 2.34), 0.042, 0.04, rubber, (math.pi / 2, 0, 0), 10)
+    for i in range(4):
+        a = (i / 4.0) * math.pi * 2
+        cyl(
+            "Muzzle_Port_%s_%d" % (tag, i),
+            arm,
+            (x + math.cos(a) * 0.058, 2.46, 2.34 + math.sin(a) * 0.058),
+            0.012,
+            0.09,
+            frame,
+            (math.pi / 2, 0, 0),
+            6,
+        )
+    # Underslung vents, laser/light module and optic
+    box("Pistol_UnderRail_" + tag, arm, (x, 1.88, 2.15), (0.10, 0.52, 0.08), panel, 0.008)
+    for i in range(5):
+        box("Under_Vent_%s_%d" % (tag, i), arm, (x, 1.70 + i * 0.09, 2.10), (0.07, 0.03, 0.06), frame, 0.004)
+    box("Pistol_Laser_Housing_" + tag, arm, (x, 2.02, 2.10), (0.09, 0.22, 0.09), frame, 0.008)
+    box("Pistol_Laser_Lens_" + tag, arm, (x, 2.14, 2.10), (0.05, 0.02, 0.05), optic, 0.003)
+    box("Pistol_Optic_" + tag, arm, (x, 1.30, 2.59), (0.15, 0.26, 0.11), frame, 0.01)
+    box("Pistol_Optic_Lens_" + tag, arm, (x, 1.45, 2.59), (0.10, 0.02, 0.07), optic, 0.003)
+    box("Pistol_Hazard_" + tag, arm, (x, 1.10, 2.46), (0.16, 0.04, 0.09), hazard, 0.003)
+    # Grip and ribbed magazine
+    box("Pistol_Grip_" + tag, arm, (x, 0.94, 2.18), (0.15, 0.44, 0.19), armor, 0.018, (-0.22, 0, 0))
+    box("Pistol_Magazine_" + tag, arm, (x, 0.74, 2.16), (0.17, 0.38, 0.15), hazard, 0.012)
+    for i in range(4):
+        box("Mag_Rib_%s_%d" % (tag, i), arm, (x + s * 0.09, 0.62 + i * 0.08, 2.16), (0.02, 0.03, 0.13), frame, 0.003)
+    hose("Pistol_Feed_" + tag, arm, [(x + s * 0.08, 0.70, 2.16), (x + s * 0.14, 0.94, 2.06), (x + s * 0.10, 1.18, 2.14)], 0.022)
 
-# Thermal cleaver: guard, blade, molten edge, rivets
-box("Cleaver_Handle", l_arm, (-0.92, 0.74, 2.16), (0.11, 0.40, 0.13), frame, 0.014)
-box("Cleaver_Guard", l_arm, (-0.92, 0.92, 2.16), (0.20, 0.06, 0.20), steel, 0.012)
-box("Cleaver_Blade", l_arm, (-0.92, 1.22, 2.16), (0.065, 0.76, 0.20), steel, 0.01)
-box("Cleaver_Glowing_Edge", l_arm, (-0.92, 1.26, 2.27), (0.035, 0.74, 0.05), optic, 0.004)
+# Compact combat knife mounted on the left forearm (kept alongside the pistols)
+box("Cleaver_Handle", l_arm, (-1.06, 0.52, 2.62), (0.09, 0.34, 0.11), frame, 0.012)
+box("Cleaver_Guard", l_arm, (-1.06, 0.70, 2.62), (0.16, 0.05, 0.16), steel, 0.01)
+box("Cleaver_Blade", l_arm, (-1.06, 1.00, 2.62), (0.05, 0.62, 0.16), steel, 0.008)
+box("Cleaver_Glowing_Edge", l_arm, (-1.06, 1.04, 2.71), (0.028, 0.60, 0.04), optic, 0.003)
 for i in range(3):
-    cyl("Cleaver_Rivet_%d" % i, l_arm, (-0.92, 0.72 + i * 0.09, 2.24), 0.016, 0.018, chrome, (math.pi / 2, 0, 0), 8)
+    cyl("Cleaver_Rivet_%d" % i, l_arm, (-1.06, 0.50 + i * 0.08, 2.69), 0.014, 0.016, chrome, (math.pi / 2, 0, 0), 8)
 
 # ---------------------------------------------------------------------------
 # Reverse-joint digitigrade legs
@@ -325,6 +346,39 @@ for s in (-1, 1):
     cyl("Vector_Core_%s" % s, upper, (s * 0.38, -1.04, 2.92), 0.10, 0.08, optic, (math.pi / 2, 0, 0), 14)
     box("Vector_Hazard_%s" % s, upper, (s * 0.38, -0.66, 3.20), (0.22, 0.03, 0.08), hazard, 0.004)
     box("Vector_Fin_%s" % s, upper, (s * 0.56, -0.70, 2.92), (0.035, 0.34, 0.30), panel, 0.008)
+
+# ---------------------------------------------------------------------------
+# Final mechanical detail pass: radiators, cabling, stencils and fasteners
+# ---------------------------------------------------------------------------
+# Backpack radiator stack and power conduits
+for i in range(6):
+    box("Back_Radiator_%d" % i, upper, (0, -0.62, 2.62 + i * 0.12), (0.52, 0.06, 0.055), panel if i % 2 else steel, 0.008)
+for s in (-1, 1):
+    hose("Back_Conduit_%s" % s, upper, [(s * 0.28, -0.58, 2.60), (s * 0.52, -0.42, 2.96), (s * 0.70, -0.10, 3.18)], 0.018)
+    box("Back_Status_%s" % s, upper, (s * 0.32, -0.70, 3.34), (0.07, 0.02, 0.04), optic, 0.003)
+
+# Shoulder hinge rings, pins and status lamps
+for s, arm in ((-1, l_arm), (1, r_arm)):
+    x = s * 0.92
+    tag = "L" if s < 0 else "R"
+    cyl("Shoulder_Hinge_%s" % tag, arm, (x, 0.02, 3.30), 0.26, 0.16, frame, (0, math.pi / 2, 0), 14)
+    cyl("Shoulder_Hinge_Pin_%s" % tag, arm, (x + s * 0.14, 0.02, 3.30), 0.055, 0.22, chrome, (0, math.pi / 2, 0), 12)
+    box("Shoulder_Lamp_%s" % tag, arm, (x, 0.46, 3.46), (0.05, 0.025, 0.05), optic, 0.003)
+    for i in range(4):
+        cyl("Pauldron_Bolt_%s_%d" % (tag, i), arm, (x + s * 0.18, 0.30, 3.16 + i * 0.11), 0.018, 0.018, chrome, (math.pi / 2, 0, 0), 8)
+
+# Thigh actuators, hazard stencils and greave fasteners
+for s, label in ((-1, "L"), (1, "R")):
+    x = s * 0.50
+    hip_obj = bpy.data.objects["legs.%s.hip" % label]
+    shin_obj = bpy.data.objects["legs.%s.shin" % label]
+    cyl("Thigh_Actuator_" + label, hip_obj, (x + s * 0.16, 0.02, 1.62), 0.055, 0.56, frame, (0.18, 0, 0), 10)
+    cyl("Thigh_Actuator_Rod_" + label, hip_obj, (x + s * 0.16, 0.04, 1.34), 0.030, 0.42, chrome, (0.18, 0, 0), 8)
+    box("Thigh_Stencil_" + label, hip_obj, (x, 0.43, 1.44), (0.20, 0.025, 0.12), hazard, 0.003)
+    box("Shin_Stencil_" + label, shin_obj, (x, -0.56, 0.62), (0.16, 0.025, 0.10), hazard, 0.003)
+    for i in range(4):
+        cyl("Greave_Bolt_%s_%d" % (label, i), shin_obj, (x, -0.61, 0.58 + i * 0.13), 0.016, 0.016, chrome, (math.pi / 2, 0, 0), 8)
+    box("Knee_Lamp_" + label, shin_obj, (x, 0.22, 1.28), (0.04, 0.02, 0.04), optic, 0.003)
 
 # ---------------------------------------------------------------------------
 # Studio lighting / camera

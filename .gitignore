@@ -1,6 +1,7 @@
 .edge_tmp2/
 __pycache__/
 *.pyc
+*.blend1
 *.rar
 assets/
 screenshot*.png
