@@ -4593,6 +4593,84 @@ class Renderer3D {
         this.renderer.render(this.scene, this.camera);
     }
 
+    // Reusable offscreen-canvas PBR maps: recessed seams, rivets, louvers, wear,
+    // plus hazard chevrons and stencil decals for armor and weapon housings.
+    createMechSurfaceTextures() {
+        if (this._mechSurfaceTextures) return this._mechSurfaceTextures;
+        const make = (draw) => {
+            const c = document.createElement('canvas');
+            c.width = 256; c.height = 256;
+            const g = c.getContext('2d');
+            draw(g, 256);
+            const t = new THREE.CanvasTexture(c);
+            t.wrapS = THREE.RepeatWrapping;
+            t.wrapT = THREE.RepeatWrapping;
+            t.anisotropy = 2;
+            return t;
+        };
+        const bump = make((g, s) => {
+            g.fillStyle = '#8c8c8c';
+            g.fillRect(0, 0, s, s);
+            g.strokeStyle = '#333333';
+            g.lineWidth = 4;
+            g.strokeRect(6, 6, s - 12, s - 12);
+            g.lineWidth = 3;
+            g.strokeRect(16, 16, s * 0.46, s * 0.42);
+            g.strokeRect(s * 0.54, 16, s * 0.32, s * 0.42);
+            g.strokeRect(16, s * 0.62, s - 32, s * 0.26);
+            g.fillStyle = '#e6e6e6';
+            for (const x of [10, s - 14]) {
+                for (const y of [10, 54, 150, s - 14]) {
+                    g.beginPath(); g.arc(x, y, 2.6, 0, Math.PI * 2); g.fill();
+                }
+            }
+            g.fillStyle = '#4a4a4a';
+            for (let i = 0; i < 9; i++) g.fillRect(24 + i * 22, s * 0.68, 14, 5);
+            g.strokeStyle = 'rgba(240,240,240,0.75)';
+            g.lineWidth = 1;
+            for (let i = 0; i < 26; i++) {
+                const x = (i * 97) % s, y = (i * 61) % s;
+                g.beginPath(); g.moveTo(x, y); g.lineTo(x + 9 + (i % 5), y + 1); g.stroke();
+            }
+        });
+        const roughness = make((g, s) => {
+            g.fillStyle = '#a8a8a8';
+            g.fillRect(0, 0, s, s);
+            g.fillStyle = '#5a5a5a';
+            g.fillRect(0, s * 0.62, s, s * 0.28);
+            g.fillStyle = '#d0d0d0';
+            for (let i = 0; i < 9; i++) g.fillRect(24 + i * 22, s * 0.68, 14, 5);
+            g.strokeStyle = '#606060'; g.lineWidth = 3;
+            g.strokeRect(16, 16, s * 0.46, s * 0.42);
+            g.strokeRect(s * 0.54, 16, s * 0.32, s * 0.42);
+            for (let i = 0; i < 320; i++) {
+                const x = (i * 73) % s, y = (i * 41) % s;
+                g.fillStyle = i % 2 ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.14)';
+                g.fillRect(x, y, 3, 2);
+            }
+        });
+        const hazard = make((g, s) => {
+            g.fillStyle = '#141618';
+            g.fillRect(0, 0, s, s);
+            g.fillStyle = '#d8a12a';
+            for (let x = -s; x < s * 2; x += 42) {
+                g.beginPath();
+                g.moveTo(x, 0); g.lineTo(x + 20, 0);
+                g.lineTo(x + 20 + s, s); g.lineTo(x + s, s);
+                g.closePath(); g.fill();
+            }
+            g.fillStyle = 'rgba(8,10,12,0.78)';
+            g.fillRect(8, s * 0.42, s - 16, 58);
+            g.font = 'bold 24px monospace';
+            g.fillStyle = '#e8f4ff';
+            g.fillText('DANGER // EXHAUST', 14, s * 0.42 + 26);
+            g.font = 'bold 18px monospace';
+            g.fillText('01  UNSC-OP', 14, s * 0.42 + 50);
+        });
+        this._mechSurfaceTextures = { bump, roughness, hazard };
+        return this._mechSurfaceTextures;
+    }
+
     // Resolve the active chassis profile for procedural mech construction.
     getChassisProfile() {
         const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.CHASSIS) || {};
@@ -4628,7 +4706,23 @@ class Renderer3D {
         const mAccent = mats.mAccent;
         const mHydraulic = mats.mHydraulic;
         const mPanel = mats.mPanel;
+        const mHazard = mats.mHazard;
         const uy = -2.2; // upperBody local space
+
+        // Hazard chevrons and stencil decals on pauldrons, knee shields and reactor hatches.
+        for (const arm of [arms.rArm, arms.lArm]) {
+            const pauldronDecal = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.16), mHazard);
+            pauldronDecal.position.set(0, 0.08, 0.43);
+            arm.add(pauldronDecal);
+        }
+        for (const side of ['L', 'R']) {
+            const kneeDecal = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.12), mHazard);
+            kneeDecal.position.set(0, 0.08, 0.39);
+            legs[side].shin.add(kneeDecal);
+        }
+        const reactorHatch = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), mHazard);
+        reactorHatch.position.set(0, 0.72, -0.52);
+        upperBody.add(reactorHatch);
 
         // Shared recessed panel-line trim and glowing reactor vents on every frame.
         for (const sx of [-1, 1]) {
@@ -4787,6 +4881,19 @@ class Renderer3D {
         this.syncHangarMechUpgrades();
     }
 
+    _makeContactShadowTexture() {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const g = c.getContext('2d');
+        const grad = g.createRadialGradient(64, 64, 6, 64, 64, 62);
+        grad.addColorStop(0, 'rgba(0,0,0,0.88)');
+        grad.addColorStop(0.55, 'rgba(0,0,0,0.45)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 128, 128);
+        return new THREE.CanvasTexture(c);
+    }
+
     _positionHangarCamera(profile) {
         if (!this.hangarCamera) return;
         // Wider siege frames need more standoff so the full mech stays on the turntable.
@@ -4794,6 +4901,10 @@ class Renderer3D {
         const height = profile.id === 'heavy' ? 2.75 : 2.35;
         this.hangarCamera.position.set(1.15, height, distance);
         this.hangarCamera.lookAt(1.05, 1.9, 0);
+        if (this.hangarContactShadow) {
+            const s = profile.id === 'heavy' ? 4.2 : profile.id === 'light' ? 2.6 : 3.3;
+            this.hangarContactShadow.scale.set(s / 3.2, s / 3.2, 1);
+        }
     }
 
     buildHangarMech3D() {
@@ -4806,16 +4917,17 @@ class Renderer3D {
         // Offset camera right so the mech sits cleanly in the center gap between Telemetry & Hangar UI
         this._positionHangarCamera(this.getChassisProfile());
 
-        const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.95);
-        const keyLight = new THREE.DirectionalLight(0xffe4b8, 1.45);
-        keyLight.position.set(4.5, 8, 5.5);
-        const fillLight = new THREE.DirectionalLight(0xcce7ff, 0.9);
-        fillLight.position.set(0, 3.2, 6.5);
-        const rimLight = new THREE.DirectionalLight(0x38f2ff, 1.0);
-        rimLight.position.set(-5.5, 4.5, -4.5);
-        const underLight = new THREE.PointLight(0x00e5ff, 0.9, 9);
-        underLight.position.set(0, 0.4, 0.5);
-        this.hangarScene.add(hemi, keyLight, fillLight, rimLight, underLight);
+        // Three-point cinematic rig: cool overhead key, warm rear rim, cyan back rim + floor bounce.
+        const hemi = new THREE.HemisphereLight(0x93b4d8, 0x111820, 0.55);
+        const keyLight = new THREE.DirectionalLight(0xbcd8ff, 1.75);
+        keyLight.position.set(4.5, 8.5, 5.5);
+        const rimLight = new THREE.DirectionalLight(0xff9838, 2.15);
+        rimLight.position.set(-4.5, 5, -6);
+        const backRim = new THREE.DirectionalLight(0x38f2ff, 1.35);
+        backRim.position.set(5, 3.5, -5.5);
+        const floorBounce = new THREE.PointLight(0x00e5ff, 1.4, 10);
+        floorBounce.position.set(0, 0.25, 0.6);
+        this.hangarScene.add(hemi, keyLight, rimLight, backRim, floorBounce);
 
         // Turntable Orbital Bay Platform
         const pad = new THREE.Mesh(
@@ -4836,6 +4948,33 @@ class Renderer3D {
         padInnerRing.rotation.x = -Math.PI / 2;
         padInnerRing.position.set(0, 0.02, 0);
         this.hangarScene.add(pad, padRing, padInnerRing);
+
+        // Soft grounded contact shadow beneath the mech's feet.
+        const contactShadow = new THREE.Mesh(
+            new THREE.PlaneGeometry(3.2, 3.2),
+            new THREE.MeshBasicMaterial({ map: this._makeContactShadowTexture(), transparent: true, opacity: 0.82, depthWrite: false })
+        );
+        contactShadow.rotation.x = -Math.PI / 2;
+        contactShadow.position.set(0, 0.035, 0);
+        this.hangarScene.add(contactShadow);
+        this.hangarContactShadow = contactShadow;
+
+        // Slowly rising hangar steam / dust motes for depth and weight.
+        const motePositions = new Float32Array(70 * 3);
+        for (let i = 0; i < 70; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 0.5 + Math.random() * 2.6;
+            motePositions[i * 3] = Math.cos(a) * r;
+            motePositions[i * 3 + 1] = Math.random() * 4.2;
+            motePositions[i * 3 + 2] = Math.sin(a) * r;
+        }
+        const moteGeo = new THREE.BufferGeometry();
+        moteGeo.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
+        this.hangarMotes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+            color: 0xa8dcff, size: 0.045, transparent: true, opacity: 0.42, depthWrite: false
+        }));
+        this.hangarScene.add(this.hangarMotes);
+        this._lastHangarTime = 0;
 
         const rig = this._createProceduralMechRig();
         this.hangarScene.add(rig.root);
@@ -4901,11 +5040,17 @@ class Renderer3D {
         const steelTex = makeArmorTex('#5a5e5c', false);
 
         // Layered industrial PBR: polished armor over dark gunmetal joints and hydraulics.
-        const mOlive = new THREE.MeshStandardMaterial({ color: 0x7c785c, map: armorTex, metalness: 0.72, roughness: 0.34 });
-        const mSteel = new THREE.MeshStandardMaterial({ color: 0x4c5256, map: steelTex, metalness: 0.78, roughness: 0.30 });
+        const tex = this.createMechSurfaceTextures();
+        const mOlive = new THREE.MeshStandardMaterial({ color: 0x7c785c, map: armorTex, bumpMap: tex.bump, bumpScale: 0.028, roughnessMap: tex.roughness, metalness: 0.72, roughness: 0.34 });
+        const mSteel = new THREE.MeshStandardMaterial({ color: 0x4c5256, map: steelTex, bumpMap: tex.bump, bumpScale: 0.022, roughnessMap: tex.roughness, metalness: 0.78, roughness: 0.30 });
         const mDark = new THREE.MeshStandardMaterial({ color: 0x1b1d1f, metalness: 0.68, roughness: 0.38 });
-        const mPanel = new THREE.MeshStandardMaterial({ color: 0x2e343a, metalness: 0.74, roughness: 0.36 });
+        const mPanel = new THREE.MeshStandardMaterial({ color: 0x2e343a, bumpMap: tex.bump, bumpScale: 0.02, roughnessMap: tex.roughness, metalness: 0.74, roughness: 0.36 });
         const mHydraulic = new THREE.MeshStandardMaterial({ color: 0x121518, metalness: 0.8, roughness: 0.28 });
+        const mFrame = new THREE.MeshStandardMaterial({ color: 0x20262b, metalness: 0.85, roughness: 0.35 });
+        const mChrome = new THREE.MeshStandardMaterial({ color: 0xc8d4dd, metalness: 0.92, roughness: 0.15 });
+        const mHazard = new THREE.MeshStandardMaterial({ map: tex.hazard, bumpMap: tex.bump, bumpScale: 0.02, metalness: 0.7, roughness: 0.36 });
+        const mOptic = new THREE.MeshBasicMaterial({ color: 0x66f7ff });
+        const mEdgeGlow = new THREE.MeshBasicMaterial({ color: 0xff5a18 });
         const mAccent = new THREE.MeshBasicMaterial({ color: new THREE.Color(profile.cockpitAccent || '#ffaa33') });
         const mVisor = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
         const mGlass = new THREE.MeshStandardMaterial({ color: 0x12161c, emissive: 0x1c2833, emissiveIntensity: 0.35, metalness: 0.9, roughness: 0.14 });
@@ -4977,6 +5122,30 @@ class Renderer3D {
             mech.add(hip);
             if (sx < 0) legs.L = { hip, shin: shinPivot, foot: footPivot };
             else legs.R = { hip, shin: shinPivot, foot: footPivot };
+        }
+
+        // Exposed gunmetal inner-skeleton joints and chrome actuator rods.
+        const hydraulics = {};
+        for (const sx of [-1, 1]) {
+            const hipBall = new THREE.Mesh(new THREE.SphereGeometry(0.19, 10, 8), mFrame);
+            hipBall.position.set(sx * dims.legSpread, 1.94, 0);
+            const thighBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.48, 8), mFrame);
+            thighBarrel.position.set(sx * 0.08, 1.55, -0.12);
+            thighBarrel.rotation.x = 0.18;
+            const thighRod = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.44, 8), mChrome);
+            thighRod.position.set(sx * 0.08, 1.24, -0.06);
+            thighRod.rotation.x = 0.18;
+            const kneeBall = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mFrame);
+            kneeBall.position.set(sx * dims.legSpread, 1.18, 0);
+            const shinBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), mFrame);
+            shinBarrel.position.set(sx * dims.legSpread, 0.86, 0.16);
+            const shinRod = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.4, 8), mChrome);
+            shinRod.position.set(sx * dims.legSpread, 0.56, 0.13);
+            const ankleBall = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), mFrame);
+            ankleBall.position.set(sx * dims.legSpread, 0.34, 0);
+            mech.add(hipBall, thighBarrel, thighRod, kneeBall, shinBarrel, shinRod, ankleBall);
+            if (sx < 0) hydraulics.L = { thighRod, shinRod };
+            else hydraulics.R = { thighRod, shinRod };
         }
 
         // Waist-Pivoted Pelvis & Faceted Wrap-Around Windshield Cockpit Hull
@@ -5061,6 +5230,32 @@ class Renderer3D {
             backpack, dashFlames, headGroup
         );
         mech.add(upperBody);
+
+        // Pulsing reactor chest core plus recessed calf thruster bells, emissive cores and dash flames.
+        const reactorCore = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.07, 14), mAccent);
+        reactorCore.rotation.x = Math.PI / 2;
+        reactorCore.position.set(0, 0.74, 0.84);
+        upperBody.add(reactorCore);
+        const thrusterCores = [];
+        const thrusterFlames = [];
+        for (const sx of [-1, 1]) {
+            const bell = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.3, 10), mFrame));
+            bell.rotation.x = Math.PI / 2;
+            bell.position.set(sx * 0.46, 0.95, -0.52);
+            const core = new THREE.Mesh(new THREE.CircleGeometry(0.11, 12), mAccent);
+            core.position.set(sx * 0.46, 0.95, -0.68);
+            core.rotation.y = Math.PI;
+            const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.62, 8), mAccent);
+            flame.rotation.x = Math.PI / 2;
+            flame.position.set(sx * 0.46, 0.95, -1.0);
+            flame.visible = false;
+            mech.add(bell, core, flame);
+            thrusterCores.push(core);
+            thrusterFlames.push(flame);
+        }
+        const mechThrusterLight = new THREE.PointLight(0x38f2ff, 0, 5);
+        mechThrusterLight.position.set(0, 0.95, -0.9);
+        mech.add(mechThrusterLight);
 
         // Helper for curved hydraulic hoses
         const addHydraulicCable = (parent, p0, p1, p2) => {
@@ -5178,6 +5373,43 @@ class Renderer3D {
         plasmaCleaver.position.set(0.02, -0.64, 0.72);
         plasmaCleaver.rotation.y = 0.48;
         lArm.add(plasmaCleaver);
+
+        // Glowing optic, perforated heat shroud, ammo feed chute and molten blade edge.
+        const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.26, 10), mFrame);
+        scope.rotation.x = Math.PI / 2;
+        scope.position.set(0, 0.34, 0.14);
+        const scopeLens = new THREE.Mesh(new THREE.CircleGeometry(0.052, 12), mOptic);
+        scopeLens.position.set(0, 0.34, 0.28);
+        rifleGroup.add(scope, scopeLens);
+        const heatShroudHoles = new THREE.Group();
+        for (let i = 0; i < 12; i++) {
+            const a = (i / 12) * Math.PI * 2;
+            const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.14, 6), mFrame);
+            hole.rotation.z = Math.PI / 2;
+            hole.position.set(Math.cos(a) * 0.17, Math.sin(a) * 0.17, 0.86);
+            heatShroudHoles.add(hole);
+        }
+        rifleGroup.add(heatShroudHoles);
+        const feedCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0.1, -0.32, 0.14),
+            new THREE.Vector3(0.18, -0.2, 0.42),
+            new THREE.Vector3(0.1, -0.08, 0.58)
+        ]);
+        rifleGroup.add(new THREE.Mesh(new THREE.TubeGeometry(feedCurve, 10, 0.045, 6, false), mFrame));
+        const cleaverGlow = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.06, 0.82), mEdgeGlow);
+        cleaverGlow.position.set(0.06, -0.64, 0.6);
+        cleaverGlow.rotation.y = 0.48;
+        lArm.add(cleaverGlow);
+
+        // Gunmetal shoulder / elbow inner-frame joints with chrome pins.
+        for (const arm of [rArm, lArm]) {
+            const shoulderBall = new THREE.Mesh(new THREE.SphereGeometry(0.23, 10, 8), mFrame);
+            const shoulderPin = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.5, 8), mChrome);
+            shoulderPin.rotation.z = Math.PI / 2;
+            const elbowBall = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), mFrame);
+            elbowBall.position.set(arm === rArm ? 0.08 : -0.08, -0.62, 0.16);
+            arm.add(shoulderBall, shoulderPin, elbowBall);
+        }
 
         // Upgradeable: Layered Hull Armor Plates
         const hullArmor = new THREE.Group();
@@ -5329,7 +5561,7 @@ class Renderer3D {
         // Chassis-specific high-detail geometry is constructed fresh on every rebuild.
         this._addChassisDetails(
             mech, upperBody, profile, dims,
-            { mOlive, mSteel, mDark, mAccent, mHydraulic, mPanel },
+            { mOlive, mSteel, mDark, mAccent, mHydraulic, mPanel, mHazard },
             legs, { rArm, lArm }, outline
         );
 
@@ -5350,6 +5582,11 @@ class Renderer3D {
             rifleFlash,
             pistolFlash: pFlash,
             dashFlames,
+            hydraulics,
+            thrusterCores,
+            thrusterFlames,
+            reactorCore,
+            mechThrusterLight,
             hardpointsGroup,
             materials: { mOlive, mVisor },
             parts: {
@@ -5403,6 +5640,7 @@ class Renderer3D {
         st.dashBlend = smooth(st.dashBlend, p.isDashing ? 1.0 : 0.0, 14.0);
         const w = st.walkBlend;
         const d = st.dashBlend;
+        const aimPitch = pitch || 0; // camera pitch drives the gun-arm elevation
 
         const phase = this.walkBobPhase || 0;
         const strideSin = Math.sin(phase);
@@ -5439,6 +5677,18 @@ class Renderer3D {
         rig.legs.R.hip.rotation.x = baseHip + st.hipR;
         rig.legs.R.shin.rotation.x = baseShin + st.shinR;
 
+        // Chrome actuator rods stroke and compress with the two-beat stride.
+        if (rig.hydraulics) {
+            for (const side of ['L', 'R']) {
+                const h = rig.hydraulics[side];
+                const knee = side === 'L' ? st.shinL : st.shinR;
+                const hip = side === 'L' ? st.hipL : st.hipR;
+                const stroke = Math.max(0.65, Math.min(1.5, 1 + Math.abs(knee) * 0.45 + Math.abs(hip) * 0.2));
+                h.thighRod.scale.y = stroke;
+                h.shinRod.scale.y = Math.max(0.65, 2 - stroke);
+            }
+        }
+
         // Hip vertical lift so swinging foot clearly lifts off the ground before planting
         rig.legs.L.hip.position.y = 1.94 + swingLiftL * 0.2 * w * (1 - d);
         rig.legs.R.hip.position.y = 1.94 + swingLiftR * 0.2 * w * (1 - d) + (stompAmt > 0.04 ? Math.sin(stompAmt * Math.PI) * 0.28 : 0);
@@ -5459,6 +5709,28 @@ class Renderer3D {
         if (rig.dashFlames.visible) {
             const flicker = (0.85 + Math.sin(timeSec * 45) * 0.25) * d;
             rig.dashFlames.scale.set(1, 1, flicker);
+        }
+
+        // Thruster cores flare with movement, erupt into flame cones on dash, and pulse a point light.
+        const moveGlow = Math.min(1, Math.hypot(p.vx || 0, p.vy || 0) / 160);
+        if (rig.thrusterCores) {
+            const pulse = 0.85 + moveGlow * 0.4 + d * 0.55 + Math.sin(timeSec * 7) * 0.06;
+            for (const core of rig.thrusterCores) core.scale.setScalar(pulse);
+        }
+        if (rig.thrusterFlames) {
+            for (const flame of rig.thrusterFlames) {
+                flame.visible = d > 0.35;
+                if (flame.visible) {
+                    flame.scale.set(1, 0.6 + d * 0.9 + Math.sin(timeSec * 42) * 0.12, 1);
+                }
+            }
+        }
+        if (rig.reactorCore) {
+            const reactorPulse = 1 + Math.sin(timeSec * 3.2) * 0.1;
+            rig.reactorCore.scale.set(reactorPulse, 1, reactorPulse);
+        }
+        if (rig.mechThrusterLight) {
+            rig.mechThrusterLight.intensity = moveGlow * 0.8 + d * 3.2;
         }
 
         // Heavy hydraulic stride bounce + idle gyro-stabilized breathing
@@ -5513,9 +5785,9 @@ class Renderer3D {
         const meleeSwingX = p.cleaverSlashAnim > 0 ? (-0.95 + meleeT * 1.65) : 0;
         const meleeSwingY = p.cleaverSlashAnim > 0 ? (0.7 - meleeT * 1.75) : 0;
 
-        const tgtRArmX = -pitch * 0.55 + sw * 0.55 + switchDip - recoilKick * 0.35 + strideCos * 0.08 * w;
+        const tgtRArmX = -aimPitch * 0.72 + sw * 0.55 + switchDip - recoilKick * 0.35 + strideCos * 0.08 * w;
         const tgtRArmY = -sw * 0.25;
-        const tgtLArmX = (p.cleaverSlashAnim > 0 ? meleeSwingX : (-pitch * 0.55 - sw * 0.72 + switchDip - recoilKick * sw * 0.45)) - strideCos * 0.08 * w;
+        const tgtLArmX = (p.cleaverSlashAnim > 0 ? meleeSwingX : (-aimPitch * 0.72 - sw * 0.72 + switchDip - recoilKick * sw * 0.45)) - strideCos * 0.08 * w;
         const tgtLArmY = p.cleaverSlashAnim > 0 ? meleeSwingY : (-sw * 0.42);
 
         st.rArmX = smooth(st.rArmX, tgtRArmX, 18);
@@ -5585,6 +5857,17 @@ class Renderer3D {
         if (!this.hangarScene) this.buildHangarMech3D();
         if (this.hangarMechGroup) {
             this.hangarMechGroup.rotation.y = timeSec * 0.45;
+        }
+        if (this.hangarMotes) {
+            const dt = Math.max(0, Math.min(0.05, timeSec - (this._lastHangarTime || timeSec)));
+            this._lastHangarTime = timeSec;
+            const pos = this.hangarMotes.geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let y = pos.getY(i) + dt * 0.22;
+                if (y > 4.2) y = 0.05;
+                pos.setY(i, y);
+            }
+            pos.needsUpdate = true;
         }
         this.renderer.render(this.hangarScene, this.hangarCamera);
     }

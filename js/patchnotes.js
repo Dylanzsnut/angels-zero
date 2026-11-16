@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.7',
+        date: '2026-11-16',
+        title: 'Industrial Mech Surfaces & Cinematic Hangar',
+        changes: [
+            'Added reusable procedural PBR surface maps for mech armor: recessed panel seams, rivets, cooling louvers, edge-wear scratches and roughness variation, plus hazard chevrons and UNSC-OP / DANGER stencils on pauldrons, knee shields and reactor hatches.',
+            'Rebuilt the inner skeleton with gunmetal ball joints and chrome hydraulic rods that stroke through the stride. Gun arms now follow camera pitch and carry glowing optics, perforated heat shrouds, ammo feed chutes and a molten cleaver edge.',
+            'Added pulsing reactor cores and calf thruster bells that flare while moving and erupt into flame cones on Thruster Dash. The Hangar now uses a cinematic three-point rig with floor bounce, a grounded contact shadow and rising steam motes.'
+        ]
+    },
+    {
         version: 'v0.9.6',
         date: '2026-11-16',
         title: 'High-Detail Chassis Mechs & Live Rig Rebuilds',
