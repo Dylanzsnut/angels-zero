@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.19',
+        date: '2026-11-16',
+        title: 'First-Person Cockpit Refinement',
+        changes: [
+            'Replaced the bulky visor hood with a slim armored brow strip and refined the canopy struts with beveled highlights and accent trim.',
+            'Added warm fastener detail along the canopy brow and a soft instrument glow behind the dashboard for better readability.'
+        ]
+    },
+    {
         version: 'v0.9.18',
         date: '2026-11-16',
         title: 'Launch Freeze Hotfix',

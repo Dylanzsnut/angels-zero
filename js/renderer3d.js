@@ -5002,31 +5002,40 @@ class Renderer3D {
 
     _buildCanopyFrame(profile) {
         const frame = new THREE.Group();
-        const steel = new THREE.MeshStandardMaterial({ color: 0x343a40, metalness: 0.78, roughness: 0.3 });
+        const steel = new THREE.MeshStandardMaterial({ color: 0x39424b, metalness: 0.8, roughness: 0.28 });
+        const bevel = new THREE.MeshStandardMaterial({ color: 0x6b7682, metalness: 0.85, roughness: 0.22 });
         const accent = new THREE.MeshBasicMaterial({ color: new THREE.Color(profile.cockpitAccent || '#ffaa33') });
         const pillar = (x, width, tilt) => {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, 0.06), steel);
+            const g = new THREE.Group();
+            const m = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, 0.05), steel);
             m.position.set(x, -0.05, -1.25);
             m.rotation.z = tilt;
-            return m;
+            const edge = new THREE.Mesh(new THREE.BoxGeometry(0.008, 1.12, 0.012), bevel);
+            edge.position.set(x + (x < 0 ? width * 0.5 : -width * 0.5), -0.05, -1.215);
+            edge.rotation.z = tilt;
+            g.add(m, edge);
+            return g;
+        };
+        const browStrip = (width, y, z, stripWidth) => {
+            const g = new THREE.Group();
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(width, 0.05, 0.07), steel);
+            bar.position.set(0, y, z);
+            const hi = new THREE.Mesh(new THREE.BoxGeometry(width * 0.96, 0.01, 0.02), bevel);
+            hi.position.set(0, y + 0.028, z + 0.03);
+            const strip = new THREE.Mesh(new THREE.BoxGeometry(stripWidth, 0.012, 0.02), accent);
+            strip.position.set(0, y - 0.031, z + 0.035);
+            g.add(bar, hi, strip);
+            return g;
         };
         if (profile.id === 'light') {
-            frame.add(pillar(-0.72, 0.035, 0.13), pillar(0.72, 0.035, -0.13));
-            const trim = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.025, 0.05), accent);
-            trim.position.set(0, 0.55, -1.25);
-            frame.add(trim);
+            frame.add(pillar(-0.74, 0.028, 0.12), pillar(0.74, 0.028, -0.12));
+            frame.add(browStrip(1.18, 0.70, -1.24, 0.92));
         } else if (profile.id === 'heavy') {
-            frame.add(pillar(-0.78, 0.15, 0.2), pillar(0.78, 0.15, -0.2));
-            const brow = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.24, 0.16), steel);
-            brow.position.set(0, 0.64, -1.24);
-            const status = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.05), accent);
-            status.position.set(0, 0.52, -1.18);
-            frame.add(brow, status);
+            frame.add(pillar(-0.78, 0.12, 0.19), pillar(0.78, 0.12, -0.19));
+            frame.add(browStrip(1.52, 0.72, -1.22, 0.48));
         } else {
-            frame.add(pillar(-0.7, 0.08, 0.16), pillar(0.7, 0.08, -0.16));
-            const hood = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.16, 0.14), steel);
-            hood.position.set(0, 0.44, -1.18);
-            frame.add(hood);
+            frame.add(pillar(-0.72, 0.055, 0.15), pillar(0.72, 0.055, -0.15));
+            frame.add(browStrip(0.92, 0.70, -1.24, 0.34));
         }
         frame.visible = false;
         return frame;

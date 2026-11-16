@@ -3153,6 +3153,19 @@ class Game {
         ctx.lineTo(w + 80, browY + 4);
         ctx.stroke();
 
+        // Warm interior trim and fastener heads along the canopy brow.
+        ctx.strokeStyle = rim;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.18, browY + 8);
+        ctx.quadraticCurveTo(w * 0.5, browY + browArch + 8, w * 0.82, browY + 8);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(216, 154, 56, 0.55)';
+        for (let i = 0; i <= 6; i++) {
+            const t = i / 6;
+            ctx.fillRect(w * (0.18 + 0.64 * t), browY + 8 + Math.sin(t * Math.PI) * 4, 3, 2);
+        }
+
         // Outer side-window mullions & low angled window sills (wide wrap-around peripheral visibility)
         const drawSideWindowFrame = (side) => {
             const s = side; // -1 left, +1 right
@@ -4013,6 +4026,13 @@ class Game {
         ctx.translate(w * 0.5 + swayX * 0.8 + podX, h * 0.5 + swayY * 0.8 + podY);
         if (podRoll !== 0) ctx.rotate(podRoll);
         ctx.translate(-w * 0.5, -h * 0.5);
+
+        // Soft instrument glow behind the console face
+        const dashGlow = ctx.createRadialGradient(w * 0.5, h - 18, 10, w * 0.5, h - 18, dw * 0.58);
+        dashGlow.addColorStop(0, 'rgba(56, 242, 255, 0.09)');
+        dashGlow.addColorStop(1, 'rgba(56, 242, 255, 0)');
+        ctx.fillStyle = dashGlow;
+        ctx.fillRect(dx - 60, h - dh - 40, dw + 120, dh + 60);
 
         // Console body (chamfered dark titanium bezel)
         ctx.fillStyle ='#111418';
