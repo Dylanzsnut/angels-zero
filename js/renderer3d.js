@@ -63,13 +63,11 @@ class Renderer3D {
         this.cockpitGroup.visible = false;
         this.camera.add(this.cockpitGroup);
         this.buildCockpitArms3D();
-        this.loadCockpitGLB();
         this.thirdPersonMode = true;
         this.weaponSwitchBlend = 0;
         this.playerMechGroup = null;
         this.playerMechRig = null;
         this.buildPlayerMech3D();
-        this.loadChassisGLB();
 
         // Muzzle PointLight attached to camera so firing flares warmly in the fog
         this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 26, 1.4);
@@ -4821,160 +4819,6 @@ class Renderer3D {
         return Object.assign({ id }, cfg[id] || cfg.medium || {});
     }
 
-    // Loads the detailed STRIDER-LX GLB once; the procedural rig remains the fallback.
-    loadChassisGLB() {
-        if (this.chassisGLBLoadStarted || !window.THREE || !THREE.GLTFLoader) return;
-        this.chassisGLBLoadStarted = true;
-        const loader = new THREE.GLTFLoader();
-        loader.load(
-            'models/strider_lx.glb',
-            (gltf) => {
-                this.chassisGLB = gltf.scene;
-                this.chassisGLAnimations = gltf.animations || [];
-                if (this.getChassisProfile().id === 'light') {
-                    if (this.playerMechGroup) this.rebuildChassisMechs();
-                    else this.buildPlayerMech3D();
-                }
-            },
-            undefined,
-            (err) => { console.warn('Mech GLB unavailable, keeping procedural rig', err); }
-        );
-    }
-
-    // Loads the detailed first-person cockpit HUD (arms, pistols, dashboard).
-    loadCockpitGLB() {
-        if (this.cockpitGLBLoadStarted || !window.THREE || !THREE.GLTFLoader) return;
-        this.cockpitGLBLoadStarted = true;
-        new THREE.GLTFLoader().load(
-            'models/strider_cockpit_hud.glb',
-            (gltf) => {
-                this.cockpitGLB = gltf.scene;
-                const arms = this._createGLTFCockpitArms();
-                if (arms) this.cockpitArms3D = arms;
-            },
-            undefined,
-            (err) => { console.warn('Cockpit HUD GLB unavailable, keeping procedural arms', err); }
-        );
-    }
-
-    _createGLTFCockpitArms() {
-        if (!this.cockpitGLB || !this.cockpitGroup) return null;
-        const scene = this.cockpitGLB.clone(true);
-        while (this.cockpitGroup.children.length) {
-            const child = this.cockpitGroup.children[0];
-            this.cockpitGroup.remove(child);
-            this._disposeObject3D(child);
-        }
-        this.cockpitGroup.add(scene);
-        const find = (name) => scene.getObjectByName(name) || new THREE.Group();
-        const dummyMat = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x000000, emissiveIntensity: 1 });
-        return {
-            isGLTF: true,
-            leftArm: find('leftArm'), leftForearm: new THREE.Group(), lWrist: find('lWrist'),
-            cleaverGroup: find('cleaverGroup'), cleaverEdgeMat: dummyMat(),
-            pistol37Group: find('pistol37Group'), pSlide: find('pSlide'), dropMag: find('dropMag'),
-            rightPistol37Group: find('rightPistol37Group'), minigunGroup: new THREE.Group(),
-            pistolCylinder: new THREE.Group(),
-            pMuzzleFlash: find('pMuzzleFlash'), rightMuzzleFlash: find('rightMuzzleFlash'),
-            lTier2Plate: new THREE.Group(), lTier4Piston: new THREE.Group(),
-            payloadGroup: new THREE.Group(),
-            rightArm: find('rightArm'), rWrist: find('rWrist'),
-            rifleGroup: new THREE.Group(), rifleMag: new THREE.Group(), rifleBolt: new THREE.Group(),
-            rifleBarrelMat: dummyMat(), rTier3Shroud: new THREE.Group(),
-            rTier5Coils: new THREE.Group(), rEvolvedCoilMat: dummyMat(),
-            muzzleFlashGroup: new THREE.Group(), flashMat: dummyMat()
-        };
-    }
-
-    _applyGLTFUpgradeVisibility(rig) {
-        if (!rig || !rig.root || !rig.isGLTF) return;
-        const hs = window.hangarSystem;
-        const data = (hs && hs.data) || {};
-        const upgrades = data.upgrades || {};
-        const mods = data.equippedMods || {};
-        const attachments = data.equippedAttachments || {};
-        const builds = Object.values(data.equippedBuilds || {});
-        rig.root.traverse((obj) => {
-            const n = obj.name || '';
-            if (n.startsWith('UPG_')) obj.visible = (upgrades[n.slice(4)] || 0) > 0;
-            else if (n.startsWith('MOD_')) obj.visible = !!mods[n.slice(4)];
-            else if (n.startsWith('ATT_')) obj.visible = !!attachments[n.slice(4)];
-            else if (n.startsWith('BUILD_')) obj.visible = builds.includes(n.slice(6));
-        });
-    }
-
-    _createGLTFMechRig() {
-        if (!this.chassisGLB) return null;
-        const scene = this.chassisGLB.clone(true);
-        const find = (name) => scene.getObjectByName(name);
-
-        // Booster plumes for the imported rig (Blender -Y maps to Three +Z / rear).
-        const flameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-        const flameCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-        const dashFlames = new THREE.Group();
-        dashFlames.visible = false;
-        const addFlame = (x, y, z, radius, length, mat) => {
-            const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, length, 10), mat);
-            cone.rotation.x = Math.PI / 2;
-            cone.position.set(x, y, z);
-            dashFlames.add(cone);
-        };
-        addFlame(-0.38, 2.92, 1.22, 0.22, 1.15, flameMat);
-        addFlame(0.38, 2.92, 1.22, 0.22, 1.15, flameMat);
-        addFlame(-0.38, 2.92, 1.05, 0.10, 0.78, flameCoreMat);
-        addFlame(0.38, 2.92, 1.05, 0.10, 0.78, flameCoreMat);
-        addFlame(-0.50, 0.62, 0.98, 0.14, 0.78, flameMat);
-        addFlame(0.50, 0.62, 0.98, 0.14, 0.78, flameMat);
-        scene.add(dashFlames);
-        const mechThrusterLight = new THREE.PointLight(0x38f2ff, 0, 7);
-        mechThrusterLight.position.set(0, 2.4, 1.1);
-        scene.add(mechThrusterLight);
-
-        const rig = {
-            root: scene,
-            chassisId: 'light',
-            isGLTF: true,
-            upperBody: find('upperBody'),
-            headGroup: find('headGroup'),
-            legs: {
-                L: { hip: find('legs.L.hip'), shin: find('legs.L.shin'), foot: find('legs.L.foot') },
-                R: { hip: find('legs.R.hip'), shin: find('legs.R.shin'), foot: find('legs.R.foot') }
-            },
-            rArm: find('rArm'),
-            lArm: find('lArm'),
-            rifleGroup: find('rifleGroup') || new THREE.Group(),
-            dashFlames,
-            thrusterCores: [], thrusterFlames: [], reactorCore: null, mechThrusterLight,
-            hydraulics: null,
-            parts: {},
-            materials: { mOlive: null, mVisor: null },
-            mixer: new THREE.AnimationMixer(scene)
-        };
-        const stubKeys = [
-            'railBarrel', 'magnumComp', 'plasmaCleaver', 'shoulderPods', 'hullArmor', 'thrusters',
-            'shieldEmitters', 'cryoVents', 'legHydraulics', 'sensorMast',
-            'att_spotlight', 'att_antenna', 'att_kneeguards', 'att_ammodrum', 'att_exhaust',
-            'att_reactor', 'att_buckler', 'att_bayonets', 'att_halo', 'att_crown'
-        ];
-        stubKeys.forEach((key) => {
-            const stub = new THREE.Group();
-            stub.visible = false;
-            scene.add(stub);
-            rig.parts[key] = stub;
-        });
-        const tracks = [];
-        (this.chassisGLAnimations || []).forEach((clip) => {
-            (clip.tracks || []).forEach((track) => tracks.push(track));
-        });
-        if (tracks.length) {
-            const walk = new THREE.AnimationClip('LX_Walk_Cycle', -1, tracks);
-            rig.walkAction = rig.mixer.clipAction(walk);
-            rig.walkAction.play();
-        }
-        this._applyGLTFUpgradeVisibility(rig);
-        return rig;
-    }
-
     _chassisBuildParams(profile) {
         if (profile.id === 'light') {
             return { torsoWidth: 0.82, legSpread: 0.50, limbScale: 0.80, pauldronScale: 0.72, headWidth: 0.78, hipBase: -0.18, shinBase: -0.42, footBase: 0.22 };
@@ -5149,10 +4993,9 @@ class Renderer3D {
             const wasVisible = this.playerMechGroup.visible;
             this.scene.remove(this.playerMechGroup);
             this._disposeObject3D(this.playerMechGroup);
-            const useGLB = (this.getChassisProfile().id === 'light' && this.chassisGLB);
-            const rig = useGLB ? this._createGLTFMechRig() : this._createProceduralMechRig();
-            rig.root.scale.setScalar(useGLB ? 1.0 : 1.18);
-            rig.root.rotation.y = useGLB ? 0 : Math.PI;
+            const rig = this._createProceduralMechRig();
+            rig.root.scale.setScalar(1.18);
+            rig.root.rotation.y = Math.PI;
             const wrapper = new THREE.Group();
             wrapper.add(rig.root);
             wrapper.visible = wasVisible;
@@ -5907,10 +5750,9 @@ class Renderer3D {
 
     buildPlayerMech3D() {
         if (!this.scene || this.playerMechGroup) return;
-        const useGLB = (this.getChassisProfile().id === 'light' && this.chassisGLB);
-        const rig = useGLB ? this._createGLTFMechRig() : this._createProceduralMechRig();
-        rig.root.scale.setScalar(useGLB ? 1.0 : 1.18); // GLB is authored at real meter scale
-        rig.root.rotation.y = useGLB ? 0 : Math.PI; // glTF forward is -Z; procedural faces +Z
+        const rig = this._createProceduralMechRig();
+        rig.root.scale.setScalar(1.18);
+        rig.root.rotation.y = Math.PI;
         const wrapper = new THREE.Group();
         wrapper.add(rig.root);
         wrapper.visible = !!this.thirdPersonMode;
@@ -5934,30 +5776,6 @@ class Renderer3D {
     updatePlayerMechAnimation(p, dt, timeSec, yaw, pitch, isMoving) {
         const rig = this.playerMechRig;
         if (!rig || !p) return;
-
-        // Imported GLB rig: play the Blender-authored walk clip and layer reload motion.
-        if (rig.isGLTF) {
-            if (rig.mixer) {
-                const speed = Math.hypot(p.vx || 0, p.vy || 0);
-                if (rig.walkAction) rig.walkAction.timeScale = 0.35 + Math.min(1.7, speed / 110);
-                rig.mixer.update(dt * (speed > 20 ? 1 : 0.3));
-            }
-            let reloadBlend = 0;
-            if (p.pistolReloading) {
-                const prog = 1 - Math.max(0, Math.min(1, (p.pistolReloadTimer || 0) / 1.0));
-                reloadBlend = Math.sin(prog * Math.PI);
-            }
-            if (rig.rArm) rig.rArm.rotation.x = (rig.rArm.rotation.x || 0) - reloadBlend * 0.35;
-            if (rig.lArm) rig.lArm.rotation.x = (rig.lArm.rotation.x || 0) - reloadBlend * 0.55;
-
-            const dashing = !!p.isDashing;
-            if (rig.dashFlames) {
-                rig.dashFlames.visible = dashing;
-                if (dashing) rig.dashFlames.scale.set(1, 1, 0.9 + Math.sin(timeSec * 48) * 0.18);
-            }
-            if (rig.mechThrusterLight) rig.mechThrusterLight.intensity = dashing ? 3.6 : 0;
-            return;
-        }
 
         const st = this.mechAnimState || (this.mechAnimState = {
             walkBlend: 0, dashBlend: 0, meleeBlend: 0,
@@ -6135,6 +5953,14 @@ class Renderer3D {
         rig.lArm.rotation.x = st.lArmX;
         rig.lArm.rotation.y = st.lArmY;
         rig.lArm.position.z = 0.08 - recoilKick * sw * 0.28;
+
+        // Reload choreography on the third-person arms as well.
+        if (p.pistolReloading) {
+            const prog = 1 - Math.max(0, Math.min(1, (p.pistolReloadTimer || 0) / 1.0));
+            const rack = Math.sin(prog * Math.PI);
+            rig.rArm.rotation.x -= rack * 0.28;
+            rig.lArm.rotation.x -= rack * 0.45;
+        }
     }
 
     _applyUpgradesToRig(parts, materials) {
@@ -6183,7 +6009,6 @@ class Renderer3D {
         this._applyUpgradesToRig(this.hangarParts, this.hangarMaterials);
         if (this.playerMechRig) {
             this._applyUpgradesToRig(this.playerMechRig.parts, this.playerMechRig.materials);
-            this._applyGLTFUpgradeVisibility(this.playerMechRig);
         }
     }
 

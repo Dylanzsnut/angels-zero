@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.14',
+        date: '2026-11-16',
+        title: 'Classic Procedural Mech Rendering',
+        changes: [
+            'Removed the external Blender/GLB models and restored the original procedural blocky mech and cockpit rendering across all chassis.',
+            'Kept the gameplay improvements: chassis-specific weapon loadouts, independent Strider pistols, casing ejection, reload animation and thruster dash VFX.'
+        ]
+    },
+    {
         version: 'v0.9.13',
         date: '2026-11-16',
         title: 'Interface Refinement',
