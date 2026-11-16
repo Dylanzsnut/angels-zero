@@ -5503,40 +5503,41 @@ class Renderer3D {
         addHydraulicCable(rArm, new THREE.Vector3(0.16, -0.18, -0.08), new THREE.Vector3(0.28, -0.54, 0.06), new THREE.Vector3(-0.04, -0.64, 0.34));
         rArm.add(rPauldron, rUpperArm, rElbow, rForearm);
 
-        // Two-Handed 6-Barrel 120mm Rotary Autocannon Held Across Chest (matches HUD/1st-Person weapon)
+        // BRAWLER: long single-barrel 120mm battle rifle held across the chest.
         const rifleGroup = new THREE.Group();
         rifleGroup.position.set(-0.72, -0.58, 0.96);
         rifleGroup.rotation.y = -1.18;
-        const rifleReceiver = outline(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 1.24), mOlive));
-        const rifleTopRail = outline(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.92), mDark));
-        rifleTopRail.position.set(0, 0.24, -0.04);
-        const rifleDrum = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.3, 12), mGold));
-        rifleDrum.rotation.z = Math.PI / 2;
-        rifleDrum.position.set(0.06, -0.32, 0.12);
-        const rotaryBarrels = new THREE.Group();
-        rotaryBarrels.position.set(0, 0.04, 1.18);
-        for (let bi = 0; bi < 6; bi++) {
-            const ang = (bi / 6) * Math.PI * 2;
-            const brl = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 1.12, 6), mSteel));
-            brl.rotation.x = Math.PI / 2;
-            brl.position.set(Math.cos(ang) * 0.085, Math.sin(ang) * 0.085, 0);
-            rotaryBarrels.add(brl);
+        const rifleReceiver = outline(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 1.30), mOlive));
+        const rifleTopRail = outline(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 1.0), mDark));
+        rifleTopRail.position.set(0, 0.24, -0.10);
+        const rifleStock = outline(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.5), mSteel));
+        rifleStock.position.set(0, -0.04, -0.86);
+        const rifleHandguard = outline(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.82), mSteel));
+        rifleHandguard.position.set(0, 0.04, 0.86);
+        for (let i = 0; i < 5; i++) {
+            const vent = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.028, 0.05), mDark);
+            vent.position.set(0, 0.16, 0.56 + i * 0.14);
+            rifleGroup.add(vent);
         }
-        const barrelClamp = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.14, 12), mDark));
-        barrelClamp.rotation.x = Math.PI / 2;
-        barrelClamp.position.set(0, 0, 0.38);
-        const barrelRearClamp = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.14, 12), mSteel));
-        barrelRearClamp.rotation.x = Math.PI / 2;
-        barrelRearClamp.position.set(0, 0, -0.44);
-        rotaryBarrels.add(barrelClamp, barrelRearClamp);
+        const rifleBarrel = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.25, 10), mSteel));
+        rifleBarrel.rotation.x = Math.PI / 2;
+        rifleBarrel.position.set(0, 0.06, 1.6);
+        const rifleMuzzle = outline(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.22, 10), mDark));
+        rifleMuzzle.rotation.x = Math.PI / 2;
+        rifleMuzzle.position.set(0, 0.06, 2.28);
+        const rifleMagazine = outline(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.42, 0.26), mGold));
+        rifleMagazine.position.set(0, -0.34, 0.2);
+        rifleMagazine.rotation.x = -0.16;
+        // Kept as a compatibility placeholder so the upgrade/animation code stays valid.
+        const rotaryBarrels = new THREE.Group();
         const rifleFlash = new THREE.Mesh(
             new THREE.SphereGeometry(0.26, 6, 5),
             new THREE.MeshBasicMaterial({ color: 0xffbb33 })
         );
         rifleFlash.scale.set(1, 1, 1.8);
-        rifleFlash.position.set(0, 0.04, 1.94);
+        rifleFlash.position.set(0, 0.06, 2.44);
         rifleFlash.visible = false;
-        rifleGroup.add(rifleReceiver, rifleTopRail, rifleDrum, rotaryBarrels, rifleFlash);
+        rifleGroup.add(rifleReceiver, rifleTopRail, rifleStock, rifleHandguard, rifleBarrel, rifleMuzzle, rifleMagazine, rifleFlash);
         rArm.add(rifleGroup);
 
         // JUGGERNAUT: oversized rotary minigun with a belt drum and shrouded barrel cluster.

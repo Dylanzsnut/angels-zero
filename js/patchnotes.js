@@ -3,6 +3,15 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.17',
+        date: '2026-11-16',
+        title: 'Brawler Battle Rifle',
+        changes: [
+            'VANGUARD-01 now carries a proper single-barrel 120mm battle rifle with a long barrel, handguard, optic and box magazine.',
+            'The rotary minigun is now exclusive to BASTION-IX, so each chassis has its own distinct heavy weapon silhouette.'
+        ]
+    },
+    {
         version: 'v0.9.16',
         date: '2026-11-16',
         title: 'True Dual-Wield Pistols',
