@@ -63,6 +63,7 @@ class Renderer3D {
         this.cockpitGroup.visible = false;
         this.camera.add(this.cockpitGroup);
         this.buildCockpitArms3D();
+        this.loadCockpitGLB();
         this.thirdPersonMode = true;
         this.weaponSwitchBlend = 0;
         this.playerMechGroup = null;
@@ -4755,6 +4756,51 @@ class Renderer3D {
             undefined,
             (err) => { console.warn('Mech GLB unavailable, keeping procedural rig', err); }
         );
+    }
+
+    // Loads the detailed first-person cockpit HUD (arms, pistols, dashboard).
+    loadCockpitGLB() {
+        if (this.cockpitGLBLoadStarted || !window.THREE || !THREE.GLTFLoader) return;
+        this.cockpitGLBLoadStarted = true;
+        new THREE.GLTFLoader().load(
+            'models/strider_cockpit_hud.glb',
+            (gltf) => {
+                this.cockpitGLB = gltf.scene;
+                const arms = this._createGLTFCockpitArms();
+                if (arms) this.cockpitArms3D = arms;
+            },
+            undefined,
+            (err) => { console.warn('Cockpit HUD GLB unavailable, keeping procedural arms', err); }
+        );
+    }
+
+    _createGLTFCockpitArms() {
+        if (!this.cockpitGLB || !this.cockpitGroup) return null;
+        const scene = this.cockpitGLB.clone(true);
+        while (this.cockpitGroup.children.length) {
+            const child = this.cockpitGroup.children[0];
+            this.cockpitGroup.remove(child);
+            this._disposeObject3D(child);
+        }
+        this.cockpitGroup.add(scene);
+        const find = (name) => scene.getObjectByName(name) || new THREE.Group();
+        const dummyMat = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x000000, emissiveIntensity: 1 });
+        return {
+            isGLTF: true,
+            leftArm: find('leftArm'), leftForearm: new THREE.Group(), lWrist: find('lWrist'),
+            cleaverGroup: find('cleaverGroup'), cleaverEdgeMat: dummyMat(),
+            pistol37Group: find('pistol37Group'), pSlide: find('pSlide'), dropMag: find('dropMag'),
+            rightPistol37Group: find('rightPistol37Group'), minigunGroup: new THREE.Group(),
+            pistolCylinder: new THREE.Group(),
+            pMuzzleFlash: find('pMuzzleFlash'), rightMuzzleFlash: find('rightMuzzleFlash'),
+            lTier2Plate: new THREE.Group(), lTier4Piston: new THREE.Group(),
+            payloadGroup: new THREE.Group(),
+            rightArm: find('rightArm'), rWrist: find('rWrist'),
+            rifleGroup: new THREE.Group(), rifleMag: new THREE.Group(), rifleBolt: new THREE.Group(),
+            rifleBarrelMat: dummyMat(), rTier3Shroud: new THREE.Group(),
+            rTier5Coils: new THREE.Group(), rEvolvedCoilMat: dummyMat(),
+            muzzleFlashGroup: new THREE.Group(), flashMat: dummyMat()
+        };
     }
 
     _applyGLTFUpgradeVisibility(rig) {

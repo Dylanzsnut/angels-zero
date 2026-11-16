@@ -3,6 +3,16 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.11',
+        date: '2026-11-16',
+        title: '3D Cockpit HUD & Detailed Arm Models',
+        changes: [
+            'Replaced the flat first-person cockpit arms with a Blender-authored 3D HUD rig: armored mech forearms, articulated gauntlet fingers, exposed pistons and hoses.',
+            'Both 37mm sidearms now have detailed slides, barrels, muzzle ports, optics, vents and ribbed magazines in the cockpit view.',
+            'Added a raised 3D dashboard console with gauges, screens, vents and hazard trim beneath the visor.'
+        ]
+    },
+    {
         version: 'v0.9.10',
         date: '2026-11-16',
         title: 'Independent Pistol Controls',
