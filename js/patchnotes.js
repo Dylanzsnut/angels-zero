@@ -1,6 +1,18 @@
 // Versioned Patch Notes displayed in the Main Menu Patch Notes modal.
-// Prepend a new entry at the top of this array before every web deployment.
+// REQUIRED FOR EVERY DEPLOYMENT: prepend a new entry at the top of this array,
+// bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
+    {
+        version: 'v0.9.4',
+        date: '2026-11-16',
+        title: 'Intro Skip Fix, Accurate Controls & Cleaner Build',
+        changes: [
+            'Fixed a crash when skipping the dropship insertion with SPACE or a click (undefined mode reference).',
+            'Corrected the Main Menu control hints and documentation to match the real bindings: wheel / 1 / 2 swap weapons, V / SHIFT / Mouse4 cleaver, F interact or Seismic Stomp, B refit terminal, C camera toggle, P / ESC pause.',
+            'Local dev server now sends no-cache headers so edits appear immediately on reload.',
+            'Removed leftover legacy 3D loaders and the unused model/texture archives from the local repository.'
+        ]
+    },
     {
         version: 'v0.9.3',
         date: '2026-11-16',

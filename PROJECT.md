@@ -79,6 +79,22 @@ node tests/test_remediation.js
 Headless VM sandbox covering thermal venting, shields, claw/stomp, stride physics,
 hardpoints, audio routing, HQ/extraction and boss encounters. Current state: all 10 groups pass.
 
+## Deployment checklist (required for every update)
+
+1. **Write a patch note first.** Prepend a new entry to `window.PATCH_NOTES` in
+   `js/patchnotes.js` with a bumped version, today's date, a title and player-facing
+   `changes`. Update the fallback Main Menu button label in `index.html`
+   (`PATCH NOTES (vX.Y.Z)`); `game.js` replaces it at runtime from `PATCH_NOTES[0]`.
+   Never deploy without a patch note.
+2. Run `node tests/test_remediation.js` and confirm all 10 groups pass.
+3. Commit and push to `origin/main`.
+4. Deploy with Wrangler (a push alone does not trigger a Pages deployment):
+   `npx.cmd wrangler pages deploy <clean-stage-dir> --project-name=orbital-perimeter --branch=main`.
+   Stage only web files (`index.html`, `style.css`, `js/`) — no screenshots, caches,
+   local server files or test harness.
+5. Verify the live site at https://orbital-perimeter.pages.dev/ shows the new patch
+   notes version and loads with no console errors.
+
 ## Housekeeping notes
 
 - `assets/` (static model/texture archives) is present locally but gitignored and referenced by
