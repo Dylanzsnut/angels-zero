@@ -3,6 +3,14 @@
 // bump the version, and update the fallback label on the Main Menu button in index.html.
 window.PATCH_NOTES = [
     {
+        version: 'v0.9.18',
+        date: '2026-11-16',
+        title: 'Launch Freeze Hotfix',
+        changes: [
+            'Fixed a runtime error that fired every frame after deploying and could prevent the game from running.'
+        ]
+    },
+    {
         version: 'v0.9.17',
         date: '2026-11-16',
         title: 'Brawler Battle Rifle',

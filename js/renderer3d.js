@@ -4371,6 +4371,12 @@ class Renderer3D {
         const lTier = (p.hardpoints && p.hardpoints.leftArm) ? (p.hardpoints.leftArm.visualTier || 1) : 1;
         a.lTier2Plate.visible = lTier >= 2;
         a.lTier4Piston.visible = lTier >= 4;
+
+        // Per-hand recoil so each sidearm visibly kicks on its own shot.
+        if (dualFire > 0) {
+            if (leftShot && a.leftArm) a.leftArm.rotation.x -= dualFire * 0.22;
+            if (rightShot && a.rightArm) a.rightArm.rotation.x -= dualFire * 0.22;
+        }
     }
 
     syncMissionObjects3D(game, timeSec) {
@@ -4748,11 +4754,6 @@ class Renderer3D {
             }
         }
 
-        // Per-hand recoil so each sidearm visibly kicks on its own shot.
-        if (dualFire > 0) {
-            if (leftShot && a.leftArm) a.leftArm.rotation.x -= dualFire * 0.22;
-            if (rightShot && a.rightArm) a.rightArm.rotation.x -= dualFire * 0.22;
-        }
     }
 
     renderMenu(timeSec) {
