@@ -1,3 +1,9 @@
+node_modules/
+.wrangler/
+.DS_Store
+reference/
+
+# existing workspace artifacts
 .edge_tmp2/
 __pycache__/
 *.pyc
@@ -5,6 +11,4 @@ __pycache__/
 *.rar
 assets/
 screenshot*.png
-.wrangler/
-.DS_Store
 Thumbs.db
