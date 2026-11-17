@@ -1035,14 +1035,16 @@ function updateCombat(dt, now) {
   for (const m of missiles) {
     if (!m.active) continue;
     if (m.enemy) {
+      const speed = m.vel.length();
       const desired = state.position.clone().sub(m.mesh.position).normalize();
-      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 1.5 * dt)).normalize();
-      m.vel.copy(current).multiplyScalar(Math.min(520, m.vel.length() + 260 * dt));
+      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 2.2 * dt)).normalize();
+      m.vel.copy(current).multiplyScalar(Math.min(520, speed + 260 * dt));
       if (m.mesh.position.distanceToSquared(state.position) < 4200) combat.missileWarning = 1.6;
     } else if (m.target && m.target.alive) {
+      const speed = m.vel.length();
       const desired = m.target.pos.clone().sub(m.mesh.position).normalize();
-      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 2.6 * dt)).normalize();
-      m.vel.copy(current).multiplyScalar(Math.min(920, m.vel.length() + 520 * dt));
+      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 3.6 * dt)).normalize();
+      m.vel.copy(current).multiplyScalar(Math.min(920, speed + 520 * dt));
     }
     m.mesh.position.addScaledVector(m.vel, dt);
     m.mesh.quaternion.setFromUnitVectors(MISSILE_NOSE, m.vel.clone().normalize());
@@ -1050,7 +1052,7 @@ function updateCombat(dt, now) {
 
     let hit = false;
     if (m.enemy) {
-      if (m.mesh.position.distanceToSquared(state.position) < 26 * 26) {
+      if (m.mesh.position.distanceToSquared(state.position) < 50 * 50) {
         spawnExplosion(m.mesh.position, 0.9);
         combat.health -= 24;
         combat.hitFlash = 0.3;
@@ -1062,7 +1064,7 @@ function updateCombat(dt, now) {
         }
         hit = true;
       }
-    } else if (m.target && m.target.alive && m.mesh.position.distanceToSquared(m.target.pos) < 24 * 24) {
+    } else if (m.target && m.target.alive && m.mesh.position.distanceToSquared(m.target.pos) < 55 * 55) {
       m.target.damage(100);
       spawnExplosion(m.mesh.position, 0.7);
       hit = true;
@@ -1883,6 +1885,10 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   sizeHUD();
 });
+
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__az = { state, combat, enemies, bullets, missiles, particles, camera, ribbonL, ribbonR, jet };
+}
 
 sizeHUD();
 animate();
