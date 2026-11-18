@@ -23,7 +23,11 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   supplied separately and not committed (>50 MB). `prep_f15.py` needs it in place.
 - `scripts/build_jet.py` — retired Step 1A procedural stealth-jet generator
   (kept for reference; running it would overwrite the F-15 GLB).
-- `index.html` — the game (single file, Three.js via CDN import map).
+- `index.html` — the game shell: scene, terrain/ocean, flight model, combat,
+  GLB loading (Three.js via CDN import map).
+- `src/vfx.js` — `createVFX`: afterburners, contrails, wing vapor, speed lines,
+  Mach cone, sea spray, instanced cloud layer + canopy mist factor.
+- `src/hud.js` — `createHUD`: 2D HUD, cockpit frame, radar / ADI / telemetry MFDs.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
 
 ## Conventions
@@ -33,7 +37,10 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `index.html` keys cockpit handling off Sketchfab material names: placeholders
   (`hud_disp`, `screens`, `GC_LOD`, `GF_LOD`, `poly_31`, `cock2.9`, `cock2.10`)
   are removed; `cock*`, `seats`, `poly_27` and canopy glass hide in cockpit view.
-- HUD green `#00ff66`, `shadowBlur` 4, overlay canvas scaled by devicePixelRatio.
+- HUD green `#00ff66`, font `'Share Tech Mono', 'Consolas', monospace`, 1.5 px
+  strokes, backing `rgba(0,20,10,0.25)`, overlay canvas scaled by devicePixelRatio.
+- Custom ShaderMaterials must include the logdepthbuf chunks (the renderer uses
+  `logarithmicDepthBuffer`). Prefer instancing over many Sprites (draw calls).
 
 ## Workflow
 1. Edit `scripts/prep_f15.py` (never hand-edit the generated GLB).

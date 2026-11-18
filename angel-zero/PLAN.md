@@ -89,10 +89,38 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - [x] Headless Edge (SwiftShader) verified: zero page console errors in chase,
       cockpit and warped-flight runs; 7 G sustained AB turn holds ~207 m/s.
 
+## VFX & HUD/cockpit polish pass (2026-11-18)
+- [x] Split into modules: `src/vfx.js` (effects) and `src/hud.js` (HUD,
+      cockpit, MFDs); `index.html` keeps scene, flight model and combat.
+- [x] Afterburners: additive shader core (cyan-white, shock diamonds with
+      `sin(time*45)` oscillation) inside an orange-amber plasma cone; both
+      stretch with throttle and pulse in afterburner; readable from the chase
+      camera (axis-aligned view blends to uniform glow).
+- [x] Soft view-facing wingtip contrail ribbons from 1.8 G (plus hard rolls),
+      over-wing condensation sprites in high-G pulls, supersonic speed streaks
+      above Mach 0.95, Prandtl-Glauert vapor cone on crossing Mach 1.0, sea
+      spray under 150 ft over water.
+- [x] Cloud layer at 2500-5500 ft as one instanced billboard mesh, sorted
+      back-to-front; flying through mists the canopy / screen and thickens fog.
+- [x] HUD: Share Tech Mono, 1.5 px strokes, phosphor glow, `rgba(0,20,10,.25)`
+      backing; spring G-inertia (+/-12 px) on HUD and canopy bow plus AB
+      micro-shake; signed ladder labels, wide horizon with N/E/S/W markers,
+      low-passed velocity marker; KTS + MACH and ALT FT + RALT tapes with VSI
+      caret; G / MAX G / AOA indexer; PULL UP below 200 ft RALT descending.
+- [x] Cockpit: carbon/metal canopy bow, rails and glare shield with rim light,
+      rivets and glass sheen; MFD bezels with OSB labels; radar with island
+      topography and sweep fade; high-contrast ADI with bank scale; FCS/ENG
+      telemetry (stabilator/aileron/rudder angles, RPM and EGT gauges).
+- [x] Headless verified chase + cockpit at low altitude and supersonic: zero
+      page console errors. Render cost 2.5 ms/frame (137 draw calls) after
+      cloud instancing; HUD 0.8 ms chase / 2.5 ms cockpit on the dev machine.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
-(debug only, fast-forwards the sim before the first frame).
+(fast-forwards the sim before the first frame); `?alt=metres`; `?spd=m/s`;
+`?force=cone,vapor,mist` (holds transient VFX on for stills). Flags other than
+`nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.
