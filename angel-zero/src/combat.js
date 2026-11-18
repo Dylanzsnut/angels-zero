@@ -249,6 +249,7 @@ export function createCombat(THREE, env) {
     const m = missiles.find(x => !x.active); if (!m) return null;
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
+    m.cloudLost = false; m.cloudT = 0; m.cloud = 0; m.reacquired = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
     if (m.visual) { m.mesh.remove(m.visual); m.visual = null; }
     for (const p of m.parts) p.visible = !visual;
@@ -488,7 +489,9 @@ export function createCombat(THREE, env) {
     const pFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const onSix = pFwd.dot(toPdir) > 0;                              // bandit is behind the player
     const inCone = e.mode === 'PURSUE' && playerActive && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
-    e.bLock = clamp(e.bLock + (inCone ? dt / B_LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
+    // Player inside thick cloud: the bandit's seeker loses the picture (-1.5/s).
+    const hidden = C.playerCloud > CLOUD_T;
+    e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / B_LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
     if (e.mode === 'PURSUE' && playerActive) {
       if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
       const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
@@ -569,6 +572,10 @@ export function createCombat(THREE, env) {
   // No target in the cone -> designation is cleared. A destroyed target leaves
   // nothing designated until the pilot points at the next one and presses C.
   const SIGHT_HALF = 11 * D2R;
+  // Cloud cover: IR seekers and radar lose their picture through thick cloud.
+  const CLOUD_T = 0.35;                                      // cloudDensity above this = "in cloud"
+  const cloudAt = p => (env.cloudDensity ? env.cloudDensity(p) : 0);
+  let cloudClear = 0;                                        // s: suppress the RWR alert after a cloud break
   const SIGHT_TIE = 0.002;                                    // rad per NM: only separates near-equal bearings
   function boresightTarget(exclude) {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
@@ -618,8 +625,16 @@ export function createCombat(THREE, env) {
     const to = t.pos.clone().sub(S.position), d = to.length();
     const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
     const inSeeker = d < LOCK_RANGE && off < SEEKER_HALF && C.missiles > 0 && C.missileReload <= 0;
-    C.lockProgress = clamp(C.lockProgress + (inSeeker ? dt / LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
+    // Designated bandit inside thick cloud: lock bleeds down at 1.0/s (LOCK -> amber ACQ).
+    const obscured = (t.cloud || 0) > CLOUD_T;
+    const wasObscured = C.targetObscured;
+    C.targetObscured = obscured;
+    C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
     const prev = C.lockState;
+    if (obscured && !wasObscured) {
+      say('CLOUD OBSCURED — ' + t.label, 1.4, '#ffbf3f');
+      if (prev === 'LOCK' && env.onSfx) env.onSfx('lockdrop', null, 1);
+    }
     C.lockState = C.lockProgress >= 1 ? 'LOCK' : C.lockProgress > 0 ? 'ACQ' : 'NONE';
     if (C.lockState === 'LOCK' && prev !== 'LOCK') say('LOCK — ' + t.label + ' — SHOOT', 1.2);
     C.lockTarget = C.lockState === 'LOCK' ? t : null;
@@ -643,6 +658,29 @@ export function createCombat(THREE, env) {
         // Proportional navigation: a = N * Vc * LOS-rate, limited by the missile's
         // turn authority (accel <= v * maxTurnRate) and its seeker field of view.
         const tgt = m.target, q = m.q || MSL_FULL;
+        m.cloud = cloudAt(pos);
+        if (tgt && m.enemy && tgt.isPlayer && !m.lostTrack && playerActive && (C.playerCloud > CLOUD_T || m.cloud > CLOUD_T)) {
+          // The F-15 (or the missile) is in thick cloud: seeker loses lock, flies its
+          // last velocity vector and self-destructs harmlessly 1.5 s later.
+          m.lostTrack = true; m.cloudLost = true; m.life = Math.min(m.life, m.age + 1.5);
+          C.missileWarning = 0; cloudClear = 1.2;
+          C.cloudBreaks = (C.cloudBreaks || 0) + 1;
+          say('CLOUD COVER // MISSILE LOST', 2.2, '#52ff9c');
+          pushEvent('EVADED', 'CLOUD COVER // MISSILE LOST', 0, '#52ff9c');
+          if (env.onSfx) env.onSfx('lockdrop', null, 1);
+        }
+        if (tgt && !m.enemy && !tgt.isPlayer && !tgt.isFlare && tgt.alive) {
+          const tc = (tgt.cloud || 0) > CLOUD_T;
+          if (!m.lostTrack) {
+            // Target hidden in cloud for ~0.4 s: proportional-navigation lock is lost.
+            m.cloudT = tc ? (m.cloudT || 0) + dt : 0;
+            if (m.cloudT >= 0.4) { m.lostTrack = true; m.cloudLost = true; }
+          } else if (m.cloudLost && !tc) {
+            // Target back in clear air and still inside the seeker cone: reacquire.
+            const l2 = tgt.pos.clone().sub(pos).normalize();
+            if (Math.acos(clamp(fwd.dot(l2), -1, 1)) < q.fov * 0.5) { m.lostTrack = false; m.cloudLost = false; m.cloudT = 0; m.losPrev.copy(l2); m.reacquired = true; }
+          }
+        }
         const tAlive = tgt && !m.lostTrack && (tgt.isPlayer ? playerActive : tgt.alive);
         if (tAlive) {
           const los = tgt.pos.clone().sub(pos), range = los.length(); los.divideScalar(range);
@@ -698,7 +736,7 @@ export function createCombat(THREE, env) {
       if (speed > 1) m.mesh.quaternion.setFromUnitVectors(MSL_NOSE, m.vel.clone().normalize());
       if (m.age > m.life || pos.y < groundLevel(pos.x, pos.z)) {
         if (pos.y < groundLevel(pos.x, pos.z) && terrainHeight(pos.x, pos.z) < 0) splash(pos, 0.5); else explosion(pos, 0.5);
-        logShot(m, m.lostTrack ? 'LOST' : m.target ? 'MISS' : 'DUMB');
+        logShot(m, m.cloudLost ? 'CLOUD' : m.lostTrack ? 'LOST' : m.target ? 'MISS' : 'DUMB');
         m.active = false; m.mesh.visible = false;
       }
     }
@@ -1021,6 +1059,12 @@ export function createCombat(THREE, env) {
     C.comms = C.comms.filter(c => c.until > nowMs);
     C.events = (C.events || []).filter(ev => ev.until > nowMs);
 
+    // Cloud densities for the player and every bandit (missiles sample their own).
+    C.playerCloud = playerActive ? cloudAt(S.position) : 0;
+    C.playerInCloud = C.playerCloud > CLOUD_T;
+    for (const e of enemies) e.cloud = e.alive ? cloudAt(e.pos) : 0;
+    cloudClear = Math.max(0, cloudClear - dt);
+
     if (ready) {
       for (const e of enemies) {
         if (e.alive) updateEnemy(e, dt, playerActive);
@@ -1038,7 +1082,7 @@ export function createCombat(THREE, env) {
     C.banditLock = playerActive ? bl : 0;
     C.rwrTrack = C.banditLock >= B_SOFT && C.banditLock < 1;
     C.incoming = playerActive ? missiles.filter(m => m.active && m.enemy && m.target?.isPlayer && !m.lostTrack).length : 0;
-    if (C.banditLock >= 1 || C.incoming) C.missileWarning = Math.max(C.missileWarning, 0.4);
+    if ((C.banditLock >= 1 && cloudClear <= 0) || C.incoming) C.missileWarning = Math.max(C.missileWarning, 0.4);
     if (playerActive) {
       updateLock(dt);
       if (opts.firing) fireGun(dt); else gunIdle();
@@ -1117,6 +1161,8 @@ export function createCombat(THREE, env) {
       return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? e.mode[0] : '-').join(''),
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
         lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
+        cloud: { player: +(C.playerCloud || 0).toFixed(2), tgt: +((C.designated && C.designated.cloud) || 0).toFixed(2), obscured: !!C.targetObscured, breaks: C.cloudBreaks || 0,
+          msl: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.cloudLost ? '/cloudLost' : m.lostTrack ? '/lost' : '') + (m.reacquired ? '/reacq' : '') + ' c' + (m.cloud || 0).toFixed(2)).join(' ') },
         bandit: { lock: +C.banditLock.toFixed(2), rwr: C.rwrTrack, incoming: C.incoming || 0, warn: +C.missileWarning.toFixed(2) },
         shots: C.mslLog.map(l => l.tag + ':' + l.result + '@' + l.t).join(' '),
         stores: { wpn: C.weapon, msl: C.missiles, mslOnPylons: stores.msl.filter(s => s.node.visible).map(s => s.n).join(','),

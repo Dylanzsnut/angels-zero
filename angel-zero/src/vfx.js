@@ -1,7 +1,8 @@
 // ANGELS ZERO — flight & atmospheric VFX.
 // Afterburner mach diamonds, wingtip contrails, over-wing vapor, supersonic
 // speed streaks, Prandtl-Glauert vapor cone, low-level sea spray and a
-// fly-through cloud layer (2500-5500 ft) that reports a canopy mist factor.
+// 32-formation cumulus deck (2,400-5,500 ft) with wind drift, a cloudDensity()
+// query for gameplay, and a camera mist factor for the white-out / canopy fx.
 
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
 const LOG_F = '#include <logdepthbuf_pars_fragment>\n';
@@ -370,28 +371,59 @@ export function createVFX(THREE, env) {
     spMat.uniforms.uScale.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   }
 
-  /* ------------------------------- cloud layer 2500-5500 ft + fly-through */
-  // Every puff of every cluster is one instance of a single billboard mesh
-  // (one draw call), re-sorted back-to-front a few times per second.
-  const TONES = [1.0, 0.95, 0.85, 0.75];               // sunlit top .. grey flat base
+  /* ---------------------- cumulus decks 2,400-5,500 ft + fly-through */
+  // 32 large multi-puff cumulus formations. Every puff is one instance of a
+  // single billboard mesh (one draw call), re-sorted back-to-front 5x / s.
+  // Shading per puff: height inside its formation (slate-blue #6e89a8 belly ->
+  // #ffffff top) plus a sun-facing term, so tops and the sun side glow.
+  // Formations drift with a steady 7 m/s wind; cloudDensity(p) samples their
+  // ellipsoids (0 outside .. 1 deep inside) for gameplay (lock-breaking) and
+  // the canopy-moisture / white-out effects.
+  const SUN = (env.sunDir || new THREE.Vector3(0, 1, 0)).clone().normalize();
+  const WIND = new THREE.Vector3(5.2, 0, -4.6);          // m/s
+  const windOff = new THREE.Vector3();
   const puffs = [];
   const volumes = [];
   const cr = rng(31337);
-  const BASE_LO = 2500 * FT, BASE_HI = 5500 * FT;
-  for (let c = 0; c < 64; c++) {
-    const rx = 260 + cr() * 420, ry = 90 + cr() * 140, rz = 220 + cr() * 380;
-    const cx = (cr() - 0.5) * 32000, cz = (cr() - 0.5) * 32000 - 2500;
-    const base = BASE_LO + cr() * (BASE_HI - BASE_LO - ry * 1.6);
-    const n = 16 + Math.floor(cr() * 14);
+  const BASE_LO = 2400 * FT, TOP_HI = 5500 * FT;
+  const N_CLUSTERS = 32;
+  for (let c = 0; c < N_CLUSTERS; c++) {
+    const rx = 420 + cr() * 480, ry = 130 + cr() * 150, rz = 380 + cr() * 460;
+    const cx = (cr() - 0.5) * 30000, cz = (cr() - 0.5) * 30000 - 2500;
+    const base = BASE_LO + cr() * (TOP_HI - BASE_LO - ry * 2.2);
+    addCluster(cx, base, cz, rx, ry, rz, 34 + Math.floor(cr() * 16), cr);
+  }
+  function addCluster(cx, base, cz, rx, ry, rz, n, r) {
+    const height = ry * 2.1;
     for (let i = 0; i < n; i++) {
-      const u = cr(), shrink = 1 - 0.4 * u;
-      const tone = TONES[u < 0.22 ? 3 : u < 0.45 ? 2 : u < 0.75 ? 1 : 0];
-      puffs.push({
-        x: cx + (cr() * 2 - 1) * rx * shrink, y: base + u * ry * 1.6, z: cz + (cr() * 2 - 1) * rz * shrink,
-        s: (150 + cr() * 210) * (1 - 0.25 * u), tone, rot: cr() * Math.PI * 2, tex: cr() < 0.5 ? 0 : 1
-      });
+      // Flat-ish base, billowing dome on top: higher puffs pull toward the axis.
+      const u = Math.pow(r(), 0.85), shrink = 1 - 0.55 * u;
+      const ox = (r() * 2 - 1) * rx * shrink, oz = (r() * 2 - 1) * rz * shrink;
+      const oy = u * height;
+      const lateral = Math.hypot(ox / rx, oz / rz);
+      const sunSide = Math.max(0, (ox * SUN.x + oz * SUN.z) / Math.max(rx, rz)) * 0.35;
+      const shade = Math.min(1, 0.08 + 0.85 * u + sunSide + 0.12 * (1 - lateral));
+      puffs.push({ x: cx + ox, y: base + oy, z: cz + oz, s: (190 + r() * 230) * (1 - 0.3 * u), shade,
+        rot: r() * Math.PI * 2, tex: r() < 0.5 ? 0 : 1 });
     }
-    volumes.push({ c: new THREE.Vector3(cx, base + ry * 0.7, cz), r: new THREE.Vector3(rx * 1.05, ry * 1.05, rz * 1.05) });
+    volumes.push({ c: new THREE.Vector3(cx, base + ry * 0.95, cz), r: new THREE.Vector3(rx * 1.08, ry * 1.15, rz * 1.08), on: true });
+  }
+  // Debug slot: a reserved formation (hidden until placed) for deterministic tests.
+  const DBG_N = 44, dbgStart = puffs.length;
+  for (let i = 0; i < DBG_N; i++) puffs.push({ x: 0, y: -1e5, z: 0, s: 0, shade: 1, rot: 0, tex: 0 });
+  const dbgVol = { c: new THREE.Vector3(0, -1e5, 0), r: new THREE.Vector3(1, 1, 1), on: false };
+  volumes.push(dbgVol);
+  function placeDebugCloud(center, rx = 650, ry = 220, rz = 650) {
+    const r = rng(4242);
+    const base = center.y - ry * 0.95;
+    for (let i = 0; i < DBG_N; i++) {
+      const u = Math.pow(r(), 0.85), shrink = 1 - 0.55 * u;
+      const ox = (r() * 2 - 1) * rx * shrink, oz = (r() * 2 - 1) * rz * shrink;
+      Object.assign(puffs[dbgStart + i], { x: center.x + ox - windOff.x, y: base + u * ry * 2.1, z: center.z + oz - windOff.z,
+        s: (200 + r() * 220) * (1 - 0.3 * u), shade: Math.min(1, 0.1 + 0.85 * u), rot: r() * 6.283, tex: i % 2 });
+    }
+    dbgVol.c.set(center.x - windOff.x, center.y, center.z - windOff.z); dbgVol.r.set(rx * 1.08, ry * 1.15, rz * 1.08); dbgVol.on = true;
+    sortClouds(0, true);
   }
   const NP = puffs.length;
   const quad = new THREE.PlaneGeometry(1, 1);
@@ -405,17 +437,21 @@ export function createVFX(THREE, env) {
   cloudGeo.setAttribute('aData', aData);
   cloudGeo.instanceCount = NP;
   const cloudMat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uOpacity: { value: 0.86 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uOpacity: { value: 0.9 }, uWind: { value: new THREE.Vector3() },
+      uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1.0 }
+    }]),
     vertexShader: `
       #include <common>
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
       attribute vec3 aOff; attribute vec4 aData;
-      varying vec2 vUv; varying float vTone; varying float vTex;
+      uniform vec3 uWind;
+      varying vec2 vUv; varying float vShade; varying float vTex;
       void main() {
-        vUv = uv; vTone = aData.y; vTex = aData.w;
+        vUv = uv; vShade = aData.y; vTex = aData.w;
         float c = cos(aData.z), s = sin(aData.z);
-        vec4 mvPosition = modelViewMatrix * vec4(aOff, 1.0);
+        vec4 mvPosition = modelViewMatrix * vec4(aOff + uWind, 1.0);
         mvPosition.xy += mat2(c, s, -s, c) * position.xy * aData.x;
         gl_Position = projectionMatrix * mvPosition;
         #include <logdepthbuf_vertex>
@@ -426,12 +462,16 @@ export function createVFX(THREE, env) {
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
       uniform sampler2D mapA; uniform sampler2D mapB; uniform float uOpacity;
-      varying vec2 vUv; varying float vTone; varying float vTex;
+      uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain;
+      varying vec2 vUv; varying float vShade; varying float vTex;
       void main() {
         #include <logdepthbuf_fragment>
         float a = vTex < 0.5 ? texture2D(mapA, vUv).a : texture2D(mapB, vUv).a;
         if (a < 0.004) discard;
-        gl_FragColor = vec4(vec3(vTone, vTone, vTone * 1.02), a * uOpacity);
+        // Lower half of each billboard is a touch darker: soft self-shadowed underside.
+        float self = mix(0.82, 1.0, smoothstep(0.15, 0.75, vUv.y));
+        vec3 col = mix(uBelly, uTop, vShade) * self * uGain;
+        gl_FragColor = vec4(col, a * uOpacity);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -449,28 +489,39 @@ export function createVFX(THREE, env) {
     sortTimer -= dt;
     if (sortTimer > 0 && !force) return;
     sortTimer = 0.2;
-    const p = camera.position;
-    for (let i = 0; i < NP; i++) { const q = puffs[i]; dist[i] = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2; }
+    const p = camera.position, wx = windOff.x, wz = windOff.z;
+    for (let i = 0; i < NP; i++) { const q = puffs[i]; dist[i] = (q.x + wx - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z + wz - p.z) ** 2; }
     order.sort((a, b) => dist[b] - dist[a]);
     for (let k = 0; k < NP; k++) {
       const q = puffs[order[k]];
       aOff.array[k * 3] = q.x; aOff.array[k * 3 + 1] = q.y; aOff.array[k * 3 + 2] = q.z;
-      aData.array[k * 4] = q.s; aData.array[k * 4 + 1] = q.tone; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tex;
+      aData.array[k * 4] = q.s; aData.array[k * 4 + 1] = q.shade; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tex;
     }
     aOff.needsUpdate = true; aData.needsUpdate = true;
   }
   sortClouds(0, true);
-  let mist = 0;
-  function updateMist(dt) {
-    const p = camera.position;
-    let target = 0;
+  // 0 outside every formation .. 1 deep inside one (drifting with the wind).
+  function cloudDensity(p) {
+    let best = 0;
     for (const v of volumes) {
-      const dx = (p.x - v.c.x) / v.r.x, dy = (p.y - v.c.y) / v.r.y, dz = (p.z - v.c.z) / v.r.z;
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d < 1) target = Math.max(target, smooth(1 - d, 0, 0.45));
+      if (!v.on) continue;
+      const ox = windOff.x, oz = windOff.z;
+      const dx = (p.x - v.c.x - ox) / v.r.x, dy = (p.y - v.c.y) / v.r.y, dz = (p.z - v.c.z - oz) / v.r.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < 1) best = Math.max(best, smooth(1 - Math.sqrt(d2), 0, 0.45));
     }
+    return best;
+  }
+  let mist = 0, cloudTime = 0;
+  function updateMist(dt) {
+    let target = cloudDensity(camera.position);
     if (force.mist) target = 1;
     mist += (target - mist) * Math.min(1, dt * (target > mist ? 5.0 : 1.4));
+  }
+  function updateWind(dt) {
+    cloudTime += dt;
+    windOff.copy(WIND).multiplyScalar(cloudTime);
+    cloudMat.uniforms.uWind.value.copy(windOff);
   }
 
   /* ------------------------------------------------------------- update */
@@ -501,6 +552,7 @@ export function createVFX(THREE, env) {
     updateSpeedLines(s, dt, opts.firstPerson);
     updateMachCone(s, dt, now);
     updateSpray(s, dt, opts.visible);
+    updateWind(dt);
     updateMist(dt);
     sortClouds(dt, false);
   }
@@ -511,6 +563,10 @@ export function createVFX(THREE, env) {
     clearTrails() { trailL.clear(); trailR.clear(); for (const q of sprayP) q.on = false; coneT = 0; vaporLevel = 0; },
     update,
     get mist() { return mist; },
+    cloudDensity, placeDebugCloud,
+    get cloudCount() { return volumes.filter(v => v.on).length; },
+    get puffCount() { return NP; },
+    setCloudGain(k) { cloudMat.uniforms.uGain.value = k; },
     get trailPoints() { return trailL.points.filter(p => p.base > 0.01).length; },
     get vaporLevel() { return vaporLevel; },
     get coneOpacity() { return coneMat.uniforms.uOp.value; },

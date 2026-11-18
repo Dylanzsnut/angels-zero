@@ -113,6 +113,12 @@ export function createAudio() {
     N.wind = loopNoise(pink); N.windBP = filt('bandpass', 1200, 3); N.windGain = gain(0);
     N.wind.connect(N.windBP).connect(N.windGain).connect(cockpitLP);
 
+    // Cloud penetration: low-passed wind / moisture rush (p.cloud 0..1).
+    N.cloudRush = loopNoise(pink); N.cloudLP = filt('lowpass', 420, 0.8); N.cloudGain = gain(0);
+    N.cloudHiss = loopNoise(white); N.cloudBP = filt('bandpass', 2600, 0.6); N.cloudHissGain = gain(0);
+    N.cloudRush.connect(N.cloudLP).connect(N.cloudGain).connect(master);
+    N.cloudHiss.connect(N.cloudBP).connect(N.cloudHissGain).connect(cockpitLP);
+
     N.white = white; N.brown = brown;
     ready = true;
     resume();
@@ -201,6 +207,19 @@ export function createAudio() {
     const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.setValueAtTime(23, t); lfo.frequency.linearRampToValueAtTime(41, t + 2.2);
     const depth = gain(0.06 * k); lfo.connect(depth).connect(sg.gain);
     s.connect(hp).connect(sg).connect(cockpitLP); s.start(t, Math.random()); s.stop(t + 2.3); lfo.start(t); lfo.stop(t + 2.3);
+  }
+
+  // Lock-drop chirp: a short descending two-tone when cloud cover breaks a lock.
+  function lockDrop() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    for (const [f0, f1, dt] of [[1500, 1100, 0], [1000, 640, 0.08]]) {
+      const o = ctx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(f0, t + dt); o.frequency.exponentialRampToValueAtTime(f1, t + dt + 0.07);
+      const g = gain(0); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(0.07, t + dt + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.08);
+      o.connect(g).connect(master); o.start(t + dt); o.stop(t + dt + 0.09);
+    }
   }
 
   // C-key designation chirp: two quick rising sine blips (target in sight), or a
@@ -308,6 +327,11 @@ export function createAudio() {
     set(N.windBP.frequency, 1500 - 900 * Math.min(1, wf), 0.08);
     set(N.windGain.gain, 0.08 * wl, 0.08);
 
+    const cl = Math.min(1, Math.max(0, p.cloud || 0));
+    set(N.cloudGain.gain, 0.32 * cl * (0.6 + 0.4 * Math.min(1, th + ab)), 0.25);
+    set(N.cloudLP.frequency, 300 + 380 * cl, 0.3);
+    set(N.cloudHissGain.gain, 0.025 * cl, 0.3);
+
     if (p.alert) {
       const phase = Math.floor(ctx.currentTime / 0.14) % 2;
       N.alert.frequency.setValueAtTime(phase ? 800 : 1200, ctx.currentTime);
@@ -327,7 +351,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

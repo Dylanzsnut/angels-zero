@@ -413,5 +413,42 @@ briefing (no audio until a real LAUNCH click). Flags other than
       1,500 m target over 5,000 m; after the kill `designated` stays null with
       `NEXT` on BANDIT 02; zero page console errors. Build tag `s14a`.
 
+## Atmospheric sky, sun corona, 3D cumulus decks & cloud lock-breaking (2026-11-18)
+- [x] `src/atmosphere.js`: full-sphere BackSide sky shader (Rayleigh-style
+      gradient #0b2d63 zenith -> #2c7be5 -> #b8dcff horizon haze, warm Mie
+      forward-scatter lobe around the sun, ~0.6 deg solar disc). The sky's
+      horizon uniform *is* `scene.fog.color` (FogExp2) and the ocean's `uFog`,
+      so sea and sky meet with no seam; inside cloud the fog colour whitens
+      and density rises (white-out). Additive corona sprite (core, iridescent
+      rings, diffraction spokes) on `SUN_DIR` with terrain-occlusion fade, and
+      four lens ghosts strung through the screen centre. Ocean gains a broad
+      sun-glitter path; sun light 3.0 -> 3.4.
+- [x] `src/vfx.js`: 32 multi-puff cumulus formations (34-50 puffs each,
+      2,400-5,500 ft), one instanced draw call, shaded from #6e89a8 slate-blue
+      bellies to #ffffff sun-lit tops (+ sun-side term), 7 m/s wind drift.
+      `cloudDensity(p)` (0..1 inside the ellipsoids) drives gameplay;
+      `placeDebugCloud()` reserves a test formation.
+- [x] `src/canopy.js`: canopy condensation overlay: beads + wet streaks
+      streaming back over the glass in the cockpit view (scaled by density and
+      airspeed, lingering after the cloud), peripheral mist streaks in chase.
+- [x] `src/combat.js` cloud rules (`inCloud` = density > 0.35, sampled for the
+      player, every bandit and every missile): player in cloud -> bandit
+      `bLock` decays -1.5/s; bandit missile tracking the player when the
+      player or the missile is in cloud -> `lostTrack`, flies its last vector,
+      self-destructs after 1.5 s, MISSILE ALERT cleared, green
+      `CLOUD COVER // MISSILE LOST`; designated bandit in cloud -> player
+      `lockProgress` bleeds -1.0/s (LOCK -> amber ACQ) with a flickering
+      `CLOUD OBSCURED` bracket; player missile whose target is in cloud for
+      0.4 s loses PN lock, reacquires if the target re-emerges inside its
+      seeker cone. `src/audio.js`: low-passed cloud rush + hiss, two-tone
+      lock-drop chirp.
+- [x] Headless: player into cloud with a full-lock bandit shot inbound ->
+      `B-FULL:CLOUD@3.2`, no damage, alert cleared; bandit on six with the
+      player in cloud -> `bLock` stays 0; LOCK target into cloud -> ACQ 0.68
+      after 0.3 s -> 0; player missile -> `cloudLost` then `reacq` when the
+      target exits; sky/sun/clouds in chase + cockpit, white-out, 140 canopy
+      droplets; zero page console errors. Hooks: `?cloudpos=az:el:dist`,
+      `?cloudon=t:i`, `?canopylog=ms`. Build tag `s15a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

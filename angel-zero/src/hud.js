@@ -499,6 +499,14 @@ export function createHUD(THREE, A) {
       ctx.font = f(10);
       labelText(ctx, e.label, lx, p.y + 1, col, 2);
       labelText(ctx, formatDist(range), lx, p.y + 12, col, 2);
+      if (C.targetObscured && Math.floor(now / 160) % 3) {
+        // Bandit hiding in cloud: flickering amber obscured bracket + tag.
+        glow(ctx, AMBER, 5); ctx.lineWidth = 1.2; ctx.setLineDash([4, 4]);
+        drawCornerBracket(ctx, p.x, p.y, baseS + 7, Math.round(baseS * 0.45));
+        ctx.setLineDash([]);
+        ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        labelText(ctx, 'CLOUD OBSCURED', p.x, p.y + baseS + 10, AMBER, 4);
+      }
       ctx.restore();
     }
 

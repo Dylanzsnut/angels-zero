@@ -35,6 +35,9 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/combat.js` — `createCombat`: bogey wave AI, cannon, AIM-9 PN guidance,
   explosions / wrecks / smoke, lock-on, scoring, radio comms (`combat.comms`).
 - `src/eject.js` — `createEjection`: seat, parachute, burning jet, rescue respawn.
+- `src/atmosphere.js` — `createAtmosphere`: Rayleigh/Mie sky dome, sun corona +
+  lens ghosts, owns `scene.fog` (FogExp2) whose colour is the sky horizon.
+- `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak 2D overlay.
 - `src/audio.js` — `createAudio`: procedural Web Audio (engines, gun, seeker,
   alert, explosions); the AudioContext starts only inside the LAUNCH click.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
