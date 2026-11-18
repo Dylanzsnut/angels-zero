@@ -18,7 +18,18 @@ export function createCombat(THREE, env) {
   const WAVE_SIZE = 6;
   const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1050;   // M61A1: 6,000 rpm, 1,050 m/s
   const MSL_MAX = 6, MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
-  const LOCK_RANGE = 3.5 * NM, LOCK_CONE = Math.cos(15 * D2R), PURSUE_RANGE = 4.0 * NM;
+  const LOCK_RANGE = 3.5 * NM, PURSUE_RANGE = 4.0 * NM;
+  // Player IR seeker: 14 deg cone (7 deg half-angle) around the nose, ~1.3 s to a solid lock.
+  const SEEKER_HALF = 7 * D2R, LOCK_TIME = 1.3, LOCK_DECAY = 0.8;
+  // Bandit seekers: within 3.2 NM, player inside a 22 deg cone off the bandit's nose
+  // while the bandit sits in the player's rear hemisphere; ~2.2 s to a full lock.
+  const B_LOCK_RANGE = 3.2 * NM, B_CONE = 22 * D2R, B_LOCK_TIME = 2.2, B_SOFT = 0.45;
+  // Missile guidance quality by lock state at launch.
+  const MSL_FULL = { turn: 34 * D2R, fov: 45 * D2R, N: 4.2, noise: 0, tag: 'FULL' };
+  const MSL_SOFT = { turn: 14 * D2R, fov: 18 * D2R, N: 3.0, noise: 0.35, err: 5 * D2R, tag: 'SOFT' };
+  const BANDIT_FULL = { turn: 30 * D2R, fov: 45 * D2R, N: 3.6, noise: 0.05, tag: 'B-FULL' };
+  const BANDIT_SOFT = { turn: 13 * D2R, fov: 14 * D2R, N: 2.6, noise: 0.6, err: 9 * D2R, tag: 'B-SOFT' };
+  Object.assign(C, { designated: null, lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
   Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], wave: 0,
     gunFiring: false, hitMarker: 0 });
 
@@ -220,12 +231,18 @@ export function createCombat(THREE, env) {
   const RAILS = [new THREE.Vector3(-2.7, -0.95, 0.9), new THREE.Vector3(2.7, -0.95, 0.9)];
   let railNext = 0, mslCooldown = 0;
 
-  function launch(fromPos, fromQuat, fromVel, target, enemy) {
+  function launch(fromPos, fromQuat, fromVel, target, enemy, quality) {
     const m = missiles.find(x => !x.active); if (!m) return null;
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
+    m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(fromQuat);
     m.vel.copy(fromVel).addScaledVector(down, 9);
+    m.jit = null;
+    if (m.q.err) {                                     // soft lock: seeker not settled, launch with a heading error
+      const ax = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).cross(m.vel).normalize();
+      if (ax.lengthSq() > 0.5) m.vel.applyAxisAngle(ax, m.q.err * (0.7 + 0.5 * rand()));
+    }
     if (target) m.losPrev.copy(target.pos).sub(fromPos).normalize();
     if (env.onSfx) env.onSfx('launch', fromPos, 1);
     return m;
@@ -234,11 +251,14 @@ export function createCombat(THREE, env) {
     if (!env.isReady() || C.dead || C.missiles <= 0 || C.missileReload > 0 || mslCooldown > 0) return false;
     const rail = RAILS[railNext]; railNext = 1 - railNext;
     const pos = rail.clone().applyQuaternion(S.quaternion).add(S.position);
-    const m = launch(pos, S.quaternion, S.velocity, C.lockTarget, false);
+    // Guidance quality follows the lock state at the moment of launch.
+    const st = C.lockState, tgt = st === 'NONE' ? null : C.designated;
+    const m = launch(pos, S.quaternion, S.velocity, tgt, false, st === 'LOCK' ? MSL_FULL : MSL_SOFT);
     if (!m) return false;
     C.missiles--; mslCooldown = MSL_INTERVAL;
     if (C.missiles <= 0) C.missileReload = MSL_RELOAD;
-    say(C.lockTarget ? 'FOX TWO!' : 'FOX TWO — NO LOCK', 1.4);
+    C.lastLaunch = st;
+    say(st === 'LOCK' ? 'FOX TWO!' : st === 'ACQ' ? 'FOX TWO — SOFT LOCK' : 'FOX TWO — NO LOCK, DUMB FIRE', 1.4, st === 'LOCK' ? '#4dff91' : '#ffbf3f');
     return true;
   }
 
@@ -339,8 +359,8 @@ export function createCombat(THREE, env) {
     return {
       id: i, alive: false, mode: 'PATROL', pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
       quat: new THREE.Quaternion(), speed: 210, bank: 0, hp: 100, heading: 0, center: new THREE.Vector3(), radius: 2500, dir: 1, alt: 1000,
-      burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, lockTime: 0, mslCD: 10 + rand() * 10, evadeT: 0, evadeDir: 1,
-      wreck: null, label: 'BOGEY ' + (i + 1), acc: new THREE.Vector3()
+      burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, bLock: 0, mslCD: 10 + rand() * 10, evadeT: 0, evadeDir: 1,
+      wreck: null, label: 'BANDIT ' + String(i + 1).padStart(2, '0'), acc: new THREE.Vector3()
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
@@ -356,7 +376,7 @@ export function createCombat(THREE, env) {
       e.radius = 1800 + rand() * 2200; e.dir = rand() < 0.5 ? -1 : 1;
       e.fwd.set(Math.cos(a), 0, Math.sin(a)).normalize();
       e.speed = 200 + rand() * 30; e.hp = 100; e.alive = true; e.mode = 'PATROL'; e.wreck = null;
-      e.burst = 0; e.burstCD = 2 + rand() * 3; e.lockTime = 0; e.mslCD = 10 + rand() * 12; e.evadeT = 0; e.bank = 0;
+      e.burst = 0; e.burstCD = 2 + rand() * 3; e.bLock = 0; e.mslCD = 6 + rand() * 6; e.evadeT = 0; e.bank = 0;
     }
     say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
   }
@@ -425,20 +445,29 @@ export function createCombat(THREE, env) {
     e.pos.addScaledVector(e.vel, dt);
     orient(e);
 
-    // Guns, lock-on and missiles while pursuing.
+    // Guns, progressive seeker lock and missiles while pursuing (same model as the player's).
     e.burstCD -= dt; e.mslCD -= dt;
-    const aligned = e.fwd.dot(toP.clone().normalize());
+    const toPdir = toP.clone().normalize();
+    const aligned = e.fwd.dot(toPdir);
+    const pFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const onSix = pFwd.dot(toPdir) > 0;                              // bandit is behind the player
+    const inCone = e.mode === 'PURSUE' && playerActive && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
+    e.bLock = clamp(e.bLock + (inCone ? dt / B_LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
     if (e.mode === 'PURSUE' && playerActive) {
-      if (aligned > Math.cos(12 * D2R) && dist < 3 * NM) {
-        e.lockTime += dt;
-        if (e.lockTime > 1.2) C.missileWarning = Math.max(C.missileWarning, 0.35);
-      } else e.lockTime = Math.max(0, e.lockTime - dt * 2);
       if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
-      if (e.lockTime > 4 && e.mslCD <= 0 && dist > 900 && dist < 3 * NM) {
-        const m = launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true);
-        if (m) { e.mslCD = 16 + rand() * 8; say('MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d'); }
+      const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
+      if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
+        // Full lock: aggressive, accurate shot.
+        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_FULL)) {
+          e.mslCD = 14 + rand() * 8; say('MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d');
+        }
+      } else if (e.bLock >= B_SOFT && e.bLock < 1 && e.mslCD <= 0 && dist > 900 && rand() < 0.12 * dt) {
+        // Impatient bandit fires early on a soft lock: weak, easily defeated shot.
+        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_SOFT)) {
+          e.mslCD = 12 + rand() * 6; say('MISSILE LAUNCH — LOW-QUALITY TRACK', 1.8, '#ffbf3f');
+        }
       }
-    } else e.lockTime = 0;
+    }
     if (e.burst > 0) {
       e.burst -= dt; e.tracerAcc += 28 * dt;
       while (e.tracerAcc >= 1) {
@@ -458,6 +487,7 @@ export function createCombat(THREE, env) {
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
     if (C.lockTarget === e) C.lockTarget = null;
+    if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
     say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
   }
 
@@ -496,18 +526,48 @@ export function createCombat(THREE, env) {
   }
 
   /* =========================================================== lock-on */
-  function updateLock() {
+  // Candidates ordered by how close they sit to the nose, then by range.
+  function sortedCandidates() {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
-    let best = null, bd = Infinity;
-    for (const e of enemies) {
-      if (!e.alive) continue;
-      const to = _t.copy(e.pos).sub(S.position); const d = to.length();
-      if (d > LOCK_RANGE || d < 60) continue;
-      if (to.divideScalar(d).dot(fwd) < LOCK_CONE) continue;
-      if (d < bd) { bd = d; best = e; }
+    return enemies.filter(e => e.alive).map(e => {
+      const to = e.pos.clone().sub(S.position), d = to.length();
+      const ang = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1)) / D2R;
+      return { e, score: ang + (d / NM) * 4 };
+    }).sort((a, b) => a.score - b.score).map(c => c.e);
+  }
+  function designate(e) {
+    if (e === C.designated) return;
+    C.designated = e; C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null;
+  }
+  // C / Tab: step to the next bandit in nose-alignment order.
+  function cycleTarget() {
+    const list = sortedCandidates();
+    if (!list.length) return null;
+    const i = list.indexOf(C.designated);
+    designate(list[(i + 1) % list.length]);
+    say('TARGET — ' + C.designated.label, 1.0);
+    return C.designated;
+  }
+  // Progressive IR seeker: build lock while the designated bandit sits inside the
+  // 14 deg seeker circle and inside 3.5 NM; decay at 0.8/s when it leaves.
+  function updateLock(dt) {
+    if (!C.designated || !C.designated.alive) {               // auto-designate the nearest only when nothing is selected
+      let best = null, bd = Infinity;
+      for (const e of enemies) if (e.alive) { const d = e.pos.distanceTo(S.position); if (d < bd) { bd = d; best = e; } }
+      designate(best);
     }
-    if (best && best !== C.lockTarget) say('LOCK — ' + best.label, 1.2);
-    C.lockTarget = best;
+    const t = C.designated;
+    if (!t) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const to = t.pos.clone().sub(S.position), d = to.length();
+    const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
+    const inSeeker = d < LOCK_RANGE && off < SEEKER_HALF && C.missiles > 0 && C.missileReload <= 0;
+    C.lockProgress = clamp(C.lockProgress + (inSeeker ? dt / LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
+    const prev = C.lockState;
+    C.lockState = C.lockProgress >= 1 ? 'LOCK' : C.lockProgress > 0 ? 'ACQ' : 'NONE';
+    if (C.lockState === 'LOCK' && prev !== 'LOCK') say('LOCK — ' + t.label + ' — SHOOT', 1.2);
+    C.lockTarget = C.lockState === 'LOCK' ? t : null;
+    C.seekerOff = off; C.targetRange = d;
   }
 
   /* ======================================================= missile flight */
@@ -524,34 +584,50 @@ export function createCombat(THREE, env) {
         m.vel.addScaledVector(fwd, (burning ? 320 : -40) * dt);
         if (m.vel.length() > 940) m.vel.setLength(940);
         m.plume.visible = burning;
-        // Proportional navigation: a = N * Vc * LOS-rate (perpendicular to the LOS).
-        const tgt = m.target;
-        const tAlive = tgt && (tgt.isPlayer ? playerActive : tgt.alive);
+        // Proportional navigation: a = N * Vc * LOS-rate, limited by the missile's
+        // turn authority (accel <= v * maxTurnRate) and its seeker field of view.
+        const tgt = m.target, q = m.q || MSL_FULL;
+        const tAlive = tgt && !m.lostTrack && (tgt.isPlayer ? playerActive : tgt.alive);
         if (tAlive) {
           const los = tgt.pos.clone().sub(pos), range = los.length(); los.divideScalar(range);
-          const losRate = los.clone().sub(m.losPrev).divideScalar(Math.max(dt, 1e-4));
-          m.losPrev.copy(los);
-          const vc = -tgt.vel.clone().sub(m.vel).dot(los);
-          const N = m.enemy ? 3.2 : 4.0;
-          const acc = losRate.multiplyScalar(N * Math.max(vc, 200));
-          acc.y += G0;                                              // gravity compensation
-          const lim = (m.enemy ? 22 : 35) * G0;
-          if (acc.length() > lim) acc.setLength(lim);
-          m.vel.addScaledVector(acc, dt);
-          const fuse = m.enemy ? 22 : 18;
-          if (range < fuse) {
-            if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(34); }
-            else { explosion(pos, 0.8); destroyEnemy(tgt, true); }
-            m.active = false; m.mesh.visible = false; continue;
+          // Seeker gimbal: if the target slips outside the FOV the missile goes ballistic.
+          if (Math.acos(clamp(fwd.dot(los), -1, 1)) > q.fov * 0.5) { m.lostTrack = true; }
+          // Defensive break: a high-G turn or barrel roll inside 900 m can spoof a bandit seeker.
+          if (tgt.isPlayer && !m.breakChecked && range < 900 && (S.highG || S.barrelRoll || S.gLoad > 12)) {
+            m.breakChecked = true;
+            if (rand() < (q === BANDIT_FULL ? 0.75 : 0.95)) { m.lostTrack = true; say('MISSILE DEFEATED!', 1.6); }
+          }
+          if (!m.lostTrack) {
+            const losRate = los.clone().sub(m.losPrev).divideScalar(Math.max(dt, 1e-4));
+            m.losPrev.copy(los);
+            const vc = -tgt.vel.clone().sub(m.vel).dot(los);
+            const acc = losRate.multiplyScalar(q.N * Math.max(vc, 200));
+            if (q.noise) {                                          // low-passed seeker wander (soft locks)
+              if (!m.jit) m.jit = new THREE.Vector3();
+              m.jit.lerp(new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(2), 1 - Math.exp(-dt * 3));
+              acc.addScaledVector(m.jit, q.noise * 25 * G0);
+            }
+            acc.y += G0;                                            // gravity compensation
+            const lim = m.vel.length() * q.turn;
+            if (acc.length() > lim) acc.setLength(lim);
+            m.vel.addScaledVector(acc, dt);
+            const fuse = m.enemy ? 22 : 18;
+            if (range < fuse) {
+              if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); }
+              else { explosion(pos, 0.8); destroyEnemy(tgt, true); }
+              logShot(m, 'HIT');
+              m.active = false; m.mesh.visible = false; continue;
+            }
           }
         }
         m.smokeAcc += dt * 70;
         while (m.smokeAcc >= 1 && burning) {
           m.smokeAcc -= 1;
           const tail = pos.clone().addScaledVector(fwd, 1.8);
-          const c = m.enemy ? 0.55 : 0.88;
+          // Bandit missiles leave distinct red-tinged smoke.
+          const [r, g, b] = m.enemy ? [0.78, 0.36, 0.30] : [0.88, 0.88, 0.88];
           smoke.spawn({ x: tail.x, y: tail.y, z: tail.z, vx: (rand() - 0.5) * 2, vy: (rand() - 0.5) * 2, vz: (rand() - 0.5) * 2,
-            life: 2.8 + rand(), s0: 2.6, s1: 13 + rand() * 5, r: c, g: c, b: c, a: 0.62, drag: 0.9, rise: 0.6 });
+            life: 2.8 + rand(), s0: 2.6, s1: 13 + rand() * 5, r, g, b, a: 0.62, drag: 0.9, rise: 0.6 });
         }
       } else {
         m.vel.y -= G0 * dt;
@@ -561,9 +637,17 @@ export function createCombat(THREE, env) {
       if (speed > 1) m.mesh.quaternion.setFromUnitVectors(MSL_NOSE, m.vel.clone().normalize());
       if (m.age > m.life || pos.y < groundLevel(pos.x, pos.z)) {
         if (pos.y < groundLevel(pos.x, pos.z) && terrainHeight(pos.x, pos.z) < 0) splash(pos, 0.5); else explosion(pos, 0.5);
+        logShot(m, m.lostTrack ? 'LOST' : m.target ? 'MISS' : 'DUMB');
         m.active = false; m.mesh.visible = false;
       }
     }
+  }
+
+  // Missile outcome log (debug stats + tuning): tag = FULL / SOFT / B-FULL / B-SOFT.
+  C.mslLog = [];
+  function logShot(m, result) {
+    C.mslLog.push({ tag: (m.q || MSL_FULL).tag, result, t: +m.age.toFixed(1) });
+    if (C.mslLog.length > 16) C.mslLog.shift();
   }
 
   function damagePlayer(n) {
@@ -582,7 +666,9 @@ export function createCombat(THREE, env) {
   }
 
   function resetPlayer() {
-    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0 });
+    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
+      lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
+    for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
     for (const m of missiles) if (!m.enemy || m.target?.isPlayer) { m.active = false; m.mesh.visible = false; }
     mslCooldown = 0; gunAcc = 0;
@@ -609,10 +695,17 @@ export function createCombat(THREE, env) {
       } else waveTimer = 0;
       writeFleet();
     }
+    // Bandit seeker state, aggregated for the RWR / alert systems.
+    let bl = 0;
+    for (const e of enemies) if (e.alive) bl = Math.max(bl, e.bLock || 0);
+    C.banditLock = playerActive ? bl : 0;
+    C.rwrTrack = C.banditLock >= B_SOFT && C.banditLock < 1;
+    C.incoming = playerActive ? missiles.filter(m => m.active && m.enemy && m.target?.isPlayer && !m.lostTrack).length : 0;
+    if (C.banditLock >= 1 || C.incoming) C.missileWarning = Math.max(C.missileWarning, 0.4);
     if (playerActive) {
-      updateLock();
+      updateLock(dt);
       if (opts.firing) fireGun(dt); else gunIdle();
-    } else { C.lockTarget = null; gunIdle(); }
+    } else { C.lockTarget = null; C.lockState = 'NONE'; C.lockProgress = 0; gunIdle(); }
 
     // Projectiles and hits.
     const seg = new THREE.Vector3(), cp = new THREE.Vector3();
@@ -643,7 +736,7 @@ export function createCombat(THREE, env) {
   }
 
   return {
-    init, update, resetPlayer, fireMissile, explosion, splash, say,
+    init, update, resetPlayer, fireMissile, cycleTarget, designate, explosion, splash, say,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
     get enemies() { return enemies; }, missiles,
     get ready() { return ready; },
@@ -655,20 +748,26 @@ export function createCombat(THREE, env) {
       e.center.copy(e.pos).addScaledVector(new THREE.Vector3(fwd.z, 0, -fwd.x), 4000); e.radius = 4000; e.alt = e.pos.y;
       e.speed = 170; orient(e); writeFleet();
     },
+    // Debug: bogey i launches a soft- or full-lock missile at the player now.
+    banditShot(i, soft) {
+      const e = enemies[i]; if (!e || !e.alive) return;
+      launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true, soft ? BANDIT_SOFT : BANDIT_FULL);
+      e.mslCD = 99;
+    },
+    // Debug: put bogey i on the player's six at `dist` metres, nose on, pursuing.
+    placeBehind(i, dist) {
+      const e = enemies[i]; if (!e) return;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+      e.pos.copy(S.position).addScaledVector(fwd, -dist); e.fwd.copy(fwd); e.alive = true; e.wreck = null; e.hp = 100;
+      e.mode = 'PURSUE'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed); e.mslCD = 0; e.bLock = 0; orient(e); writeFleet();
+    },
     stats() {
       return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? e.mode[0] : '-').join(''),
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
-        gun: (() => {                                  // ballistic sample in the jet's frame (debug)
-          const inv = S.quaternion.clone().invert();
-          const loc = playerTracers.list.map(b => b.p.clone().sub(S.position).applyQuaternion(inv));
-          if (!loc.length) return null;
-          const youngest = loc[loc.length - 1], oldest = loc[0];
-          const near = loc.filter(v => v.z < -380 && v.z > -540);
-          const mx = near.reduce((s, v) => s + v.x, 0) / Math.max(1, near.length), my = near.reduce((s, v) => s + v.y, 0) / Math.max(1, near.length);
-          const spread = near.length ? Math.max(...near.map(v => Math.hypot(v.x - mx, v.y - my))) : 0;
-          const r = v => v.toArray().map(x => +x.toFixed(2));
-          return { youngest: r(youngest), oldest: r(oldest), at460m: { n: near.length, meanX: +mx.toFixed(2), meanY: +my.toFixed(2), coneMrad: +(2 * spread / 460 * 1000).toFixed(1) } };
-        })() };
+        lock: { tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
+        bandit: { lock: +C.banditLock.toFixed(2), rwr: C.rwrTrack, incoming: C.incoming || 0, warn: +C.missileWarning.toFixed(2) },
+        shots: C.mslLog.map(l => l.tag + ':' + l.result + '@' + l.t).join(' '),
+        live: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.lostTrack ? '/lost' : '') + (m.target && !m.lostTrack ? '@' + Math.round(m.target.pos.distanceTo(m.mesh.position)) : '')).join(' ') };
     }
   };
 }

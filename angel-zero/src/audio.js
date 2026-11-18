@@ -217,7 +217,10 @@ export function createAudio() {
     set(N.gunThumpPeak.gain, p.cockpit ? 6 : 0, 0.08);
     set(N.gunCrackGain.gain, p.cockpit ? 0.45 : 0.6, 0.08);
 
-    set(N.growlGain.gain, p.seeker === 'SCAN' ? 0.045 : 0, 0.04);
+    // SCAN: steady low growl. ACQ: brighter growl pulsed at ~8 Hz. LOCK: continuous 950 Hz tone.
+    const acqOn = p.seeker === 'ACQ' && (ctx.currentTime * 8) % 1 < 0.55;
+    set(N.growlGain.gain, p.seeker === 'SCAN' ? 0.045 : acqOn ? 0.07 : 0, 0.012);
+    set(N.growl.frequency, p.seeker === 'ACQ' ? 420 : 260, 0.05);
     set(N.lockGain.gain, p.seeker === 'LOCK' ? 0.05 : 0, 0.02);
 
     if (p.alert) {

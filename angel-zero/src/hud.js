@@ -245,51 +245,117 @@ export function createHUD(THREE, A) {
     ctx.restore();
   }
 
-  // Target symbology: green TGT diamonds, pulsing red LOCK box, off-screen caret
-  // toward the nearest bogey, and the gun lead pipper on the locked target.
+  // Target symbology: small hollow diamonds on every bandit, a large primary
+  // diamond on the designated one (NONE green / ACQ amber rotating-closing /
+  // LOCK red pulsing + inner square), the IR seeker circle on the boresight,
+  // flashing red diamonds on inbound missiles and an edge caret to the primary.
+  const SEEKER_HALF_DEG = 7;
+  function diamond(ctx, x, y, s, rot = 0) {
+    ctx.beginPath();
+    for (let k = 0; k < 4; k++) {
+      const a = rot + k * Math.PI / 2;
+      const px = x + Math.sin(a) * s, py = y - Math.cos(a) * s;
+      k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+  const blipKind = e => C.designated !== e ? 'bogey' : C.lockState === 'LOCK' ? 'lock' : C.lockState === 'ACQ' ? 'acq' : 'desig';
+  const mslFlash = () => Math.floor(performance.now() / 140) % 2 === 0;
+  function lockColor() { return C.lockState === 'LOCK' ? WARN : C.lockState === 'ACQ' ? AMBER : G; }
+  function drawSeekerCircle(ctx) {
+    if (!C.designated || C.dead || C.missiles <= 0 || C.missileReload > 0) return;
+    const origin = A.isFirstPerson() ? cam.position : S.position;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
+    const c = toScreen(origin.clone().addScaledVector(fwd, 5000));
+    const e = toScreen(origin.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan(SEEKER_HALF_DEG * D2R)));
+    if (!c.ok || !e.ok) return;
+    const r = Math.hypot(e.x - c.x, e.y - c.y);
+    ctx.save(); glow(ctx, lockColor(), 4); ctx.lineWidth = LW;
+    if (C.lockState === 'NONE') ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    if (C.lockState === 'ACQ') {                      // progress arc around the seeker circle
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(c.x, c.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * C.lockProgress); ctx.stroke();
+    }
+    ctx.restore();
+  }
   function drawTargets(ctx) {
     const now = performance.now();
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-    let nearest = null, nd = Infinity, nearestOn = false;
+    const onScreenOf = pos => {
+      const p = toScreen(pos);
+      return { p, on: pos.clone().sub(cam.position).dot(fwd) > 0 && p.ok && p.x > 0 && p.x < HW && p.y > 0 && p.y < HH };
+    };
+    drawSeekerCircle(ctx);
     ctx.save(); ctx.textAlign = 'center';
+    const prim = C.designated && C.designated.alive ? C.designated : null;
+    let primOn = false;
     for (const e of A.getEnemies()) {
       if (!e.alive) continue;
       const range = e.pos.distanceTo(S.position);
-      const inFront = e.pos.clone().sub(cam.position).dot(fwd) > 0;
-      const p = toScreen(e.pos);
-      const onScreen = inFront && p.ok && p.x > 0 && p.x < HW && p.y > 0 && p.y < HH;
-      if (range < nd) { nd = range; nearest = e; nearestOn = onScreen; }
-      if (!onScreen) continue;
-      const nm = (range / 1852).toFixed(1) + 'NM';
-      if (C.lockTarget === e) {
-        const s = clamp(18000 / Math.max(range, 300), 16, 46) * (1 + 0.12 * Math.sin(now / 85));
-        glow(ctx, WARN, 8); ctx.lineWidth = 2;
-        ctx.strokeRect(p.x - s, p.y - s, s * 2, s * 2);
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(p.x - s - 7, p.y); ctx.lineTo(p.x - s, p.y); ctx.moveTo(p.x + s, p.y); ctx.lineTo(p.x + s + 7, p.y);
-        ctx.moveTo(p.x, p.y - s - 7); ctx.lineTo(p.x, p.y - s); ctx.moveTo(p.x, p.y + s); ctx.lineTo(p.x, p.y + s + 7); ctx.stroke();
-        ctx.font = f(14); ctx.textBaseline = 'bottom'; ctx.fillText('LOCK', p.x, p.y - s - 9);
-        ctx.font = f(12); ctx.textBaseline = 'top'; ctx.fillText(e.label + '  ' + nm, p.x, p.y + s + 9);
+      const { p, on } = onScreenOf(e.pos);
+      if (e === prim) primOn = on;
+      if (!on) continue;
+      if (e !== prim) {                                // unselected: small hollow green diamond
+        const s = clamp(6000 / Math.max(range, 300), 6, 11);
+        glow(ctx, GD, 2); ctx.lineWidth = 1.2;
+        diamond(ctx, p.x, p.y, s);
+        continue;
+      }
+      const nm = (range / 1852).toFixed(1);
+      const los = e.pos.clone().sub(S.position).divideScalar(Math.max(range, 1));
+      const closure = -e.vel.clone().sub(S.velocity).dot(los) * 1.94384;    // knots
+      const st = C.lockState, col = lockColor();
+      let s = clamp(16000 / Math.max(range, 300), 16, 34);
+      ctx.lineWidth = 2;
+      if (st === 'LOCK') {
+        s *= 1 + 0.14 * Math.sin(now / 80);
+        glow(ctx, col, 8); diamond(ctx, p.x, p.y, s);
+        const q = s * 0.45; ctx.strokeRect(p.x - q, p.y - q, q * 2, q * 2);
+        ctx.font = f(15); ctx.textBaseline = 'bottom';
+        ctx.fillText(range < 3.5 * 1852 && Math.floor(now / 250) % 2 ? 'SHOOT' : 'LOCK', p.x, p.y - s - 8);
+      } else if (st === 'ACQ') {
+        // Rotating, closing diamond: shrinks from 1.9x to 1x as the seeker settles.
+        const k = 1 + 0.9 * (1 - C.lockProgress);
+        glow(ctx, col, 6); diamond(ctx, p.x, p.y, s * k, now / 260);
+        diamond(ctx, p.x, p.y, s * 0.55);
+        ctx.font = f(14); ctx.textBaseline = 'bottom'; ctx.fillText('ACQ', p.x, p.y - s * k - 6);
       } else {
-        const s = clamp(11000 / Math.max(range, 300), 9, 26);
-        glow(ctx, G, 4); ctx.lineWidth = LW;
-        ctx.beginPath(); ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x + s, p.y); ctx.lineTo(p.x, p.y + s); ctx.lineTo(p.x - s, p.y); ctx.closePath(); ctx.stroke();
-        ctx.font = f(11); ctx.textBaseline = 'bottom'; ctx.fillText('TGT ' + nm, p.x, p.y - s - 4);
+        glow(ctx, col, 4); diamond(ctx, p.x, p.y, s);
+      }
+      ctx.font = f(12); ctx.textBaseline = 'top';
+      ctx.fillText(e.label, p.x, p.y + s + 8);
+      ctx.fillText(nm + 'NM  ' + (closure >= 0 ? '+' : '') + Math.round(closure) + 'KT', p.x, p.y + s + 22);
+    }
+    // Inbound bandit missiles: flashing red diamonds.
+    if (Math.floor(now / 140) % 2 === 0) {
+      for (const m of A.missiles) {
+        if (!m.active || !m.enemy) continue;
+        const { p, on } = onScreenOf(m.mesh.position);
+        if (!on) continue;
+        glow(ctx, WARN, 6); ctx.lineWidth = 2;
+        diamond(ctx, p.x, p.y, 9);
+        ctx.font = f(11); ctx.textBaseline = 'bottom'; ctx.fillText('MSL', p.x, p.y - 12);
       }
     }
-    if (nearest && !nearestOn) {
-      // Edge caret: direction of the nearest bogey in camera space.
-      const v = nearest.pos.clone().applyMatrix4(cam.matrixWorldInverse);
+    if (prim && !primOn) {
+      // Edge caret: direction of the designated bandit in camera space.
+      const v = prim.pos.clone().applyMatrix4(cam.matrixWorldInverse);
       let ang = Math.atan2(-v.y, v.x);
       if (v.z > 0 && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) ang = Math.PI / 2;          // dead astern
       const mx = HW / 2 - 56, my = HH / 2 - 56;
       const k = Math.min(mx / Math.max(Math.abs(Math.cos(ang)), 1e-3), my / Math.max(Math.abs(Math.sin(ang)), 1e-3));
       const px = HW / 2 + Math.cos(ang) * k, py = HH / 2 + Math.sin(ang) * k;
+      const col = C.lockState === 'NONE' ? AMBER : lockColor();
       ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
-      glow(ctx, AMBER, 6); ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-6, -10); ctx.lineTo(-2, 0); ctx.lineTo(-6, 10); ctx.closePath(); ctx.fill();
+      glow(ctx, col, 6); ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-6, -10); ctx.lineTo(-2, 0); ctx.lineTo(-6, 10); ctx.closePath(); ctx.fill();
       ctx.restore();
-      glow(ctx, AMBER, 3); ctx.font = f(12); ctx.textBaseline = 'middle';
-      ctx.fillText((nd / 1852).toFixed(1) + 'NM', px - Math.cos(ang) * 30, py - Math.sin(ang) * 22);
+      glow(ctx, col, 3); ctx.font = f(12); ctx.textBaseline = 'middle';
+      const tx = px - Math.cos(ang) * 34, ty = py - Math.sin(ang) * 24;
+      ctx.fillText(prim.label, tx, ty - 7);
+      ctx.fillText((prim.pos.distanceTo(S.position) / 1852).toFixed(1) + 'NM', tx, ty + 7);
     }
     ctx.restore();
     drawLeadReticle(ctx);
@@ -318,7 +384,7 @@ export function createHUD(THREE, A) {
     return local.applyQuaternion(S.quaternion).add(S.position);
   }
   function gunSightActive() {
-    const t = C.lockTarget;
+    const t = C.designated;
     return C.gunFiring || (t && t.alive && t.pos.distanceTo(S.position) < FUNNEL_RANGE);
   }
   function drawGunFunnel(ctx, col) {
@@ -365,7 +431,7 @@ export function createHUD(THREE, A) {
     return { reticleDir: dirAim.applyQuaternion(off), tof };
   }
   function drawLeadReticle(ctx) {
-    const t = C.lockTarget, now = performance.now();
+    const t = C.designated, now = performance.now();
     const hitTick = now - (C.hitMarker || 0) < 170;
     if (!t || !t.alive || C.dead) return;
     const range = t.pos.distanceTo(S.position);
@@ -564,14 +630,14 @@ export function createHUD(THREE, A) {
       const since = ((sweep - bearing) % (Math.PI * 2) + Math.PI * 4) % (Math.PI * 2);
       const fade = Math.max(0.25, 1 - since / (Math.PI * 1.7));
       const bx = cx + sx * k, by = cy + sy * k;
-      if (kind === 'msl') { glow(ctx, `rgba(255,77,61,${fade})`, 3); ctx.fillRect(bx - 1.5, by - 1.5, 3, 3); return; }
-      glow(ctx, kind === 'lock' ? `rgba(255,77,61,${fade})` : `rgba(255,191,63,${fade})`, 4); ctx.lineWidth = LW;
+      if (kind === 'msl') { if (mslFlash()) { glow(ctx, WARN, 4); ctx.lineWidth = 1.5; diamond(ctx, bx, by, 5); } return; }
+      glow(ctx, kind === 'lock' ? `rgba(255,77,61,${fade})` : kind === 'bogey' ? `rgba(255,191,63,${fade})` : kind === 'acq' ? AMBER : G, 4); ctx.lineWidth = LW;
       ctx.save(); ctx.translate(bx, by); ctx.rotate(((hdg || 0) - S.heading) * D2R);
       ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.5, 4.5); ctx.lineTo(0, 2); ctx.lineTo(-4.5, 4.5); ctx.closePath(); ctx.fill();
       ctx.restore();
-      if (kind === 'lock') ctx.strokeRect(bx - 8, by - 8, 16, 16);
+      if (kind !== 'bogey') ctx.strokeRect(bx - 8, by - 8, 16, 16);
     };
-    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey', e.heading);
+    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, blipKind(e), e.heading);
     for (const m of A.missiles) if (m.active && m.enemy) blip(m.mesh.position, 'msl');
     glow(ctx, GB, 3);
     ctx.beginPath(); ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 5, cy + 6); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 5, cy + 6); ctx.closePath(); ctx.fill();
@@ -582,8 +648,13 @@ export function createHUD(THREE, A) {
       ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
       ctx.fillText('HDG ' + String(Math.round(S.heading) % 360).padStart(3, '0'), s * 0.04, s * 0.90);
       ctx.textAlign = 'right';
-      ctx.fillText(C.lockTarget ? 'STT LOCK' : 'SRCH', s * 0.96, s * 0.90);
+      ctx.fillText(C.lockState === 'LOCK' ? 'STT LOCK' : C.lockState === 'ACQ' ? 'ACQ' : 'SRCH', s * 0.96, s * 0.90);
     }
+    if (C.rwrTrack || C.banditLock >= 1) {           // RWR: bandit seeker on us
+      glow(ctx, C.banditLock >= 1 ? WARN : AMBER, 4); ctx.font = f(fs + 1); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      if (C.banditLock < 1 || mslFlash()) ctx.fillText(C.banditLock >= 1 ? 'RWR LOCK' : 'RWR TRACK', s / 2, s * 0.10);
+    }
+    if (C.banditLock >= 1) { glow(ctx, WARN, 6); ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, s - 3, s - 3); }
     ctx.restore();
   }
 
@@ -765,7 +836,7 @@ export function createHUD(THREE, A) {
     const s = Math.round(Math.min(230, HH * 0.32, HW * 0.24)), x0 = 18, y0 = HH - s - 18;
     const cx = x0 + s / 2, cy = y0 + s * 0.56, half = s / 2;
     const MAX_M = 20 * 1852, k = (half * 0.92) / MAX_M, hRad = S.heading * D2R;
-    const border = flashRed() ? WARN : G;
+    const border = flashRed() || C.banditLock >= 1 ? WARN : C.rwrTrack ? AMBER : G;
     ctx.save();
     noGlow(ctx); ctx.fillStyle = 'rgba(0, 32, 14, 0.5)'; ctx.fillRect(x0, y0, s, s);
     ctx.beginPath(); ctx.rect(x0, y0, s, s); ctx.clip();
@@ -790,15 +861,15 @@ export function createHUD(THREE, A) {
       const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
       if (Math.hypot(sx, sy) > MAX_M * 1.1) return;
       const bx = cx + sx * k, by = cy + sy * k;
-      if (kind === 'msl') { glow(ctx, WARN, 4); ctx.fillRect(bx - 2, by - 2, 4, 4); return; }
-      glow(ctx, kind === 'lock' ? WARN : AMBER, 4);
+      if (kind === 'msl') { if (mslFlash()) { glow(ctx, WARN, 5); ctx.lineWidth = 1.6; diamond(ctx, bx, by, 6); } return; }
+      glow(ctx, kind === 'lock' ? WARN : kind === 'acq' ? AMBER : kind === 'desig' ? G : AMBER, 4);
       // Directional blip: arrow points along the bogey's own heading, relative to ours.
       ctx.save(); ctx.translate(bx, by); ctx.rotate(((hdg || 0) - S.heading) * D2R);
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2.5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
       ctx.restore();
-      if (kind === 'lock') { ctx.lineWidth = LW; ctx.strokeRect(bx - 9, by - 9, 18, 18); }
+      if (kind !== 'bogey') { ctx.lineWidth = LW; ctx.strokeRect(bx - 9, by - 9, 18, 18); }
     };
-    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey', e.heading);
+    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, blipKind(e), e.heading);
     for (const m of A.missiles) if (m.active && m.enemy) blip(m.mesh.position, 'msl');
     glow(ctx, HG, 6);
     ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 6, cy + 7); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 6, cy + 7); ctx.closePath(); ctx.fill();
@@ -806,6 +877,10 @@ export function createHUD(THREE, A) {
     ctx.save(); glow(ctx, border, flashRed() ? 10 : 4); ctx.lineWidth = 1.5; ctx.strokeRect(x0 + 0.5, y0 + 0.5, s - 1, s - 1);
     glow(ctx, HG, 2); ctx.font = f(11); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText('20NM', x0 + 6, y0 + 5);
+    if (C.rwrTrack || C.banditLock >= 1) {
+      glow(ctx, C.banditLock >= 1 ? WARN : AMBER, 4); ctx.font = f(13); ctx.textAlign = 'right';
+      if (C.banditLock < 1 || mslFlash()) ctx.fillText(C.banditLock >= 1 ? 'RWR LOCK' : 'RWR TRACK', x0 + s - 6, y0 + 5);
+    }
     ctx.restore();
   }
 

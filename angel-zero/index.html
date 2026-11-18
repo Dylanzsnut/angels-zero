@@ -92,7 +92,8 @@
           <h2>COMBAT</h2>
           <div class="bind"><span class="k"><kbd>L-CLICK</kbd> <kbd>F</kbd></span><span class="a">M61 Vulcan cannon (hold)</span></div>
           <div class="bind"><span class="k"><kbd>R-CLICK</kbd> <kbd>M</kbd></span><span class="a">AIM-9 Sidewinder</span></div>
-          <div class="bind"><span class="k">AUTO</span><span class="a">Lock: &lt;15&deg; off nose, &lt;3.5 NM</span></div>
+          <div class="bind"><span class="k"><kbd>C</kbd> <kbd>TAB</kbd></span><span class="a">Cycle target (nose order)</span></div>
+          <div class="bind"><span class="k">SEEKER</span><span class="a">Hold target in circle ~1.3 s: ACQ &rarr; LOCK</span></div>
           <div class="bind"><span class="k">PIPPER</span><span class="a">Fly the boresight onto it, fire</span></div>
         </div>
         <div class="col">
@@ -154,12 +155,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s9a';
-import { createHUD } from './src/hud.js?v=s9a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s9a';
-import { createCombat } from './src/combat.js?v=s9a';
-import { createEjection } from './src/eject.js?v=s9a';
-import { createAudio } from './src/audio.js?v=s9a';
+import { createVFX } from './src/vfx.js?v=s10a';
+import { createHUD } from './src/hud.js?v=s10a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s10a';
+import { createCombat } from './src/combat.js?v=s10a';
+import { createEjection } from './src/eject.js?v=s10a';
+import { createAudio } from './src/audio.js?v=s10a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -692,6 +693,7 @@ addEventListener('keydown', e => {
   if (k === 'shift') keys.shift = true;
   if (k === 'f') keys.fire = true;
   if (k === 'm' && !e.repeat) combatSys.fireMissile();
+  if ((k === 'c' || e.key === 'Tab') && !e.repeat) { e.preventDefault(); combatSys.cycleTarget(); }
   if (k === 'q' && !e.repeat) startRoll(-1);
   if (k === 'e' && !e.repeat) triggerEject('manual');
   if (k === 'r' && flightMode === 'FLY') resetAircraft();
@@ -909,9 +911,10 @@ function updateAudio() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
   let seeker = 'OFF';
   if (flightMode === 'FLY' && combat.missiles > 0 && combat.missileReload <= 0) {
-    if (combat.lockTarget) seeker = 'LOCK';
-    else if (combatSys.enemies.some(e => e.alive && e.pos.distanceTo(state.position) < 6 * 1852 &&
-      e.pos.clone().sub(state.position).normalize().dot(fwd) > Math.cos(30 * Math.PI / 180))) seeker = 'SCAN';
+    if (combat.lockState === 'LOCK') seeker = 'LOCK';
+    else if (combat.lockState === 'ACQ') seeker = 'ACQ';
+    else if (combat.designated && combat.designated.alive && combat.designated.pos.distanceTo(state.position) < 6 * 1852 &&
+      combat.designated.pos.clone().sub(state.position).normalize().dot(fwd) > Math.cos(30 * Math.PI / 180)) seeker = 'SCAN';
   }
   audio.update({
     throttle: state.throttle, afterburner: state.afterburner, engineOn: flightMode === 'FLY', cockpit: firstPerson,
@@ -1023,13 +1026,29 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   }
   if (DEBUG && Q.has('bogey')) combatSys.placeAhead(0, Number(Q.get('bogey')) || 1500);
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
+  if (DEBUG && Q.has('six')) combatSys.placeBehind(0, Number(Q.get('six')) || 1200);
+  if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
+  if (DEBUG && Q.has('cycle')) {                      // test hook: press C n times, log the designation order
+    combatSys.update(0, 0, { playerActive: true, firing: false });
+    const seq = [combat.designated ? combat.designated.label : '-'];
+    for (let i = 0; i < Number(Q.get('cycle')); i++) { const t = combatSys.cycleTarget(); seq.push(t ? t.label : '-'); }
+    console.log('[ANGELS_ZERO] cycle', seq.join(' > '));
+  }
   if (DEBUG && Q.has('eject')) triggerEject('manual');
   if (DEBUG && Q.has('warp')) {                       // headless test hook: fast-forward the sim
     const h = 1 / 60;
+    const logAt = (Q.get('logat') || '').split(',').filter(Boolean).map(Number);
+    const mslAt = Q.has('mslat') ? Number(Q.get('mslat')) : -1, rollAt = Q.has('rollat') ? Number(Q.get('rollat')) : -1;
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
+      const t0 = i * h, t1 = t0 + h;
+      if (mslAt >= t0 && mslAt < t1) { console.log('[ANGELS_ZERO] fire @', t1.toFixed(2), combat.lockState, combat.lockProgress.toFixed(2)); combatSys.fireMissile(); }
+      if (rollAt >= t0 && rollAt < t1) startRoll(1);
+      if (Q.has('breakat') && !state.barrelRoll && combatSys.missiles.some(m => m.active && m.enemy && !m.lostTrack &&
+        m.mesh.position.distanceTo(state.position) < Number(Q.get('breakat')))) { console.log('[ANGELS_ZERO] break @', t1.toFixed(2)); startRoll(1); }
       simTime += h;
       stepSim(h);
       updateCameraAndVisuals(h, simTime);
+      for (const t of logAt) if (t >= t0 && t < t1) console.log('[ANGELS_ZERO] t', t1.toFixed(2), JSON.stringify(combatSys.stats()), 'alert', hud.hudAlertState, 'hp', combat.health);
     }
     console.log('[ANGELS_ZERO] combat', JSON.stringify(combatSys.stats()), 'lock', combat.lockTarget ? combat.lockTarget.label : '-',
       'score', combat.score, 'kills', combat.kills, 'gun', combat.ammo, 'msl', combat.missiles, 'hp', combat.health, 'mode', flightMode,

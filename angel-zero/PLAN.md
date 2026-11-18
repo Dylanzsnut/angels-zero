@@ -272,13 +272,46 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - [x] Headless: rolling -> head roll lag 10.9 deg; banked pull -> look 13 deg up,
       11.2 deg into the turn, -0.07 m compression; level -> all zero.
 
+## Target cycling, progressive lock-on & bandit missile AI (2026-11-18)
+- [x] `C` / `Tab` cycles the designated bandit (nose-alignment + range order);
+      the nearest is auto-designated only when nothing is selected or the
+      target dies. Controls overlay updated (C/TAB, SEEKER line).
+- [x] HUD: small hollow diamonds on unselected bandits; primary diamond with
+      `BANDIT 0n`, range NM and closure KT; off-screen caret points to the
+      primary. IR seeker circle (14 deg cone) on the boresight whenever a
+      target is designated: dashed green (no lock), amber + progress arc (ACQ),
+      red (LOCK).
+- [x] `lockProgress` 0..1 builds in 1.3 s inside the cone and 3.5 NM, decays at
+      0.8/s outside. NONE = green diamond, dumb-fire missiles; ACQ = rotating /
+      closing amber diamond, pulsed 8 Hz growl, soft missiles (14 deg/s,
+      18 deg FOV, 5 deg launch error, seeker wander); LOCK = pulsing red diamond
+      + inner square, LOCK/SHOOT, continuous tone, accurate missiles (34 deg/s,
+      45 deg FOV, N = 4.2).
+- [x] Missiles are turn-rate limited (accel <= v * turnRate), go ballistic when
+      the target leaves the seeker FOV, and log outcomes (`combat.mslLog`).
+- [x] Bandits run the same lock model: 3.2 NM, 22 deg rear cone, 2.2 s.
+      Soft track (0.45-0.99) shows amber `RWR TRACK` on both radars and may
+      provoke an early weak shot (13 deg/s, 14 deg FOV, 9 deg launch error).
+      Full lock raises MISSILE ALERT (red radar border, dual-tone) and fires a
+      hard-tracking shot (30 deg/s). A barrel roll / high-G turn inside 900 m
+      defeats it (75 %; 95 % for soft shots). Bandit missiles trail red smoke
+      and show as flashing red diamonds on the HUD and radars.
+- [x] Headless: cycle `05 > 03 > 04 > 01 > 06`; lock NONE -> ACQ (0.3 s,
+      p 0.24) -> LOCK (1.3 s); soft shot `SOFT/lost`, full shot `FULL:HIT`;
+      bandit soft x3 `B-SOFT/lost`, full x2 `B-FULL:HIT` (-40 HP), full + break
+      roll at 850 m x2 `B-FULL/lost` (no damage); zero page console errors.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
 (fast-forwards the sim before the first frame); `?alt=metres`; `?spd=m/s`;
 `?force=cone,vapor,mist` (holds transient VFX on for stills); `?alert` (forces
 MISSILE_ALERT); `?bogey=metres` (bogey 1 dead ahead); `?fire` (hold trigger);
-`?msl` (launch at load); `?eject` (bail out at load). `?nointro` skips the
+`?msl` (launch at load); `?eject` (bail out at load). `?cycle=n` (press C n times, log order); `?six=metres`
+(bogey 1 on your six, pursuing); `?bshot=soft|full` (bogey 1 fires now);
+`?mslat=s` / `?rollat=s` (fire / barrel roll at warp time s);
+`?breakat=metres` (auto barrel roll when a bandit missile closes inside);
+`?logat=s1,s2` (combat stats at warp times). `?nointro` skips the
 briefing (no audio until a real LAUNCH click). Flags other than
 `nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
