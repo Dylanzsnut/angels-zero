@@ -903,9 +903,9 @@ export function createCombat(THREE, env) {
     for (let i = 0; i < FLR_PER_SALVO; i++) {
       const side = i % 2 ? 1 : -1;
       const pos = DISPENSERS[i % 2].clone().applyQuaternion(S.quaternion).add(S.position);
-      const vel = S.velocity.clone().multiplyScalar(0.92)
-        .addScaledVector(right, side * (10 + rand() * 14)).addScaledVector(up, -(6 + rand() * 10)).addScaledVector(fwd, -(4 + rand() * 6));
-      flares.push({ pos, vel, age: -i * 0.07, life: 3.4 + rand() * 0.8, alive: true, isFlare: true, salvo: flareSalvo, emit: 0 });
+      const kick = new THREE.Vector3().addScaledVector(right, side * (10 + rand() * 14)).addScaledVector(up, -(6 + rand() * 10)).addScaledVector(fwd, -(2 + rand() * 4));
+      const vel = S.velocity.clone().multiplyScalar(0.92).add(kick);
+      flares.push({ pos, vel, kick, side: i % 2, age: -i * 0.07, life: 3.4 + rand() * 0.8, alive: true, isFlare: true, salvo: flareSalvo, emit: 0 });
     }
     for (let i = 0; i < 70; i++) {                      // chaff bloom: glittering foil
       const p = DISPENSERS[i % 2].clone().applyQuaternion(S.quaternion).add(S.position);
@@ -928,11 +928,18 @@ export function createCombat(THREE, env) {
     for (let i = flares.length - 1; i >= 0; i--) {
       const f = flares[i];
       f.age += dt;
-      if (f.age < 0) continue;                           // staggered ejection
-      f.vel.multiplyScalar(Math.exp(-dt * 1.1)); f.vel.y -= G0 * 0.55 * dt;
+      if (f.age < 0) {                                   // staggered ejection: ride the dispenser until fired
+        f.pos.copy(DISPENSERS[f.side]).applyQuaternion(S.quaternion).add(S.position);
+        f.vel.copy(S.velocity).multiplyScalar(0.92).add(f.kick);
+        continue;
+      }
+      f.vel.multiplyScalar(Math.exp(-dt * 0.6)); f.vel.y -= G0 * 0.55 * dt;
       f.pos.addScaledVector(f.vel, dt);
       if (f.age > f.life || f.pos.y < groundLevel(f.pos.x, f.pos.z) || !f.alive) { f.alive = false; flares.splice(i, 1); continue; }
       const k = 1 - f.age / f.life;
+      // Blinding magnesium core: one big short-lived additive point per frame, flickering.
+      fire.spawn({ x: f.pos.x, y: f.pos.y, z: f.pos.z, vx: f.vel.x, vy: f.vel.y, vz: f.vel.z, life: 0.05,
+        s0: (16 + rand() * 10) * (0.55 + 0.45 * k), s1: 12, r: 1, g: 0.97, b: 0.85, a: 1, drag: 0 });
       f.emit += dt * 40;
       while (f.emit >= 1) {
         f.emit -= 1;

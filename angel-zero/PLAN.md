@@ -334,6 +334,14 @@ briefing (no audio until a real LAUNCH click). Flags other than
 - [x] `src/audio.js`: procedural bomb-rack release clunk, pitch-sliding
       falling-bomb whistle + wind noise, long sub-bass bomb detonation rumble,
       and 6-pop flare salvo + magnesium sizzle.
+- [x] Follow-up (`?v=s13b`): staggered flares now ride the tail dispensers
+      until they fire (they were left behind at the release point), each flare
+      gets a large flickering white-gold core, and flare drag is 0.6/s so the
+      salvo stays in the chase view. Headless: bomb clone `sameGeo=true`,
+      pylon count 12 -> 11, CCIP vs impact within 5 m over an 8.8 s fall,
+      pylon missile `1,2,3,4 -> 2,3,4` with a kill, flare decoy 4/6 runs
+      (85 % roll), zero page console errors. Debug hooks: `?wpn=bomb`,
+      `?bomb=n`, `?bombat=s`, `?flare`, `?flareat=s`, `?camat=x,y,z`.
 
 ## Ace Combat 7 HUD overhaul & visual polish (2026-11-18)
 - [x] `index.html`: loads `Rajdhani` + `Share Tech Mono`, adds `v1.7.0` patch
