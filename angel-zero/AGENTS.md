@@ -35,7 +35,8 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   cockpit view.
 - `src/combat.js` — `createCombat`: bogey wave AI (bank-to-turn flight,
   PATROL / ENGAGE / EVADE_BREAK / BARREL_ROLL / EXTEND_CLIMB, terrain look-ahead,
-  merge break-away, AI flares, airframe collision), cannon, AIM-9 PN guidance,
+  merge break-away, AI flares, airframe collision), APG-63 auto-designation +
+  C seeker lock, >4AAM ripple, RWR picture (`combat.rwr`), ALQ-135 ECM, cannon, AIM-9 PN guidance,
   explosions / wrecks / smoke, lock-on, scoring, radio comms (`combat.comms`).
 - `src/eject.js` — `createEjection`: seat, parachute, burning jet, rescue respawn.
 - `src/atmosphere.js` — `createAtmosphere`: Rayleigh/Mie sky dome + starfield,

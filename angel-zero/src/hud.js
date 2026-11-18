@@ -370,24 +370,33 @@ export function createHUD(THREE, A) {
     ctx.closePath(); ctx.stroke();
   }
 
-  const blipKind = e => C.designated !== e ? 'bogey' : C.lockState === 'LOCK' ? 'lock' : C.lockState === 'ACQ' ? 'acq' : 'desig';
+  // Radar / seeker track for a bandit: { st: NONE|ACQ|LOCK, prog, n } (n = 4AAM slot 1-4, 0 for MSL).
+  function trackInfo(e) {
+    if (C.weapon === 'AAM4') { const i = (C.multi || []).indexOf(e); return i < 0 ? null : { st: C.multiState[i], prog: C.multiProg[i], n: i + 1 }; }
+    return C.designated === e ? { st: C.lockState, prog: C.lockProgress, n: 0 } : null;
+  }
+  const blipKind = e => { const t = trackInfo(e); return !t ? 'bogey' : t.st === 'LOCK' ? 'lock' : t.st === 'ACQ' ? 'acq' : 'desig'; };
   function lockColor() { return C.lockState === 'LOCK' ? WARN : C.lockState === 'ACQ' ? AMBER : G; }
 
   function drawSeekerCircle(ctx) {
-    if (!C.designated || C.dead || C.missiles <= 0 || C.missileReload > 0) return;
+    // Seeker circle only once C has armed the seeker (passive radar tracking shows none).
+    const aam = C.weapon === 'AAM4';
+    if (!C.seekerArmed || !C.designated || C.dead || C.weapon === 'BOMB') return;
+    if (aam ? C.aam4 <= 0 || C.aam4Reload > 0 : C.missiles <= 0 || C.missileReload > 0) return;
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
     const c = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
-    const e = toScreen(cam.position.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan(7 * D2R)));
+    const e = toScreen(cam.position.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan((aam ? 25 : 7) * D2R)));
     if (!c.ok || !e.ok) return;
     const r = Math.hypot(e.x - c.x, e.y - c.y);
     ctx.save();
-    glow(ctx, lockColor(), 4);
-    ctx.lineWidth = LW;
-    if (C.lockState === 'NONE') ctx.setLineDash([6, 5]);
+    glow(ctx, lockColor(), aam ? 0 : 4);
+    ctx.lineWidth = aam ? 1 : LW;
+    if (aam) { ctx.globalAlpha = 0.4; ctx.setLineDash([2, 7]); }   // wide 4AAM TWS field: faint hairline
+    else if (C.lockState === 'NONE') ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
-    if (C.lockState === 'ACQ') {
+    if (C.lockState === 'ACQ' && !aam) {
       ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(c.x, c.y, r + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * C.lockProgress); ctx.stroke();
     }
@@ -402,11 +411,12 @@ export function createHUD(THREE, A) {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
     const c = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
-    const e = toScreen(cam.position.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan(11 * D2R)));
+    const e = toScreen(cam.position.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan((C.weapon === 'AAM4' ? 25 : 7) * D2R)));
     if (!c.ok || !e.ok) return;
     const r = Math.hypot(e.x - c.x, e.y - c.y);
     const age = (performance.now() - (C.designateT || -1e9)) / 1000;
     const pulse = age < 0.6 ? 1 - age / 0.6 : 0;
+    if (pulse <= 0) return;                                   // C-press flash only; radar tracking needs no ring
     ctx.save();
     if (pulse > 0) {
       const col = C.designateOk ? G : AMBER;
@@ -458,7 +468,8 @@ export function createHUD(THREE, A) {
         continue;
       }
 
-      if (e !== prim) {
+      const info = trackInfo(e);
+      if (!info) {
         const isNext = e === nextTgt;
         const s = isNext ? 15 : 11;
         const col = isNext ? 'rgba(88, 255, 154, 0.85)' : 'rgba(88, 255, 154, 0.6)';
@@ -479,8 +490,9 @@ export function createHUD(THREE, A) {
         continue;
       }
 
-      // Designated primary target: AC7 open-corner brackets + dynamic lock-on snap.
-      const st = C.lockState;
+      // Tracked target: green radar brackets (passive), amber ACQ diamond, crimson LOCK square.
+      const st = info.st, tag = info.n ? ' ' + info.n : '';
+      const shootRange = C.weapon === 'AAM4' ? 4.5 * 1852 : 3.5 * 1852;
       const baseS = clamp(15000 / Math.max(range, 350), 17, 30);
       const col = st === 'LOCK' ? WARN : G;
       ctx.save();
@@ -491,21 +503,24 @@ export function createHUD(THREE, A) {
         ctx.lineWidth = 1.6;
         drawCornerBracket(ctx, p.x, p.y, s, Math.round(s * 0.4));
         ctx.lineWidth = 1.25;
-        drawCornerBracket(ctx, p.x, p.y, s - 4.5, Math.round(s * 0.3));
-        diamond(ctx, p.x, p.y, s * 0.44);
+        const q = s * 0.46; ctx.strokeRect(p.x - q, p.y - q, q * 2, q * 2);            // crimson lock square
+        // Circular range arc: full ring at point blank, shrinking to nothing at max range.
+        const rk = clamp(1 - range / (shootRange * 1.6), 0.04, 1);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, s + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * rk); ctx.stroke();
         ctx.font = f(13, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        const cue = range < 3.5 * 1852 && Math.floor(now / 240) % 2 ? 'SHOOT' : 'LOCK';
-        labelText(ctx, cue, p.x, p.y - s - 5, WARN, 5);
+        const cue = range < shootRange && Math.floor(now / 240) % 2 ? '[ SHOOT ]' : 'LOCK' + tag;
+        labelText(ctx, cue, p.x, p.y - s - 10, WARN, 5);
       } else if (st === 'ACQ') {
         // Rotating outer diamond shrinking cleanly onto the bracket as lock builds.
-        const k = 1 + 1.15 * (1 - C.lockProgress);
-        const acqCol = C.lockProgress > 0.72 ? WARN : AMBER;
+        const k = 1 + 1.15 * (1 - info.prog);
+        const acqCol = info.prog > 0.72 ? WARN : AMBER;
         glow(ctx, G, 4); ctx.lineWidth = 1.4;
         drawCornerBracket(ctx, p.x, p.y, baseS, Math.round(baseS * 0.38));
         glow(ctx, acqCol, 5); ctx.lineWidth = 1.5;
         diamond(ctx, p.x, p.y, baseS * k, now / 220);
         ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        labelText(ctx, 'ACQ', p.x, p.y - baseS - 6, acqCol, 4);
+        labelText(ctx, 'ACQ' + tag, p.x, p.y - baseS - 6, acqCol, 4);
       } else {
         glow(ctx, G, 4); ctx.lineWidth = 1.4;
         drawCornerBracket(ctx, p.x, p.y, baseS, Math.round(baseS * 0.38));
@@ -516,11 +531,11 @@ export function createHUD(THREE, A) {
       const lx = flipLeft ? p.x - baseS - 7 : p.x + baseS + 7;
       ctx.textAlign = flipLeft ? 'right' : 'left'; ctx.textBaseline = 'middle';
       ctx.font = f(11, true);
-      labelText(ctx, `TGT  ${e.type || 'BANDIT'}`, lx, p.y - 11, col, 3);
+      labelText(ctx, `${info.n ? 'TGT ' + info.n : 'TGT'}  ${e.type || 'BANDIT'}`, lx, p.y - 11, col, 3);
       ctx.font = f(10);
       labelText(ctx, e.label, lx, p.y + 1, col, 2);
       labelText(ctx, formatDist(range), lx, p.y + 12, col, 2);
-      if (C.targetObscured && Math.floor(now / 160) % 3) {
+      if (info.n <= 1 && C.targetObscured && Math.floor(now / 160) % 3) {
         // Bandit hiding in cloud: flickering amber obscured bracket + tag.
         glow(ctx, AMBER, 5); ctx.lineWidth = 1.2; ctx.setLineDash([4, 4]);
         drawCornerBracket(ctx, p.x, p.y, baseS + 7, Math.round(baseS * 0.45));
@@ -901,6 +916,37 @@ export function createHUD(THREE, A) {
       ctx.globalAlpha = 1;
     }
 
+    // ALR-56C RWR: emitters on the inner ring at their clock bearing (heading-up).
+    // Amber spike = fighter radar painting / acquiring, crimson spike = full lock,
+    // pulsing crimson M + vector line = missile tracking us.
+    {
+      const rr = half * 0.5;
+      ctx.save();
+      noGlow(ctx); ctx.strokeStyle = 'rgba(88, 255, 154, 0.22)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      for (const r of C.rwr || []) {
+        const sx = Math.sin(r.b), sy = -Math.cos(r.b), px = cx + sx * rr, py = cy + sy * rr;
+        if (r.kind === 'msl') {
+          const on = mslFlash();
+          glow(ctx, WARN, on ? 8 : 2); ctx.globalAlpha = on ? 1 : 0.5; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(cx + sx * 9, cy + sy * 9); ctx.lineTo(px + sx * 6, py + sy * 6); ctx.stroke();
+          ctx.font = f(14, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('M', px + sx * 14, py + sy * 14);
+          ctx.globalAlpha = 1;
+        } else {
+          const col = r.kind === 'lock' ? WARN : AMBER;
+          glow(ctx, col, r.kind === 'paint' ? 2 : 5); ctx.lineWidth = r.kind === 'paint' ? 1.1 : 1.6;
+          ctx.globalAlpha = r.kind === 'paint' ? 0.75 : 1;
+          ctx.save(); ctx.translate(px, py); ctx.rotate(r.b);
+          ctx.beginPath(); ctx.moveTo(-5, -4); ctx.lineTo(0, 3); ctx.lineTo(5, -4);      // inward-pointing spike chevron
+          if (r.kind !== 'paint') { ctx.moveTo(-5, -9); ctx.lineTo(0, -2); ctx.lineTo(5, -9); }
+          ctx.stroke(); ctx.restore();
+          ctx.globalAlpha = 1;
+        }
+      }
+      ctx.restore();
+    }
+
     // Ownship triangle.
     glow(ctx, GB, 5);
     ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx + 5.5, cy + 6); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 5.5, cy + 6); ctx.closePath(); ctx.fill();
@@ -913,6 +959,15 @@ export function createHUD(THREE, A) {
     ctx.stroke(frame);
     ctx.font = f(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     labelText(ctx, RANGE_NM + 'NM', x0 + 6, y0 + 5, G, 2);
+    if (C.ecmState && C.ecmState !== 'READY') {
+      const act = C.ecmState === 'ACTIVE';
+      const txt = act ? `[ ECM ACTIVE ]  ${C.ecmT.toFixed(1)}` : `[ ECM RECHARGE ]  ${C.ecmT.toFixed(1)}`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.font = f(12, true);
+      labelText(ctx, txt, x0 + 2, y0 - 6, act ? CYAN : AMBER, act ? 6 : 3);
+      if (act) {                                             // jammer bar drains over 6 s
+        glow(ctx, CYAN, 3); ctx.fillRect(x0 + 2, y0 - 4, (s - 4) * Math.max(0, C.ecmT / 6), 2);
+      }
+    }
     if (C.rwrTrack || C.banditLock >= 1) {
       const rCol = C.banditLock >= 1 ? WARN : AMBER;
       ctx.textAlign = 'right';
@@ -950,7 +1005,7 @@ export function createHUD(THREE, A) {
   function drawBottomRight(ctx) {
     // Right-aligned stores list, F-15C silhouette and pylon icons; no heavy box.
     const xr = HW - 26, xl = xr - 150, rowH = 20;
-    const y0 = HH - 286;
+    const y0 = HH - 306;
     ctx.save();
     ctx.font = f(15, true); ctx.textBaseline = 'top';
     const reloadMsl = C.missileReload > 0, reloadBomb = C.bombReload > 0;
@@ -958,6 +1013,7 @@ export function createHUD(THREE, A) {
       ['  GUN', C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo), G],
       [(C.weapon === 'MSL' ? '> ' : '  ') + 'MSL', reloadMsl ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles), C.weapon === 'MSL' ? GB : G]
     ];
+    if (C.aam4Max) rows.push([(C.weapon === 'AAM4' ? '> ' : '  ') + '4AAM', C.aam4Reload > 0 ? 'RLD ' + C.aam4Reload.toFixed(1) : String(C.aam4), C.weapon === 'AAM4' ? GB : G]);
     if (C.bombMax) rows.push([(C.weapon === 'BOMB' ? '> ' : '  ') + 'UGB', reloadBomb ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs), C.weapon === 'BOMB' ? GB : G]);
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);

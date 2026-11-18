@@ -77,8 +77,30 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   `world.js`; no functional gap.
 
 ## Pillar 4 — Combat Loop, Ballistics & VFX (`src/weapons.js`, `src/vfx.js`, `src/audio.js`)
-- [x] **Strict `C` boresight designation** (22 deg sight cone, no auto-switch)
-  with progressive IR seeker NONE → ACQ → LOCK.
+- [x] **Two-stage targeting** *(build `s24a`)* — APG-63 auto-designates the
+  best bandit in the 30 deg / 8 NM forward radar cone (green brackets, type,
+  range; no lock, so an un-`C`'d launch is a dumb-fire); `C` arms the seeker
+  (`combat.seekerArmed`) for the progressive IR lock NONE → ACQ (amber diamond)
+  → LOCK (crimson square + range arc + `[ SHOOT ]` + lock tone); `C` while locked
+  cycles to the next nearest forward bandit; a decayed lock / cloud cover drops
+  back to passive radar tracking.
+- [x] **>4AAM track-while-scan** — `R` cycles `>MSL` → `>4AAM` → `>UGB` (`3`
+  selects it); 20-round pool, radar tracks up to 4 bandits (`TGT 1-4`), `C`
+  locks them all (25 deg / 4.5 NM / 1.6 s, `LOCK 1-4`), RMB / M ripple-fires one
+  missile per lock 0.09 s apart, each pylon round hidden for a 3.5 s re-rack,
+  every missile guiding independently; 12 s pool reload.
+- [x] **ALR-56C RWR** — amber spike chevrons on the radar's inner ring at the
+  emitter's clock bearing (paint / acquiring), crimson spike on a full lock,
+  pulsing crimson `M` + vector line for a missile tracking us; audio search
+  chirps (painted), quick triple pips (locked), rapid 1.9 / 2.7 kHz warble only
+  with a missile inbound.
+- [x] **ALQ-135 ECM (`Z`)** — 6 s jamming (`[ ECM ACTIVE ]`, cyan, drain bar)
+  then 14 s recharge (`[ ECM RECHARGE ]`); bandit lock build time x2.5 and a
+  35 %/s chance per established track to break. Verified headless: passive
+  track without C, MSL lock + FULL launch, 4AAM 4/4 locks + 4-round ripple
+  (pylons hidden, re-racked), dumb-fire before C, RWR paint / lock / msl
+  bearings, ECM slow-down (0.54 vs 1.0 lock at 2.5 s) and lock breaks, zero
+  page console errors.
 - [x] **Pylon stores** — real GLB AIM-9s / Mk-82 UGBs hidden and flown as
   clones; turn-rate-limited proportional navigation by lock quality.
 - [x] **CCIP** — closed-form ballistic solve, fall line + impact pipper.
@@ -152,9 +174,11 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 | Q | Barrel roll |
 | Shift | Afterburner; High-G turn while pulling (also W+S) |
 | LMB / F | M61 Vulcan cannon |
-| RMB / M | Fire selected: AIM-9 or drop UGB |
-| R · 1 / 2 | Toggle MSL / UGB · select MSL / UGB |
-| C | Lock target in sight (boresight designation) |
+| RMB / M | Fire selected: AIM-9, 4AAM ripple, or drop UGB |
+| R · 1 / 2 / 3 | Cycle MSL / 4AAM / UGB · select MSL / UGB / 4AAM |
+| (auto) | APG-63 auto-radar designation of the forward bandit(s) |
+| C | Lock missile seeker / cycle target when locked |
+| Z | ALQ-135 ECM jammer (6 s on, 14 s recharge) |
 | X / G | Flares + chaff |
 | N | Night vision (NVG) |
 | Space | Cockpit / chase view |
@@ -178,13 +202,12 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
-· `logat=t,...` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
+· `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
 
 ## Next
-0. **4AAM / RWR / ECM** (deferred from the previous slot; next active step).
 1. Pillar 1: extract `state` / `combat` into `src/state.js`; fixed-step
    simulation accumulator.
 2. Pillar 2: extract `updatePhysics` → `src/flight.js` and the chase camera →

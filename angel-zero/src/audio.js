@@ -1,6 +1,7 @@
 // ANGELS ZERO — procedural Web Audio synthesis (no audio files).
 // Twin F100 turbine + afterburner roar, M61 "brrrt", AIM-9 seeker growl / lock
-// tone, missile launch whoosh, dual-tone missile alert, sub-bass explosions,
+// tone, missile launch whoosh, ALR-56C RWR chirps + launch warble, ALQ-135 ECM
+// buzz, sub-bass explosions,
 // bomb-rack clunk, falling-bomb whistle, detonation rumble, flare pop / sizzle.
 // Everything is generated from oscillators, noise buffers and filters.
 
@@ -263,6 +264,35 @@ export function createAudio() {
     }
   }
 
+  // ALR-56C RWR search chirp: a short descending sine pip pair (soft when painted,
+  // brighter and quicker when a bandit holds a lock).
+  function rwrChirp(level) {
+    if (!ready) return;
+    const t = ctx.currentTime, hi = level >= 2;
+    for (const [f0, dt] of hi ? [[2600, 0], [2600, 0.07], [2600, 0.14]] : [[1900, 0], [1500, 0.06]]) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f0, t + dt); o.frequency.exponentialRampToValueAtTime(f0 * 0.82, t + dt + 0.05);
+      const g = gain(0); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(hi ? 0.045 : 0.03, t + dt + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.055);
+      o.connect(g).connect(master); o.start(t + dt); o.stop(t + dt + 0.06);
+    }
+  }
+  // ALQ-135 jammer engage: a buzzing noise sweep plus a rising square whine.
+  function ecm(on = true) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const bp = filt('bandpass', 600, 5);
+    bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(4200, t + 0.5);
+    const ng = gain(0); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(0.1, t + 0.03); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+    n.connect(bp).connect(ng).connect(master); n.start(t, Math.random()); n.stop(t + 0.7);
+    const o = ctx.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(on ? 220 : 660, t); o.frequency.exponentialRampToValueAtTime(on ? 660 : 220, t + 0.4);
+    const lp = filt('lowpass', 1800, 0.7);
+    const og = gain(0); og.gain.setValueAtTime(0.035, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    o.connect(lp).connect(og).connect(master); o.start(t); o.stop(t + 0.5);
+  }
+
   // Overdrive curve (classic k-shaped soft/hard clip), amount = 35.
   function distortionCurve(amount) {
     const n = 2048, curve = new Float32Array(n), deg = Math.PI / 180;
@@ -358,10 +388,16 @@ export function createAudio() {
     set(N.cloudLP.frequency, 300 + 380 * cl, 0.3);
     set(N.cloudHissGain.gain, 0.025 * cl, 0.3);
 
+    // RWR: soft search chirps when painted, quicker bright triple pips on a full
+    // lock, and the rapid high-pitched launch warble only while a missile is inbound.
+    const lvl = p.rwr || 0, now = ctx.currentTime;
+    if (lvl >= 1 && lvl < 3 && !p.alert) {
+      if (!N.nextChirp || now >= N.nextChirp) { rwrChirp(lvl); N.nextChirp = now + (lvl >= 2 ? 0.42 : 1.35); }
+    } else N.nextChirp = 0;
     if (p.alert) {
-      const phase = Math.floor(ctx.currentTime / 0.14) % 2;
-      N.alert.frequency.setValueAtTime(phase ? 800 : 1200, ctx.currentTime);
-      set(N.alertGain.gain, 0.06, 0.01);
+      const phase = Math.floor(now / 0.065) % 2;
+      N.alert.frequency.setValueAtTime(phase ? 1900 : 2700, now);
+      set(N.alertGain.gain, 0.055, 0.008);
     } else set(N.alertGain.gain, 0, 0.02);
   }
 
@@ -377,7 +413,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

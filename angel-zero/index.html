@@ -172,7 +172,7 @@
       <div class="ac7-layout">
         <div class="sec-box">
           <div class="sec-head"><span>SORTIE BRIEFING</span><span>F-15C EAGLE</span></div>
-          <p class="brief" id="menuBrief">Six aggressor fighters patrol the archipelago between 1,800 and 6,500&nbsp;ft. Engage inside 3.5&nbsp;NM, splash every bandit, or drop MK-82 ordnance with CCIP. Punch out with E if critical.</p>
+          <p class="brief" id="menuBrief">Six aggressor fighters patrol the archipelago between 1,800 and 6,500&nbsp;ft. The APG-63 auto-designates bandits ahead; press C to lock the seeker (4AAM locks four at once), splash every bandit, or drop MK-82 ordnance with CCIP. Z jams enemy radar. Punch out with E if critical.</p>
           <div class="pause-stats" id="pauseStats">
             <div class="stat-cell"><div class="stat-k">MISSION TIME</div><div class="stat-v" id="statTime">00:00:00</div></div>
             <div class="stat-cell"><div class="stat-k">SCORE</div><div class="stat-v" id="statScore">000000</div></div>
@@ -186,10 +186,11 @@
           </div>
           <div class="loadout-card">
             <div class="loadout-title">F-15C EAGLE // AIR-TO-AIR &amp; STRIKE</div>
-            <div class="loadout-sub">M61A1 VULCAN &bull; AIM-9M &bull; MK-82 UGB &bull; FLARES</div>
+            <div class="loadout-sub">M61A1 VULCAN &bull; AIM-9M &bull; 4AAM &bull; MK-82 UGB &bull; FLARES &bull; ALQ-135 ECM</div>
             <div class="stations">
               <div class="station"><span>M61A1 20MM</span><span>940 RDS</span></div>
               <div class="station"><span>AIM-9M IR</span><span>4 RAILS</span></div>
+              <div class="station"><span>4AAM TWS</span><span>20 RDS</span></div>
               <div class="station"><span>MK-82 UGB</span><span>12 STORES</span></div>
               <div class="station"><span>FLR / CHAFF</span><span>4 SALVOS</span></div>
             </div>
@@ -202,11 +203,13 @@
             <div class="bind"><span class="k"><kbd>MOUSE</kbd></span><span class="a">Pitch / roll</span></div>
             <div class="bind"><span class="k"><kbd>LMB</kbd> <kbd>F</kbd></span><span class="a">Vulcan cannon</span></div>
             <div class="bind"><span class="k"><kbd>W</kbd> <kbd>S</kbd></span><span class="a">Throttle / brake</span></div>
-            <div class="bind"><span class="k"><kbd>RMB</kbd> <kbd>M</kbd></span><span class="a">Fire MSL / UGB</span></div>
+            <div class="bind"><span class="k"><kbd>RMB</kbd> <kbd>M</kbd></span><span class="a">Fire MSL / 4AAM ripple / UGB</span></div>
             <div class="bind"><span class="k"><kbd>SHIFT</kbd></span><span class="a">Afterburner / Hi-G</span></div>
-            <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Toggle MSL / UGB</span></div>
+            <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span class="a">Cycle MSL / 4AAM / UGB</span></div>
             <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
-            <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Target in Sight</span></div>
+            <div class="bind"><span class="k"><kbd>AUTO</kbd></span><span class="a">Auto-Radar Designate</span></div>
+            <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Missile Seeker / Cycle Target</span></div>
+            <div class="bind"><span class="k"><kbd>Z</kbd></span><span class="a">ALQ-135 ECM Jammer</span></div>
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
             <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
             <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Deploy flares</span></div>
@@ -290,17 +293,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s23a';
-import { createHUD } from './src/hud.js?v=s23a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s23a';
-import { createCombat } from './src/combat.js?v=s23a';
-import { createEjection } from './src/eject.js?v=s23a';
-import { createAudio } from './src/audio.js?v=s23a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s23a';
-import { createCanopyFX } from './src/canopy.js?v=s23a';
-import { createNVG } from './src/nvg.js?v=s23a';
-import { createWorld, WORLD } from './src/world.js?v=s23a';
-import { createSurfaces } from './src/surfaces.js?v=s23a';
+import { createVFX } from './src/vfx.js?v=s24a';
+import { createHUD } from './src/hud.js?v=s24a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s24a';
+import { createCombat } from './src/combat.js?v=s24a';
+import { createEjection } from './src/eject.js?v=s24a';
+import { createAudio } from './src/audio.js?v=s24a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s24a';
+import { createCanopyFX } from './src/canopy.js?v=s24a';
+import { createNVG } from './src/nvg.js?v=s24a';
+import { createWorld, WORLD } from './src/world.js?v=s24a';
+import { createSurfaces } from './src/surfaces.js?v=s24a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -825,6 +828,8 @@ addEventListener('keydown', e => {
   if (k === 'r' && !e.repeat) combatSys.toggleWeapon();
   if (k === '1' && !e.repeat) combatSys.setWeapon('MSL');
   if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
+  if (k === '3' && !e.repeat) combatSys.setWeapon('AAM4');
+  if (k === 'z' && !e.repeat) combatSys.activateECM();
   if ((k === 'x' || k === 'g') && !e.repeat) combatSys.dispenseFlares();
   if (k === 'c' && !e.repeat) combatSys.designateInSight();
   if (k === 'n' && !e.repeat) setNVG(!nvg.active);
@@ -1077,7 +1082,9 @@ const audio = createAudio();
 function updateAudio() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
   let seeker = 'OFF';
-  if (flightMode === 'FLY' && combat.missiles > 0 && combat.missileReload <= 0) {
+  const aam = combat.weapon === 'AAM4';
+  const mslOk = aam ? combat.aam4 > 0 && combat.aam4Reload <= 0 : combat.weapon === 'MSL' && combat.missiles > 0 && combat.missileReload <= 0;
+  if (flightMode === 'FLY' && combat.seekerArmed && mslOk) {          // seeker tones only after C arms the seeker
     if (combat.lockState === 'LOCK') seeker = 'LOCK';
     else if (combat.lockState === 'ACQ') seeker = 'ACQ';
     else if (combat.designated && combat.designated.alive && combat.designated.pos.distanceTo(state.position) < 6 * 1852 &&
@@ -1086,7 +1093,7 @@ function updateAudio() {
   audio.update({
     throttle: state.throttle, afterburner: state.afterburner, engineOn: flightMode === 'FLY', cockpit: firstPerson,
     firing: flightMode === 'FLY' && (keys.fire || DEBUG_FIRE) && combat.ammo > 0 && combat.reload <= 0,
-    seeker, alert: hud.hudAlertState === 'MISSILE_ALERT', whistle: bombWhistle(),
+    seeker, alert: flightMode === 'FLY' && (combat.incoming || 0) > 0, rwr: flightMode === 'FLY' ? combat.rwrLevel || 0 : 0, whistle: bombWhistle(),
     cloud: flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0
   });
 }
@@ -1111,6 +1118,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'flare') audio.flare(firstPerson ? 0.8 : 1);
   else if (type === 'designate') audio.designate(scale > 0);
   else if (type === 'lockdrop') audio.lockDrop();
+  else if (type === 'ecm') audio.ecm(scale > 0);
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
@@ -1366,6 +1374,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
+      if (Q.has('ecmat') && Number(Q.get('ecmat')) >= t0 && Number(Q.get('ecmat')) < t1) { console.log('[ANGELS_ZERO] Z @', t1.toFixed(2), combatSys.activateECM()); }
+      if (Q.has('fireat') && Number(Q.get('fireat')) >= t0 && Number(Q.get('fireat')) < t1) { console.log('[ANGELS_ZERO] RMB @', t1.toFixed(2), combat.weapon, JSON.stringify(combatSys.stats().tgt), combatSys.fireSelected()); }
       if (Q.has('flareat') && Number(Q.get('flareat')) >= t0 && Number(Q.get('flareat')) < t1) { console.log('[ANGELS_ZERO] flares @', t1.toFixed(2)); combatSys.dispenseFlares(); }
       if (Q.has('breakat') && !state.barrelRoll && combatSys.missiles.some(m => m.active && m.enemy && !m.lostTrack &&
         m.mesh.position.distanceTo(state.position) < Number(Q.get('breakat')))) { console.log('[ANGELS_ZERO] break @', t1.toFixed(2)); startRoll(1); }

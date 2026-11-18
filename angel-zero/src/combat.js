@@ -2,7 +2,8 @@
 // Six-ship bogey squadron (instanced F-15 airframes with an aggressor tint) flying
 // bank-to-turn PATROL / ENGAGE / EVADE_BREAK / BARREL_ROLL / EXTEND_CLIMB AI
 // with terrain look-ahead, merge break-aways, wingman separation, AI flares and
-// airframe collision, M61 cannon with instanced tracers, AIM-9 missiles
+// airframe collision; APG-63 auto-designation + C-key seeker lock, >4AAM
+// track-while-scan ripple fire, ALR-56C RWR picture, ALQ-135 ECM (Z); M61 cannon with instanced tracers, AIM-9 missiles
 // with proportional navigation and smoke trails, layered explosions, tumbling
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
@@ -291,7 +292,7 @@ export function createCombat(THREE, env) {
     const st = C.lockState, tgt = st === 'NONE' ? null : C.designated;
     const m = launch(pos, S.quaternion, S.velocity, tgt, false, st === 'LOCK' ? MSL_FULL : MSL_SOFT, store);
     if (!m) return false;
-    if (store) store.node.visible = false;
+    if (store) { store.node.visible = false; store.mslSpent = true; }
     C.missiles--; mslCooldown = MSL_INTERVAL;
     if (C.missiles <= 0) C.missileReload = MSL_RELOAD;
     C.lastLaunch = st;
@@ -530,7 +531,7 @@ export function createCombat(THREE, env) {
     // ---- threat picture: our IR lock on this bandit, or a missile tracking it inside 1,800 m
     const tm = threatMissile(e);
     const tmD = tm ? tm.mesh.position.distanceTo(e.pos) : Infinity;
-    const locked = playerActive && C.designated === e && C.lockState === 'LOCK';
+    const locked = playerActive && lockedOn(e);
     const threat = (tm && tmD < REACT_RANGE) || locked;
     const defending = e.tac === 'EVADE_BREAK' || e.tac === 'BARREL_ROLL';
     if (e.tacT > 0) e.tacT -= dt;
@@ -735,7 +736,9 @@ export function createCombat(THREE, env) {
     const inCone = engaging && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
     // Player inside thick cloud: the bandit's seeker loses the picture (-1.5/s).
     const hidden = C.playerCloud > CLOUD_T;
-    e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / B_LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
+    // ALQ-135 jamming: bandit radar locks take 2.5x longer to build.
+    const lockTime = B_LOCK_TIME * (C.ecmState === 'ACTIVE' ? ECM_SLOW : 1);
+    e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / lockTime : -LOCK_DECAY * dt), 0, 1);
     if (engaging) {
       if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300 && dist > 150) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
       const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
@@ -847,69 +850,149 @@ export function createCombat(THREE, env) {
   }
 
   /* =========================================================== lock-on */
-  // Strict boresight designation. Nothing is ever designated automatically:
-  // pressing C picks the live target closest to the boresight W inside the
-  // 22 deg sight cone (11 deg off the nose), with a tiny range tie-breaker.
-  // No target in the cone -> designation is cleared. A destroyed target leaves
-  // nothing designated until the pilot points at the next one and presses C.
+  // Two-stage targeting.
+  // Stage 1 - APG-63 auto-designation (passive): every frame the radar picks the
+  // highest-priority live bandit inside the 30 deg forward radar cone and 8 NM
+  // (smallest off-boresight angle, range tie-break, hysteresis for the current
+  // track). With >4AAM selected it tracks up to four (TGT 1-4). No missile lock
+  // builds in this stage: a launch before C is a dumb-fire.
+  // Stage 2 - C arms the seeker (C.seekerArmed) on the designated target(s):
+  // MSL builds the progressive IR lock (NONE -> ACQ -> LOCK; 14 deg / 3.5 NM /
+  // 1.3 s), 4AAM locks every tracked target at once (25 deg / 4.5 NM / 1.6 s).
+  // C while locked cycles to the next nearest forward bandit and re-arms on it.
+  // Losing the seeker (lock decayed to nothing, or 5 s without acquiring) drops
+  // back to passive designation until C is pressed again.
   const SIGHT_HALF = 11 * D2R;
+  const RADAR_HALF = 30 * D2R, RADAR_RANGE = 8 * NM;
+  const AAM4_HALF = 25 * D2R, AAM4_RANGE = 4.5 * NM, AAM4_LOCK = 1.6, AAM4_MAX = 20, AAM4_RELOAD = 12, AAM4_RACK = 3.5, AAM4_STAGGER = 0.09;
+  const SEEKER_GIVEUP = 5;
   // Cloud cover: IR seekers and radar lose their picture through thick cloud.
   const CLOUD_T = 0.35;                                      // cloudDensity above this = "in cloud"
   const cloudAt = p => (env.cloudDensity ? env.cloudDensity(p) : 0);
   let cloudClear = 0;                                        // s: suppress the RWR alert after a cloud break
-  const SIGHT_TIE = 0.002;                                    // rad per NM: only separates near-equal bearings
-  function boresightTarget(exclude) {
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
-    let best = null, bestScore = Infinity;
+  Object.assign(C, { seekerArmed: false, multi: [], multiProg: [], multiState: [], multiLocked: 0,
+    aam4: AAM4_MAX, aam4Max: AAM4_MAX, aam4Reload: 0, aam4ReloadMax: AAM4_RELOAD });
+  let seekerT = 0, seekerHadLock = false;
+  const fwdOf = () => new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+
+  // Forward radar picture, best first (off-boresight angle + small range weight).
+  function radarCandidates(half = RADAR_HALF, range = RADAR_RANGE) {
+    const fwd = fwdOf(), out = [];
     for (const e of enemies) {
-      if (!e.alive || e === exclude) continue;
+      if (!e.alive) continue;
       const to = e.pos.clone().sub(S.position), d = to.length();
-      if (d < 1) continue;
-      const dot = to.divideScalar(d).dot(fwd);
-      if (dot <= 0) continue;                                 // behind the jet
-      const err = Math.acos(clamp(dot, -1, 1));               // angularError from the W, radians
-      if (err > SIGHT_HALF) continue;
-      const score = err + (d / NM) * SIGHT_TIE;
-      if (score < bestScore) { bestScore = score; best = e; }
+      if (d < 1 || d > range) continue;
+      const err = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
+      if (err > half) continue;
+      out.push({ e, err, d, score: err + (d / NM) * 0.02 });
     }
-    return best;
+    return out.sort((a, b) => a.score - b.score);
+  }
+  // Kept for the old debug hooks: best bandit inside the 22 deg sight cone.
+  function boresightTarget(exclude) {
+    const c = radarCandidates(SIGHT_HALF).filter(x => x.e !== exclude);
+    return c.length ? c[0].e : null;
   }
   function designate(e) {
     if (e === C.designated) return;
     C.designated = e; C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null;
   }
-  // C: designate the target in sight. Pressing C on the target already
-  // designated keeps its seeker progress (a double-tap never throws a lock away).
-  function designateInSight() {
-    const t = boresightTarget(null);
-    C.designateT = performance.now(); C.designateOk = !!t;
-    if (!t) {
-      designate(null);
-      say('NO TARGET IN SIGHT', 1.0, '#ffbf3f');
-    } else {
-      designate(t);
-      say('TARGET — ' + (t.type ? t.type + ' ' : '') + t.label, 1.0);
-    }
-    if (env.onSfx) env.onSfx('designate', null, t ? 1 : 0);
-    return t;
+  function setMulti(list) {                                  // keeps seeker progress for retained tracks
+    const prog = list.map(e => { const i = C.multi.indexOf(e); return i >= 0 ? C.multiProg[i] : 0; });
+    C.multi = list; C.multiProg = prog; C.multiState = prog.map(p => (p >= 1 ? 'LOCK' : p > 0 ? 'ACQ' : 'NONE'));
   }
-  // Progressive IR seeker: build lock while the designated bandit sits inside the
-  // 14 deg seeker circle and inside 3.5 NM; decay at 0.8/s when it leaves.
+  // Is our seeker locked on this bandit (single MSL lock or any 4AAM lock)?
+  function lockedOn(e) {
+    if (C.weapon === 'AAM4') { const i = C.multi.indexOf(e); return i >= 0 && C.multiState[i] === 'LOCK'; }
+    return C.designated === e && C.lockState === 'LOCK';
+  }
+  function disarmSeeker(msg) {
+    if (!C.seekerArmed) return;
+    C.seekerArmed = false; seekerT = 0; seekerHadLock = false;
+    C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null;
+    C.multiProg = C.multiProg.map(() => 0); C.multiState = C.multiState.map(() => 'NONE');
+    if (msg) { say(msg, 1.4, '#ffbf3f'); if (env.onSfx) env.onSfx('lockdrop', null, 1); }
+  }
+  // Passive radar track(s): keep the current track unless it left the cone or a
+  // bandit is clearly better placed (15 % score hysteresis).
+  function autoDesignate() {
+    const cands = radarCandidates();
+    if (C.weapon === 'AAM4') {
+      const keep = C.multi.filter(e => cands.some(c => c.e === e));
+      for (const c of cands) { if (keep.length >= 4) break; if (!keep.includes(c.e)) keep.push(c.e); }
+      keep.sort((a, b) => cands.findIndex(c => c.e === a) - cands.findIndex(c => c.e === b));
+      setMulti(keep);
+      designate(keep[0] || null);
+      return;
+    }
+    if (C.multi.length) setMulti([]);
+    const cur = cands.find(c => c.e === C.designated), best = cands[0];
+    if (!best) designate(null);
+    else if (!cur || best.score < cur.score * 0.85) designate(best.e);
+  }
+
+  // C: stage 2. Arms the seeker on the auto-designated target(s); when already
+  // locked, cycles to the next nearest forward bandit and re-arms on it.
+  function designateInSight() {
+    C.designateT = performance.now();
+    const ammoOk = C.weapon === 'AAM4' ? C.aam4 > 0 && C.aam4Reload <= 0 : C.missiles > 0 && C.missileReload <= 0;
+    if (!C.seekerArmed) {
+      if (!C.designated) autoDesignate();
+      const n = C.weapon === 'AAM4' ? C.multi.length : C.designated ? 1 : 0;
+      C.designateOk = n > 0;
+      if (n) {
+        C.seekerArmed = true; seekerT = 0; seekerHadLock = false;
+        say(C.weapon === 'AAM4' ? `4AAM SEEKERS ARMED — ${n} TGT` : 'SEEKER ARMED — ' + (C.designated.type ? C.designated.type + ' ' : '') + C.designated.label, 1.1);
+        if (!ammoOk) say('SEEKER ARMED — RELOADING', 1.1, '#ffbf3f');
+      } else say('NO TARGET IN RADAR CONE', 1.0, '#ffbf3f');
+      if (env.onSfx) env.onSfx('designate', null, n ? 1 : 0);
+      return C.designated;
+    }
+    const anyLock = C.weapon === 'AAM4' ? C.multiState.includes('LOCK') : C.lockState === 'LOCK';
+    if (!anyLock) {                                          // still acquiring: keep the seeker on it
+      say('SEEKER ACQUIRING — ' + (C.designated ? C.designated.label : '-'), 0.9, '#ffbf3f');
+      if (env.onSfx) env.onSfx('designate', null, 1);
+      return C.designated;
+    }
+    const cands = radarCandidates();
+    C.designateOk = true;
+    if (C.weapon === 'AAM4') {
+      // Re-scan from the bandit after the current primary: a fresh set of up to 4.
+      const order = cands.map(c => c.e);
+      const k = order.indexOf(C.multi[0]);
+      const rot = k >= 0 ? order.slice(k + 1).concat(order.slice(0, k + 1)) : order;
+      setMulti(rot.slice(0, 4));
+      C.multiProg = C.multiProg.map(() => 0); C.multiState = C.multiState.map(() => 'NONE');
+      designate(C.multi[0] || null);
+      say(`4AAM RE-TARGET — ${C.multi.length} TGT`, 1.0);
+    } else {
+      const next = cands.filter(c => c.e !== C.designated).sort((a, b) => a.d - b.d)[0];
+      if (next) { designate(next.e); say('TARGET — ' + (next.e.type ? next.e.type + ' ' : '') + next.e.label, 1.0); }
+      else say('NO OTHER TARGET — HOLDING LOCK', 1.0, '#ffbf3f');
+    }
+    seekerT = 0; seekerHadLock = false;
+    if (env.onSfx) env.onSfx('designate', null, 1);
+    return C.designated;
+  }
+
   function updateLock(dt) {
-    if (C.designated && !C.designated.alive) designate(null);   // no auto-switch after a kill
-    // NEXT cue: exactly what C would grab right now (if it isn't already designated).
-    const cand = boresightTarget(null);
-    C.nextTarget = cand && cand !== C.designated ? cand : null;
+    if (C.designated && !C.designated.alive) designate(null);
+    if (C.weapon === 'AAM4') { updateMultiLock(dt); return; }
+    if (!C.seekerArmed) autoDesignate();
+    else if (!C.designated) disarmSeeker('TARGET LOST — RADAR AUTO-TRACK');
+    // NEXT cue: the bandit C would cycle to once locked.
+    const nx = C.seekerArmed ? radarCandidates().filter(c => c.e !== C.designated).sort((a, b) => a.d - b.d)[0] : null;
+    C.nextTarget = nx ? nx.e : null;
     const t = C.designated;
-    if (!t) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; C.seekerOff = 0; C.targetRange = 0; return; }
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    if (!t) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; C.seekerOff = 0; C.targetRange = 0; C.targetObscured = false; return; }
     const to = t.pos.clone().sub(S.position), d = to.length();
-    const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
-    const inSeeker = d < LOCK_RANGE && off < SEEKER_HALF && C.missiles > 0 && C.missileReload <= 0;
-    // Designated bandit inside thick cloud: lock bleeds down at 1.0/s (LOCK -> amber ACQ).
+    const off = Math.acos(clamp(to.divideScalar(d).dot(fwdOf()), -1, 1));
     const obscured = (t.cloud || 0) > CLOUD_T;
     const wasObscured = C.targetObscured;
-    C.targetObscured = obscured;
+    C.targetObscured = obscured; C.seekerOff = off; C.targetRange = d;
+    if (!C.seekerArmed) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
+    // Progressive IR seeker: build while inside the 14 deg circle and 3.5 NM, decay when it leaves.
+    const inSeeker = d < LOCK_RANGE && off < SEEKER_HALF && C.missiles > 0 && C.missileReload <= 0;
     C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
     const prev = C.lockState;
     if (obscured && !wasObscured) {
@@ -919,7 +1002,143 @@ export function createCombat(THREE, env) {
     C.lockState = C.lockProgress >= 1 ? 'LOCK' : C.lockProgress > 0 ? 'ACQ' : 'NONE';
     if (C.lockState === 'LOCK' && prev !== 'LOCK') say('LOCK — ' + t.label + ' — SHOOT', 1.2);
     C.lockTarget = C.lockState === 'LOCK' ? t : null;
-    C.seekerOff = off; C.targetRange = d;
+    if (C.lockProgress > 0.05) seekerHadLock = true;
+    seekerT += dt;
+    if ((seekerHadLock && C.lockProgress <= 0) || (!seekerHadLock && seekerT > SEEKER_GIVEUP))
+      disarmSeeker(obscured ? 'CLOUD COVER — SEEKER LOST' : 'SEEKER LOST — RADAR AUTO-TRACK');
+  }
+
+  // 4AAM track-while-scan: up to four tracks, seekers lock all of them together.
+  function updateMultiLock(dt) {
+    if (!C.seekerArmed) autoDesignate();
+    else {
+      const alive = C.multi.filter(e => e.alive);
+      if (alive.length !== C.multi.length) setMulti(alive);
+      if (!C.multi.length) disarmSeeker('TARGETS LOST — RADAR AUTO-TRACK');
+    }
+    C.nextTarget = null;
+    const fwd = fwdOf();
+    let maxP = 0, locked = 0, acq = 0;
+    C.multi.forEach((e, i) => {
+      const to = e.pos.clone().sub(S.position), d = to.length();
+      const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
+      const obsc = (e.cloud || 0) > CLOUD_T;
+      const inCone = d < AAM4_RANGE && off < AAM4_HALF && C.aam4 > 0 && C.aam4Reload <= 0;
+      const prev = C.multiState[i];
+      let p = C.seekerArmed ? clamp(C.multiProg[i] + (obsc ? -1.0 * dt : inCone ? dt / AAM4_LOCK : -LOCK_DECAY * dt), 0, 1) : 0;
+      C.multiProg[i] = p;
+      const st = p >= 1 ? 'LOCK' : p > 0 ? 'ACQ' : 'NONE';
+      C.multiState[i] = st;
+      if (st === 'LOCK' && prev !== 'LOCK') say(`LOCK ${i + 1} — ${e.label}`, 0.9);
+      if (st === 'LOCK') locked++; else if (st === 'ACQ') acq++;
+      maxP = Math.max(maxP, p);
+      if (i === 0) { C.seekerOff = off; C.targetRange = d; C.targetObscured = obsc; }
+    });
+    C.multiLocked = locked;
+    designate(C.multi[0] || null);
+    C.lockProgress = maxP;
+    C.lockState = locked ? 'LOCK' : acq ? 'ACQ' : 'NONE';
+    C.lockTarget = locked ? C.multi.find((e, i) => C.multiState[i] === 'LOCK') : null;
+    if (!C.seekerArmed) return;
+    if (maxP > 0.05) seekerHadLock = true;
+    seekerT += dt;
+    if ((seekerHadLock && maxP <= 0) || (!seekerHadLock && seekerT > SEEKER_GIVEUP)) disarmSeeker('SEEKERS LOST — RADAR AUTO-TRACK');
+  }
+
+  // >4AAM ripple: one missile per locked track, 0.09 s apart; each hides the next
+  // pylon round for a 3.5 s re-rack and guides independently to its own target.
+  const ripple = [];
+  let aamRack = 0;
+  function fireAAM4() {
+    if (!env.isReady() || C.dead || C.aam4 <= 0 || C.aam4Reload > 0 || mslCooldown > 0 || ripple.length) return false;
+    const locked = C.multi.filter((e, i) => C.multiState[i] === 'LOCK' && e.alive);
+    const targets = locked.length ? locked : [null];
+    const n = Math.min(targets.length, C.aam4);
+    for (let i = 0; i < n; i++) ripple.push({ t: i * AAM4_STAGGER, target: targets[i] });
+    mslCooldown = MSL_INTERVAL;
+    C.lastLaunch = locked.length ? 'LOCK' : 'NONE';
+    say(locked.length ? `FOX THREE ×${n} — RIPPLE` : 'FOX THREE — NO LOCK, DUMB FIRE', 1.4, locked.length ? '#4dff91' : '#ffbf3f');
+    return true;
+  }
+  function launchAAM(target) {
+    if (C.aam4 <= 0) return;
+    const store = stores.msl.find(st => !st.mslSpent && !st.aamHidden);
+    let pos;
+    if (store) { jet.updateMatrixWorld(true); store.node.visible = true; pos = store.node.getWorldPosition(new THREE.Vector3()); }
+    else { const rail = RAILS[railNext]; railNext = 1 - railNext; pos = rail.clone().applyQuaternion(S.quaternion).add(S.position); }
+    const m = launch(pos, S.quaternion, S.velocity, target, false, MSL_FULL, store);
+    if (!m) return;
+    m.aam = true;
+    if (store) { store.aamHidden = true; store.node.visible = false; aamRack = AAM4_RACK; }
+    C.aam4--; C.aamFired = (C.aamFired || 0) + 1;
+    if (C.aam4 <= 0) C.aam4Reload = AAM4_RELOAD;
+  }
+  function updateRipple(dt) {
+    for (let i = ripple.length - 1; i >= 0; i--) {
+      const r = ripple[i]; r.t -= dt;
+      if (r.t <= 0) { ripple.splice(i, 1); launchAAM(r.target && r.target.alive ? r.target : null); }
+    }
+    if (aamRack > 0) { aamRack -= dt; if (aamRack <= 0) for (const st of stores.msl) st.aamHidden = false; }
+    if (C.aam4Reload > 0) { C.aam4Reload -= dt; if (C.aam4Reload <= 0) { C.aam4 = AAM4_MAX; say('4AAM RELOADED', 1.0); } }
+    for (const st of stores.msl) st.node.visible = !st.mslSpent && !st.aamHidden;
+  }
+
+  /* ================================================ RWR (ALR-56C) + ECM */
+  // RWR picture: every hostile emitter at its clock bearing relative to our nose.
+  // paint = engaging fighter's radar on us, acq = its seeker building, lock =
+  // full lock, msl = missile actively tracking us.
+  const ECM_ON = 6, ECM_RECHARGE = 14, ECM_SLOW = 2.5, ECM_BREAK = 0.35;
+  Object.assign(C, { rwr: [], rwrLevel: 0, ecmState: 'READY', ecmT: 0, ecmBreaks: 0 });
+  function relBearing(p) {
+    const a = Math.atan2(p.x - S.position.x, -(p.z - S.position.z)) - S.heading * D2R;
+    return Math.atan2(Math.sin(a), Math.cos(a));
+  }
+  function updateRWR(playerActive) {
+    const list = [];
+    let level = 0;
+    if (playerActive) {
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const d = e.pos.distanceTo(S.position);
+        const kind = e.bLock >= 1 ? 'lock' : e.bLock > 0.05 ? 'acq' : e.tac === 'ENGAGE' && d < B_LOCK_RANGE * 1.5 ? 'paint' : null;
+        if (!kind) continue;
+        list.push({ b: relBearing(e.pos), kind, d, id: e.id });
+        level = Math.max(level, kind === 'lock' ? 2 : 1);
+      }
+      for (const m of missiles) {
+        if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
+        list.push({ b: relBearing(m.mesh.position), kind: 'msl', d: m.mesh.position.distanceTo(S.position) });
+        level = 3;
+      }
+    }
+    C.rwr = list; C.rwrLevel = level;
+  }
+  // Z: ALQ-135 internal jammer, 6 s on then a 14 s capacitor recharge.
+  function activateECM() {
+    if (!env.isReady() || C.dead || C.ecmState !== 'READY') {
+      if (C.ecmState === 'RECHARGE') say(`ECM RECHARGING — ${C.ecmT.toFixed(1)} S`, 0.9, '#ffbf3f');
+      return false;
+    }
+    C.ecmState = 'ACTIVE'; C.ecmT = ECM_ON;
+    say('ALQ-135 ECM ACTIVE — JAMMING', 1.6, '#5fe8ff');
+    if (env.onSfx) env.onSfx('ecm', null, 1);
+    return true;
+  }
+  function updateECM(dt) {
+    if (C.ecmState === 'ACTIVE') {
+      C.ecmT -= dt;
+      // Jamming: each established bandit track has a ~35 %/s chance to break.
+      for (const e of enemies) {
+        if (e.alive && e.bLock >= B_SOFT && rand() < ECM_BREAK * dt) {
+          e.bLock = 0; C.ecmBreaks++;
+          say('ECM — ' + (e.type || e.label) + ' LOCK BROKEN', 1.3, '#5fe8ff');
+        }
+      }
+      if (C.ecmT <= 0) { C.ecmState = 'RECHARGE'; C.ecmT = ECM_RECHARGE; say('ECM OFF — RECHARGING', 1.0, '#ffbf3f'); }
+    } else if (C.ecmState === 'RECHARGE') {
+      C.ecmT -= dt;
+      if (C.ecmT <= 0) { C.ecmState = 'READY'; C.ecmT = 0; say('ECM READY', 1.0, '#5fe8ff'); }
+    }
   }
 
   /* ======================================================= missile flight */
@@ -1083,7 +1302,7 @@ export function createCombat(THREE, env) {
     node.getWorldScale(c.scale);
     return c;
   }
-  function rearm(kind) { for (const st of stores[kind]) st.node.visible = true; }
+  function rearm(kind) { for (const st of stores[kind]) { st.node.visible = !st.aamHidden; st.mslSpent = false; } }
 
   /* ================================================================ bombs */
   // Free-fall store: released with the jet's velocity plus a 2.5 m/s ejector
@@ -1091,13 +1310,22 @@ export function createCombat(THREE, env) {
   // arc the CCIP pipper solves, so the pipper is exact.
   const liveBombs = [];
   let bombCooldown = 0, lastImpact = null;
+  // R cycles >MSL -> >4AAM -> >UGB. Switching drops the seeker back to passive radar tracking.
   function setWeapon(w) {
+    w = String(w).toUpperCase();
+    if (w === '4AAM') w = 'AAM4';
+    if (!['MSL', 'AAM4', 'BOMB'].includes(w)) w = 'MSL';
     if (w === 'BOMB' && !stores.bomb.length) w = 'MSL';
-    if (C.weapon !== w) { C.weapon = w; say(w === 'BOMB' ? 'UGB SELECTED — CCIP' : 'AIM-9 SELECTED', 1.0); }
+    if (C.weapon !== w) {
+      disarmSeeker(null);
+      C.weapon = w;
+      if (w !== 'AAM4') setMulti([]);
+      say(w === 'BOMB' ? 'UGB SELECTED — CCIP' : w === 'AAM4' ? '4AAM SELECTED — TRACK-WHILE-SCAN' : 'AIM-9 SELECTED', 1.0);
+    }
     return C.weapon;
   }
-  function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'BOMB' : 'MSL'); }
-  function fireSelected() { return C.weapon === 'BOMB' ? dropBomb() : fireMissile(); }
+  function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'AAM4' : C.weapon === 'AAM4' ? (stores.bomb.length ? 'BOMB' : 'MSL') : 'MSL'); }
+  function fireSelected() { return C.weapon === 'BOMB' ? dropBomb() : C.weapon === 'AAM4' ? fireAAM4() : fireMissile(); }
   function dropBomb() {
     if (!env.isReady() || C.dead || C.bombs <= 0 || C.bombReload > 0 || bombCooldown > 0) return false;
     const st = stores.bomb.find(b => b.node.visible); if (!st) return false;
@@ -1328,7 +1556,9 @@ export function createCombat(THREE, env) {
 
   function resetPlayer() {
     rearm('msl'); rearm('bomb');
-    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null });
+    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, ecmState: 'READY', ecmT: 0 });
+    for (const st of stores.msl) st.aamHidden = false;
+    ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
     flareRecharge = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
@@ -1407,6 +1637,7 @@ export function createCombat(THREE, env) {
     });
     updateMissiles(dt, playerActive);
     updateBombs(dt); updateRings(dt); updateFlares(dt);
+    updateRipple(dt); updateECM(dt); updateRWR(playerActive);
     if (playerActive) updateCCIP(); else C.ccip = null;
 
     for (const f of flashes) { if (f.t > 0) { f.t -= dt; f.l.intensity = Math.max(0, f.t) * 900; } else f.l.intensity = 0; }
@@ -1416,7 +1647,7 @@ export function createCombat(THREE, env) {
 
   return {
     init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
-    fireSelected, dropBomb, setWeapon, toggleWeapon, dispenseFlares,
+    fireSelected, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
     get enemies() { return enemies; }, missiles,
@@ -1478,6 +1709,11 @@ export function createCombat(THREE, env) {
         e0: enemies[0] ? { tac: enemies[0].tac, bank: Math.round(enemies[0].bank / D2R), g: +enemies[0].gNow.toFixed(1), kt: Math.round(enemies[0].speed / KT), ab: +enemies[0].ab.toFixed(2),
           alt: Math.round(enemies[0].pos.y), flr: enemies[0].flaresLeft, alive: enemies[0].alive } : null,
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
+        tgt: { armed: C.seekerArmed, wpn: C.weapon, multi: C.multi.map((e, i) => e.label.slice(-2) + ':' + C.multiState[i][0]).join(' '), locked: C.multiLocked,
+          aam4: C.aam4, aamRld: +C.aam4Reload.toFixed(1), aamFired: C.aamFired || 0, ripple: ripple.length,
+          aamLive: missiles.filter(m => m.active && m.aam).map(m => (m.target && m.target.label ? m.target.label.slice(-2) : 'dumb') + '@' + (m.target && m.target.pos ? Math.round(m.target.pos.distanceTo(m.mesh.position)) : '-')).join(' ') },
+        rwr: { level: C.rwrLevel, list: C.rwr.map(r => r.kind + '@' + Math.round(r.b / D2R)).join(' ') },
+        ecm: { st: C.ecmState, t: +C.ecmT.toFixed(1), breaks: C.ecmBreaks },
         lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         cloud: { player: +(C.playerCloud || 0).toFixed(2), tgt: +((C.designated && C.designated.cloud) || 0).toFixed(2), obscured: !!C.targetObscured, breaks: C.cloudBreaks || 0,
           msl: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.cloudLost ? '/cloudLost' : m.lostTrack ? '/lost' : '') + (m.reacquired ? '/reacq' : '') + ' c' + (m.cloud || 0).toFixed(2)).join(' ') },
