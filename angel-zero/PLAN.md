@@ -62,11 +62,37 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - GLB 11,473,092 bytes; 43,572 faces; 19.4 m length; 13.4 m wingspan.
 - Loaded scene: 75 nodes, textures intact, zero gear wheels visible.
 
-## Step 1B (future)
-- Wire the exported jet into a flight scene with the compiled flight model.
+## Step 1B + 2 + 3 — Flyable Eagle, HUD, cockpit, archipelago (2026-11-18)
+- [x] `prep_f15.py`: transforms applied with location+rotation+scale, weld 0.0005,
+      outward normals, hole fill, no backface culling. Residual gear removed per
+      connected island inside nose/main gear zones (struts, nose drag brace,
+      strut-mounted landing-light lenses); bay doors and skin kept. 13 islands +
+      8 gear objects stripped; GLB 11,460,344 bytes.
+- [x] `index.html` rewritten as the game: GLB F-15 is the player jet; placeholder
+      cockpit meshes (`hud_disp`, `screens`, LOD instrument quads, `cock2.9/10`)
+      removed; airframe forced opaque/DoubleSide, canopy glass at opacity 0.25.
+- [x] Cyan-to-orange mach-diamond plumes on `Nozzle_L/R` (throttle + afterburner),
+      white wingtip vortex ribbons above ~3 G from the real outboard wing vertex.
+- [x] Hi-DPI 2D HUD (`#00ff66`, shadowBlur 4): boresight W, FPV, conformal pitch
+      ladder (solid +, dashed -, clipped box), SPD tape (KTS + MACH), ALT tape
+      (FT + RADALT), compass tape, GUN / MSL / THR / G-LOAD / KILLS / AOA.
+- [x] Cockpit view (Space): eye inside the canopy over the nose, interior meshes
+      hidden, airframe windscreen bow cut by a jet-local clip box, 2D metallic
+      canopy frame + angled console with live radar (5/10/20 NM), ADI and
+      F-15 status/engine MFDs. Chase view shows a mini radar instead.
+- [x] 20 km multi-octave archipelago (shallows, beaches, green ridges, rock
+      peaks), specular ocean with depth-texture turquoise shallows + surf, sky
+      haze, sprite cloud clusters, terrain/ocean crash detection.
+- [x] Rate-command mouse pitch/roll with bank-to-yaw coupling, 9 G + AoA
+      limiter, W/S throttle, Shift afterburner, spring-damped chase camera.
+- [x] Combat carried over: cannon, lock-on missiles, 3 F-15-silhouette bandits.
+- [x] Headless Edge (SwiftShader) verified: zero page console errors in chase,
+      cockpit and warped-flight runs; 7 G sustained AB turn holds ~207 m/s.
 
-## Step 2 (future)
-- HUD restoration (pitch ladder, tapes, radar) on top of the new asset.
+### Debug URL flags (all optional)
+`?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
+`?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
+(debug only, fast-forwards the sim before the first frame).
 
-## Step 3 (future)
-- Combat system: cannon, missiles, enemy jets, lock-on and damage.
+## Next (future)
+- Mobile/touch controls, sound, mission structure, enemy AI variety.

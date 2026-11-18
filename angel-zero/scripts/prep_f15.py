@@ -50,6 +50,7 @@ GEAR_NAMES = {
     "Object_20",   # main wheel (body1.5)
     "Object_23",   # main wheel (body1.5)
     "Object_26",   # nose gear strut / wheel (body1.5)
+    "Object_36",   # nose gear diagonal drag brace (body1.9)
 }
 GEAR_MATERIALS = ("wheel", "tire", "strut")
 removed = []
@@ -81,7 +82,7 @@ def bake_and_solidify(ob):
     bpy.context.view_layer.objects.active = ob
     with bpy.context.temp_override(object=ob, active_object=ob,
                                    selected_objects=[ob], selected_editable_objects=[ob]):
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
         bpy.ops.mesh.remove_doubles(threshold=0.0005)
@@ -291,6 +292,63 @@ nozzle_l = landmarks.get("Nozzle_L")
 nozzle_r = landmarks.get("Nozzle_R")
 canopy_pos = landmarks.get("Canopy_Pilot_Eye")
 
+# ------------------------------------------- strip residual hanging struts
+# Some strut segments live inside large shared skin meshes (Object_33/47), so
+# they are removed per connected island rather than per object. A strut island
+# is tall and thin, hangs below the belly, and sits inside a gear zone; flat
+# bay-door plates and the fuselage skin never match, so they stay intact.
+GEAR_ZONES = (
+    # (|x| min, |x| max, z min, z max, min height, max width, max length)
+    # in final metres, nose = -Z. The nose bay also drops the diagonal drag
+    # brace and the strut-mounted landing-light lenses (short, compact pieces);
+    # the main bays keep the stricter tall-and-thin test so missile fins nearby
+    # are never caught. The nose-gear door (z < -4.1) is outside the zone.
+    (0.00, 0.30, -3.75, -2.70, 0.10, 0.50, 0.60),   # nose gear leg + brace + lights
+    (1.05, 1.50, 2.05, 2.65, 0.25, 0.35, 0.45),     # left / right main gear legs
+)
+
+def is_strut_island(mn, mx):
+    dx, dy, dz = mx.x - mn.x, mx.y - mn.y, mx.z - mn.z
+    if not (mn.y < -1.35 and mx.y < -1.3):          # wholly below the belly skin
+        return False
+    cx, cz = abs((mn.x + mx.x) * 0.5), (mn.z + mx.z) * 0.5
+    return any(x0 <= cx <= x1 and z0 <= cz <= z1 and dy > hmin and dx < wmax and dz < lmax
+               for x0, x1, z0, z1, hmin, wmax, lmax in GEAR_ZONES)
+
+strut_islands = []
+for ob in meshes:
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.verts.ensure_lookup_table()
+    seen = set()
+    doomed = []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, island = [v], []
+        seen.add(v.index)
+        while stack:
+            cur = stack.pop()
+            island.append(cur)
+            for e in cur.link_edges:
+                o = e.other_vert(cur)
+                if o.index not in seen:
+                    seen.add(o.index)
+                    stack.append(o)
+        mn = Vector(tuple(min(p.co[i] for p in island) for i in range(3)))
+        mx = Vector(tuple(max(p.co[i] for p in island) for i in range(3)))
+        if is_strut_island(mn, mx):
+            doomed.extend(island)
+            strut_islands.append((ob.name, [round(c, 2) for c in (*mn, *mx)]))
+    if doomed:
+        bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+        bm.to_mesh(ob.data)
+        ob.data.update()
+    bm.free()
+print("Strut islands removed:", len(strut_islands))
+for nm, box in strut_islands:
+    print("  STRUT", nm, box)
+
 # ------------------------------------------------------------------- export
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 bpy.ops.export_scene.gltf(
@@ -309,6 +367,7 @@ bpy.ops.export_scene.gltf(
 report = {
     "source": os.path.basename(SRC),
     "removed": removed,
+    "strut_islands_removed": strut_islands,
     "scale": round(scale, 6),
     "faces_before": before_tris,
     "faces_after": after_tris,
