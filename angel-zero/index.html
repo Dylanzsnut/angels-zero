@@ -154,12 +154,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s6a';
-import { createHUD } from './src/hud.js?v=s6a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s6a';
-import { createCombat } from './src/combat.js?v=s6a';
-import { createEjection } from './src/eject.js?v=s6a';
-import { createAudio } from './src/audio.js?v=s6a';
+import { createVFX } from './src/vfx.js?v=s7a';
+import { createHUD } from './src/hud.js?v=s7a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s7a';
+import { createCombat } from './src/combat.js?v=s7a';
+import { createEjection } from './src/eject.js?v=s7a';
+import { createAudio } from './src/audio.js?v=s7a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -992,6 +992,10 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   statusEl.remove();
   launchBtn.disabled = false;
   if (appMode === 'MENU') document.getElementById('menuHint').textContent = 'CLICK LAUNCH OR PRESS ENTER';
+  if (DEBUG && Q.has('autolaunch') && appMode === 'MENU') {   // test hook: press LAUNCH (needs autoplay allowed)
+    launchSortie();
+    if (Q.has('fire')) setTimeout(() => console.log('[ANGELS_ZERO] audio', audio.state, 'firing', combat.gunFiring, 'ammo', combat.ammo), 1500);
+  }
   if (DEBUG && Q.has('bogey')) combatSys.placeAhead(0, Number(Q.get('bogey')) || 1500);
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
   if (DEBUG && Q.has('eject')) triggerEject('manual');

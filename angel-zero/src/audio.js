@@ -56,18 +56,42 @@ export function createAudio() {
     N.abCrackle = loopNoise(white); N.abCrackleBP = filt('bandpass', 900, 0.8); N.abCrackleGain = gain(0);
     N.abCrackle.connect(N.abCrackleBP).connect(N.abCrackleGain).connect(cockpitLP);
 
-    // M61A1 (6,000 rpm = 100 rounds/s): a 100 Hz square pulse train chops both a
-    // deep 95 Hz mechanical punch and 1.8 kHz bandpassed propellant crackle.
-    N.gunLFO = osc('square', 100);
-    N.gunPunch = osc('triangle', 95); N.gunPunchLP = filt('lowpass', 260, 1.2);
-    N.gunPunchGate = gain(0); N.gunPunchDepth = gain(0);
-    N.gunLFO.connect(N.gunPunchDepth).connect(N.gunPunchGate.gain);
-    N.gunPunch.connect(N.gunPunchLP).connect(N.gunPunchGate);
-    N.gunNoise = loopNoise(white); N.gunBP = filt('bandpass', 1800, 1.3);
-    N.gunGate = gain(0); N.gunLFOdepth = gain(0);
-    N.gunLFO.connect(N.gunLFOdepth).connect(N.gunGate.gain);
-    N.gunNoise.connect(N.gunBP).connect(N.gunGate);
-    N.gunBus = gain(0); N.gunGate.connect(N.gunBus); N.gunPunchGate.connect(N.gunBus); N.gunBus.connect(master);
+    // M61A1 "BRRRT" — no pitched oscillator in the audio path, only chopped noise.
+    // A 2 s white/pink noise loop is amplitude-chopped at 100 Hz (6,000 rounds/min)
+    // by an inverted-sawtooth LFO (sharp attack, linear decay = one punch per
+    // round) swinging the gain between 0.15 and 1.0, with +/-3 Hz flutter.
+    const gunBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 2.0), ctx.sampleRate);
+    { const d = gunBuf.getChannelData(0), w = white.getChannelData(0), p = pink.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = 0.6 * w[i % w.length] + 0.8 * p[i % p.length]; }
+    N.gunNoise = ctx.createBufferSource(); N.gunNoise.buffer = gunBuf; N.gunNoise.loop = true; N.gunNoise.start();
+    N.gunChop = gain(0.575);                                   // centre of the 0.15 .. 1.0 swing
+    N.gunLFO = osc('sawtooth', 100);
+    N.gunLFOamp = gain(-0.425);                                // inverted saw: jump up, decay down
+    N.gunLFO.connect(N.gunLFOamp).connect(N.gunChop.gain);
+    N.gunFlutter = osc('sine', 0.7); N.gunFlutterAmt = gain(3); // +/-3 Hz organic rate flutter
+    N.gunFlutter.connect(N.gunFlutterAmt).connect(N.gunLFO.frequency);
+    N.gunNoise.connect(N.gunChop);
+    // Layer 1: the raw 6,000 rpm mechanical tear.
+    N.gunTearHP = filt('highpass', 260, 0.7); N.gunTearGain = gain(0.35);
+    N.gunChop.connect(N.gunTearHP).connect(N.gunTearGain);
+    // Layer 2: gunpowder crack — bandpass 1.1 kHz into a hard-clipping waveshaper.
+    N.gunCrackBP = filt('bandpass', 1100, 0.9);
+    N.gunShaper = ctx.createWaveShaper(); N.gunShaper.curve = distortionCurve(35); N.gunShaper.oversample = '4x';
+    N.gunCrackLP = filt('lowpass', 5500, 0.7);                 // 2.8 kHz in the cockpit, 5.5 kHz outside
+    N.gunCrackGain = gain(0.55);
+    N.gunChop.connect(N.gunCrackBP).connect(N.gunShaper).connect(N.gunCrackLP).connect(N.gunCrackGain);
+    // Layer 3: airframe bass thump — steep 140 Hz lowpass, +8 dB, extra 120 Hz in the cockpit.
+    N.gunThumpLP = filt('lowpass', 140, 2.5);
+    N.gunThumpPeak = ctx.createBiquadFilter(); N.gunThumpPeak.type = 'peaking'; N.gunThumpPeak.frequency.value = 120; N.gunThumpPeak.Q.value = 1.2; N.gunThumpPeak.gain.value = 0;
+    N.gunThumpGain = gain(Math.pow(10, 8 / 20));
+    N.gunChop.connect(N.gunThumpLP).connect(N.gunThumpPeak).connect(N.gunThumpGain);
+    // Trigger bus (gated on press/release) + short air-echo send for the release tail.
+    N.gunBus = gain(0);
+    N.gunTearGain.connect(N.gunBus); N.gunCrackGain.connect(N.gunBus); N.gunThumpGain.connect(N.gunBus);
+    N.gunBus.connect(master);
+    N.gunVerb = ctx.createConvolver(); N.gunVerb.buffer = airEcho(0.55);
+    N.gunVerbSend = gain(0.22);
+    N.gunBus.connect(N.gunVerbSend).connect(N.gunVerb).connect(master);
     N.wasFiring = false;
 
     // AIM-9 seeker: low growl (FM-wobbled square) while searching, 950 Hz tone when locked.
@@ -116,26 +140,35 @@ export function createAudio() {
     thump.connect(tg).connect(cockpitLP); thump.start(t); thump.stop(t + 0.32);
   }
 
-  // Hydraulic barrel spin-up transient (0.08 s) and a short spin-down whine.
-  function gunSpinUp() {
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(30, t); o.frequency.exponentialRampToValueAtTime(115, t + 0.08);
-    const lp = filt('lowpass', 900, 2);
-    const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.32, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
-    o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 0.14);
-    const n = ctx.createBufferSource(); n.buffer = N.white;
-    const hp = filt('highpass', 500, 0.8); hp.frequency.setValueAtTime(500, t); hp.frequency.exponentialRampToValueAtTime(2600, t + 0.08);
-    const ng = gain(0); ng.gain.setValueAtTime(0.18, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-    n.connect(hp).connect(ng).connect(master); n.start(t, Math.random()); n.stop(t + 0.11);
+  // Overdrive curve (classic k-shaped soft/hard clip), amount = 35.
+  function distortionCurve(amount) {
+    const n = 2048, curve = new Float32Array(n), deg = Math.PI / 180;
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
   }
-  function gunSpinDown() {
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.35);
-    const lp = filt('lowpass', 600, 1.5);
-    const g = gain(0); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
-    o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 0.37);
+  // Short decaying-noise impulse response: the air echo after the gun stops.
+  function airEcho(seconds) {
+    const len = Math.floor(ctx.sampleRate * seconds), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * (i < 40 ? i / 40 : 1);
+    }
+    return ir;
+  }
+  // Trigger press: gain-only fade-in (~0.08 s as the barrels come up to speed — no pitch sweep).
+  function gunTriggerOn() {
+    const g = N.gunBus.gain, t = ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0.85, t + 0.08);
+  }
+  // Trigger release: smooth 0.12 s decay; the convolver send rings on as the air tail.
+  function gunTriggerOff() {
+    const g = N.gunBus.gain, t = ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0, t + 0.12);
   }
   // Metallic 20 mm impact rattle: bright resonant pings plus a short noise tick.
   let lastHit = 0;
@@ -175,15 +208,14 @@ export function createAudio() {
     set(N.abCrackleGain.gain, live * 0.09 * ab * (0.7 + 0.3 * Math.random()), 0.03);
     set(cockpitLP.frequency, p.cockpit ? 2600 : 18000, 0.15);
 
-    const firing = p.firing ? 1 : 0;
-    if (firing && !N.wasFiring) gunSpinUp();
-    if (!firing && N.wasFiring) gunSpinDown();
-    N.wasFiring = !!firing;
-    // Rounds start ~0.08 s after the trigger while the barrels spin up.
-    const delay = firing ? 0.03 : 0.005;
-    set(N.gunLFOdepth.gain, firing * 0.5, delay);
-    set(N.gunPunchDepth.gain, firing * 0.9, delay);
-    set(N.gunBus.gain, firing * 0.85, firing ? 0.035 : 0.01);
+    const firing = !!p.firing;
+    if (firing && !N.wasFiring) gunTriggerOn();
+    if (!firing && N.wasFiring) gunTriggerOff();
+    N.wasFiring = firing;
+    // Cockpit: crack muffled to 2.8 kHz, fuselage thump boosted at 120 Hz. Chase: open 5.5 kHz air crackle.
+    set(N.gunCrackLP.frequency, p.cockpit ? 2800 : 5500, 0.08);
+    set(N.gunThumpPeak.gain, p.cockpit ? 6 : 0, 0.08);
+    set(N.gunCrackGain.gain, p.cockpit ? 0.45 : 0.6, 0.08);
 
     set(N.growlGain.gain, p.seeker === 'SCAN' ? 0.045 : 0, 0.04);
     set(N.lockGain.gain, p.seeker === 'LOCK' ? 0.05 : 0, 0.02);

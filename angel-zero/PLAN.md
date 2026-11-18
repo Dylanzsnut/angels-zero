@@ -233,8 +233,16 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       acceleration, time of flight and drop; range arc, dashed tracking line to
       the LOCK box, SHOOT when the boresight is inside the reticle < 0.6 NM.
 - [x] +/-1.5 px HUD tremor and camera micro-vibration while firing.
-- [x] Audio: 0.08 s hydraulic spin-up, 100 Hz-gated 95 Hz punch + 1.8 kHz
-      propellant crackle, spin-down whine, rate-limited impact rattle.
+- [x] Audio: rate-limited metallic impact rattle on hits.
+- [x] Gun audio rebuilt (no pitched oscillators / pitch sweeps — the old
+      spin-up and spin-down saw sweeps sounded like a laser): 2 s white+pink
+      noise loop chopped at 100 Hz (6,000 rpm) by an inverted-saw LFO between
+      0.15 and 1.0 with +/-3 Hz flutter; layers = raw tear (HP 260 Hz),
+      gunpowder crack (BP 1.1 kHz Q 0.9 -> waveshaper amount 35 -> LP 5.5 kHz
+      chase / 2.8 kHz cockpit), airframe thump (LP 140 Hz Q 2.5, +8 dB, +6 dB
+      at 120 Hz in the cockpit). 0.08 s gain-only fade-in, 0.12 s release into
+      a 0.55 s convolver air-echo tail. `?autolaunch` debug hook presses LAUNCH
+      (headless needs `--autoplay-policy=no-user-gesture-required`).
 
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
