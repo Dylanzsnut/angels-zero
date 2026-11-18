@@ -43,6 +43,25 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - `Nozzle_L` ≈ (-0.70, -0.64, +7.63), `Nozzle_R` ≈ (+0.69, -0.64, +7.63).
 - `Canopy_Pilot_Eye` ≈ (-0.35, -0.59, -4.23); working camera eye (0, 0.35, -5.00).
 
+## Step 1A-c — Solid skin / normals fix
+- [x] `prep_f15.py` applies object transforms (including negative scales) with
+      `transform_apply`, welds at 0.0005, recalculates outward normals and runs
+      `fill_holes(sides=8)` for every source mesh in Edit Mode.
+- [x] All Blender materials set to `use_backface_culling = False`.
+- [x] Degenerate faces / loose vertices are sanitized before export — the glTF
+      exporter reports zero "mesh not valid" warnings.
+- [x] Removed the actual extending gear meshes (Object_9/12/20/23/26/74/75);
+      bay-door skin meshes are retained.
+- [x] `index.html` forces `DoubleSide` on every mesh material, forces opaque
+      solid rendering for all airframe materials, keeps transparency only on
+      canopy glass, and computes vertex normals when missing.
+- [x] Verified from front, side, top, belly and chase angles in headless browser:
+      no missing faces, no inverted/mirrored surfaces, zero console errors.
+
+### Final asset numbers
+- GLB 11,473,092 bytes; 43,572 faces; 19.4 m length; 13.4 m wingspan.
+- Loaded scene: 75 nodes, textures intact, zero gear wheels visible.
+
 ## Step 1B (future)
 - Wire the exported jet into a flight scene with the compiled flight model.
 

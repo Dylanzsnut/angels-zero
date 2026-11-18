@@ -39,13 +39,19 @@ for m in bpy.data.materials:
     print("  %-20s textures=%s" % (m.name, ",".join(imgs) if imgs else "-"))
 
 # ------------------------------------------------------------- remove gear
+# Remove only the extending gear: nose wheel plus the nose and main struts /
+# tyres. Their closed bay doors are separate skin meshes and are intentionally
+# kept, so removing the gear leaves no cavity in the belly.
 GEAR_NAMES = {
-    "Object_9",    # stray wheel.0 triangle hanging below the nose
-    "Object_12",   # nose gear door (poly.6)
-    "Object_74",   # main gear doors (poly.8)
-    "Object_75",   # main gear doors (poly.7)
+    "Object_9",    # degenerate wheel.0 triangle hanging below the nose
+    "Object_12",   # nose gear strut / wheel (poly.6)
+    "Object_74",   # main gear struts / wheels (poly.8)
+    "Object_75",   # main gear struts / wheels (poly.7)
+    "Object_20",   # main wheel (body1.5)
+    "Object_23",   # main wheel (body1.5)
+    "Object_26",   # nose gear strut / wheel (body1.5)
 }
-GEAR_MATERIALS = ("wheel", "tire", "gear")
+GEAR_MATERIALS = ("wheel", "tire", "strut")
 removed = []
 for ob in list(bpy.data.objects):
     if ob.type != "MESH":
@@ -57,6 +63,41 @@ for ob in list(bpy.data.objects):
 
 bpy.context.view_layer.update()   # ensure imported world matrices are current
 print("Removed gear objects:", removed)
+
+# ------------------------------------------------- normals / solid skin prep
+# Every material is two-sided so mirrored surfaces never disappear in glTF.
+for mat in bpy.data.materials:
+    try:
+        mat.use_backface_culling = False
+    except (AttributeError, TypeError):
+        pass
+
+# Apply object transforms (including negative mirrored scales) to mesh data,
+# then weld, recalculate outward normals and fill small boundary holes.
+def bake_and_solidify(ob):
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    with bpy.context.temp_override(object=ob, active_object=ob,
+                                   selected_objects=[ob], selected_editable_objects=[ob]):
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.mesh.remove_doubles(threshold=0.0005)
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.mesh.fill_holes(sides=8)
+        bpy.ops.object.mode_set(mode="OBJECT")
+    ob.select_set(False)
+
+fixed = 0
+for ob in [o for o in bpy.data.objects if o.type == "MESH"]:
+    try:
+        bake_and_solidify(ob)
+        fixed += 1
+    except Exception as exc:
+        print("WARN solidify failed", ob.name, str(exc))
+print("Meshes welded + normals recalculated:", fixed)
 
 # Downscale large textures so the exported GLB stays well under 20 MB.
 downscaled = 0
@@ -156,6 +197,45 @@ for ob in meshes:
         strays += len(bad)
     bm.free()
 print("Stray decimation vertices removed:", strays)
+
+# Re-weld and re-fill after decimation using bmesh (no operator context needed).
+def bmesh_solidify(ob):
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=0.0005)
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    boundary = [e for e in bm.edges if e.is_boundary]
+    if boundary:
+        bmesh.ops.holes_fill(bm, edges=boundary, sides=8)
+    bm.to_mesh(ob.data)
+    ob.data.update()
+    bm.free()
+
+for ob in meshes:
+    try:
+        bmesh_solidify(ob)
+    except Exception as exc:
+        print("WARN post-decimate solidify failed", ob.name, str(exc))
+
+# Sanitize meshes before export: drop degenerate faces and loose geometry so
+# the glTF exporter never reports an invalid mesh.
+sanitized = 0
+for ob in meshes:
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bad_faces = [f for f in bm.faces if f.calc_area() < 1e-10]
+    loose = [v for v in bm.verts if not v.link_faces]
+    if bad_faces:
+        bmesh.ops.delete(bm, geom=bad_faces, context="FACES")
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    if bad_faces or loose:
+        bm.to_mesh(ob.data)
+        ob.data.update()
+        sanitized += 1
+    bm.free()
+    ob.data.validate(clean_customdata=False)
+print("Meshes sanitized:", sanitized)
 
 # Geometry was baked into target coordinates; ensure object transforms are clean.
 for ob in meshes:

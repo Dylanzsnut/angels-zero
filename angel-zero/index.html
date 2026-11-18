@@ -154,16 +154,29 @@ loader.load('assets/angels_zero_jet.glb', (gltf) => {
     console.log('[ANGELS_ZERO NODE]', o.name || '(unnamed)');
     if (o.isMesh) {
       o.frustumCulled = false;
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const glass = /canopy|glass/i.test(o.name) ||
+                    mats.some(mat => mat && /glass/i.test(mat.name || ''));
       for (const m of mats){
         if (!m) continue;
+        // Every surface is double-sided so mirrored skin never disappears.
+        m.side = THREE.DoubleSide;
         if (m.isMeshStandardMaterial) m.envMapIntensity = 1.2;
-        if (/canopy|glass/i.test(o.name) || /glass/i.test(m.name)){
-          m.side = THREE.DoubleSide;
+        if (glass){
+          // Only the real canopy glass is allowed to be see-through.
           m.transparent = true;
-          m.depthWrite = false;
           m.opacity = Math.min(m.opacity, 0.55);
+          m.depthWrite = false;
+          m.alphaTest = 0;
+        } else {
+          // Airframe, intakes, wings, gear-bay doors: force solid rendering.
+          m.transparent = false;
+          m.opacity = 1.0;
+          m.depthWrite = true;
+          m.alphaTest = 0;
         }
+        m.needsUpdate = true;
       }
     }
   });
