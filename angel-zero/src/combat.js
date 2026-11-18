@@ -1,6 +1,8 @@
 // ANGELS ZERO — dogfight systems.
 // Six-ship bogey squadron (instanced F-15 airframes with an aggressor tint) flying
-// PATROL / PURSUE / EVADE AI, M61 cannon with instanced tracers, AIM-9 missiles
+// bank-to-turn PATROL / ENGAGE / EVADE_BREAK / BARREL_ROLL / EXTEND_CLIMB AI
+// with terrain look-ahead, merge break-aways, wingman separation, AI flares and
+// airframe collision, M61 cannon with instanced tracers, AIM-9 missiles
 // with proportional navigation and smoke trails, layered explosions, tumbling
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
@@ -353,7 +355,11 @@ export function createCombat(THREE, env) {
   const TINT = new THREE.Color(0.62, 0.30, 0.30);           // dark aggressor crimson / charcoal
   const fleet = [];                                         // InstancedMesh per material
   const glowGeo = new THREE.ConeGeometry(0.5, 3.2, 10, 1, true); glowGeo.rotateX(-Math.PI / 2);
-  let glowMesh = null, nozzles = [];
+  let glowMesh = null, nozzles = [], flameOuter = null, flameCore = null;
+  // Afterburner flames: tip-aft cones (orange sheath, blue-white core), scaled by e.ab.
+  const flameGeoO = new THREE.ConeGeometry(0.55, 4.6, 12, 1, true); flameGeoO.rotateX(Math.PI / 2);
+  const flameGeoC = new THREE.ConeGeometry(0.32, 2.6, 12, 1, true); flameGeoC.rotateX(Math.PI / 2);
+  const WINGTIPS = [new THREE.Vector3(-6.6, -0.7, 4.4), new THREE.Vector3(6.6, -0.7, 4.4)];
   const enemies = [];
 
   function buildFleet(model, nozzleLocal) {
@@ -388,19 +394,56 @@ export function createCombat(THREE, env) {
     glowMesh = new THREE.InstancedMesh(glowGeo, new THREE.MeshBasicMaterial({ color: 0xff6a1e, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }), WAVE_SIZE * 2);
     glowMesh.frustumCulled = false;
     scene.add(glowMesh);
+    const fm = color => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+    flameOuter = new THREE.InstancedMesh(flameGeoO, fm(0xff7a26), WAVE_SIZE * 2);
+    flameCore = new THREE.InstancedMesh(flameGeoC, fm(0x8fc4ff), WAVE_SIZE * 2);
+    for (const fl of [flameOuter, flameCore]) { fl.frustumCulled = false; fl.renderOrder = 7; scene.add(fl); }
   }
+
+  /* ---------------------------------------------------- bandit flight AI */
+  // Tactical states: PATROL -> ENGAGE (lead pursuit, guns, seeker, missiles),
+  // EVADE_BREAK (85 deg / 7 G break across the threat line, afterburner),
+  // BARREL_ROLL (helical defensive roll / split-S toward the cloud deck) and
+  // EXTEND_CLIMB (unload, burner, climb away after an overshoot or a break).
+  // Flight is bank-to-turn: each bandit rolls its lift vector onto the turn
+  // demand (+/-82 deg, ~205 deg/s) and only then pulls, G-limited, with gravity
+  // and induced drag bleeding energy. Safety layers on top of every state:
+  // a 150 / 350 / 650 m terrain + sea look-ahead (wings-level pull-up), a hard
+  // floor 12 m above ground / water, 65 m wingman separation, a merge
+  // break-away inside 95 m of the player (or a predicted pass that close), and
+  // a 14 m swept airframe-collision check (ram = shockwave, +45 % DMG, kill).
+  const KT = 0.514444;
+  const BANK_MAX = 82 * D2R, ROLL_RATE = 3.6, BREAK_BANK = 85 * D2R;
+  const LOOK = [150, 350, 650], SAFE_WATER = 35, SAFE_TERRAIN = 55, AVOID_BAND = 140, HARD_FLOOR = 12;
+  const MERGE_R = 95, MERGE_CLEAR = 32, SEP_R = 65, RAM_R = 14, REACT_RANGE = 1800;
+  const AI_FLR_CD = 10, AI_FLR_P = 0.45;
+  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X' };
+  const ai = { minClear: Infinity, clamps: 0, avoid: 0, merges: 0, minSep: Infinity, minWing: Infinity, breaks: 0, rolls: 0, splitS: 0,
+    extends: 0, flares: 0, spoofs: 0, rams: 0, impacts: 0, maxBank: 0, maxG: 0, abT: 0, trails: 0 };
+  let aiFlareSalvo = 0, aiPassive = false;                     // aiPassive: debug terrain test (no engaging)
 
   function makeEnemy(i) {
     return {
-      id: i, alive: false, mode: 'PATROL', pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
+      id: i, alive: false, mode: 'PATROL', tac: 'PATROL', tacT: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
       quat: new THREE.Quaternion(), speed: 210, bank: 0, hp: 100, heading: 0, center: new THREE.Vector3(), radius: 2500, dir: 1, alt: 1000,
-      burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, bLock: 0, mslCD: 10 + rand() * 10, evadeT: 0, evadeDir: 1,
+      burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, bLock: 0, mslCD: 10 + rand() * 10, evadeDir: 1,
       wreck: null, label: 'BANDIT ' + String(i + 1).padStart(2, '0'),
       type: ['SU-30SM', 'MIG-29A', 'SU-35S', 'F-15J', 'SU-33', 'TYPHOON'][i % 6],
-      acc: new THREE.Vector3()
+      acc: new THREE.Vector3(), prev: new THREE.Vector3(),
+      cruise: 210, abSpeed: 300, ab: 0, gNow: 1, reactT: null, threatTm: null,
+      rollPhase: 0, rollDir: 1, splitS: false, merge: 0, mergeDir: new THREE.Vector3(0, 1, 0), mergeRoll: 0,
+      flaresLeft: 2, flareCD: 0, trailAcc: 0, avoiding: false, noBreak: false
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
+
+  function resetAI(e) {
+    e.cruise = (360 + rand() * 80) * KT;                     // 360-440 kt cruise
+    e.abSpeed = (520 + rand() * 120) * KT;                   // 520-640 kt in afterburner
+    e.speed = e.cruise; e.ab = 0; e.gNow = 1; e.bank = 0;
+    e.tac = e.mode = 'PATROL'; e.tacT = 0; e.reactT = null; e.threatTm = null; e.merge = 0; e.noBreak = false;
+    e.flaresLeft = rand() < 0.5 ? 1 : 2; e.flareCD = 0; e.trailAcc = 0; e.rollPhase = 0; e.avoiding = false;
+  }
 
   function spawnWave() {
     C.wave++;
@@ -410,90 +453,291 @@ export function createCombat(THREE, env) {
       e.center.set(env.terrainCenter.x + Math.sin(a) * 4500, 0, env.terrainCenter.z + Math.cos(a) * 4500);
       e.alt = (1800 + rand() * 4700) * FT;
       e.pos.set(S.position.x + Math.sin(a) * d, e.alt, S.position.z - Math.cos(a) * d);
+      e.pos.y = Math.max(e.pos.y, groundLevel(e.pos.x, e.pos.z) + 300);
       e.radius = 1800 + rand() * 2200; e.dir = rand() < 0.5 ? -1 : 1;
       e.fwd.set(Math.cos(a), 0, Math.sin(a)).normalize();
-      e.speed = 200 + rand() * 30; e.hp = 100; e.alive = true; e.mode = 'PATROL'; e.wreck = null;
-      e.burst = 0; e.burstCD = 2 + rand() * 3; e.bLock = 0; e.mslCD = 6 + rand() * 6; e.evadeT = 0; e.bank = 0;
+      e.hp = 100; e.alive = true; e.wreck = null; resetAI(e);
+      e.burst = 0; e.burstCD = 2 + rand() * 3; e.bLock = 0; e.mslCD = 6 + rand() * 6;
+      e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
     }
     say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
   }
 
   const _t = new THREE.Vector3(), _a = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
+  const _rt = new THREE.Vector3(), _u0 = new THREE.Vector3(), _p = new THREE.Vector3(), _lr = new THREE.Vector3(), _L = new THREE.Vector3();
+  const _fh = new THREE.Vector3(), _s = new THREE.Vector3(), _w = new THREE.Vector3(), _mv = new THREE.Vector3(), _d = new THREE.Vector3();
+  const Z_AXIS = new THREE.Vector3(0, 0, 1);
   function orient(e) {
     _m4.lookAt(new THREE.Vector3(), e.fwd, UP);
-    e.quat.setFromRotationMatrix(_m4).multiply(_q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), e.bank));
+    e.quat.setFromRotationMatrix(_m4).multiply(_q.setFromAxisAngle(Z_AXIS, e.bank));
     e.heading = (Math.atan2(e.fwd.x, -e.fwd.z) / D2R + 360) % 360;
   }
+  const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 
+  // Closest player missile still tracking this bandit.
   function threatMissile(e) {
     let best = null, bd = 4500;
-    for (const m of missiles) if (m.active && !m.enemy && m.target === e) { const d = m.mesh.position.distanceTo(e.pos); if (d < bd) { bd = d; best = m; } }
+    for (const m of missiles) if (m.active && !m.enemy && !m.lostTrack && m.target === e) { const d = m.mesh.position.distanceTo(e.pos); if (d < bd) { bd = d; best = m; } }
     return best;
   }
 
+  // Defensive reaction once the human reaction delay has elapsed.
+  function startDefence(e, tm, tmD) {
+    const safe = e.pos.y - (groundLevel(e.pos.x, e.pos.z) + SAFE_TERRAIN);
+    e.evadeDir = rand() < 0.5 ? -1 : 1;
+    if (tm && rand() < 0.45 && safe > 350) {
+      e.tac = 'BARREL_ROLL'; e.tacT = 3.0 + rand() * 0.8; e.rollDir = e.evadeDir; e.rollPhase = e.bank;
+      e.splitS = safe > 900 && rand() < 0.5; ai.rolls++; if (e.splitS) ai.splitS++;
+    } else {
+      e.tac = 'EVADE_BREAK'; e.tacT = 3.2 + rand() * 0.8; ai.breaks++;
+    }
+    if (tm && e.flaresLeft > 0 && e.flareCD <= 0 && tmD < 1.2 * NM) banditFlares(e);
+  }
+
+  // Bandit countermeasures: a 6-flare salvo from the tail; each player missile
+  // tracking this bandit inside 1.2 NM rolls once: 45 % it chases a flare.
+  function banditFlares(e) {
+    e.flaresLeft--; e.flareCD = AI_FLR_CD; ai.flares++;
+    const salvo = 'e' + (++aiFlareSalvo);
+    const right = _s.set(1, 0, 0).applyQuaternion(e.quat).clone(), up = new THREE.Vector3(0, 1, 0).applyQuaternion(e.quat);
+    const out = [];
+    for (let i = 0; i < FLR_PER_SALVO; i++) {
+      const side = i % 2 ? 1 : -1;
+      const pos = DISPENSERS[i % 2].clone().applyQuaternion(e.quat).add(e.pos).addScaledVector(e.fwd, -i * 4);
+      const kick = new THREE.Vector3().addScaledVector(right, side * (10 + rand() * 14)).addScaledVector(up, -(6 + rand() * 10)).addScaledVector(e.fwd, -(2 + rand() * 4));
+      const f = { pos, vel: e.vel.clone().multiplyScalar(0.9).add(kick), kick, side: i % 2, age: 0, life: 3.4 + rand() * 0.8, alive: true, isFlare: true, salvo, emit: 0, owner: e };
+      flares.push(f); out.push(f);
+    }
+    let spoofed = 0;
+    for (const m of missiles) {
+      if (!m.active || m.enemy || m.target !== e || m.lostTrack || m.mesh.position.distanceTo(e.pos) > 1.2 * NM) continue;
+      if (rand() < AI_FLR_P) {
+        const f = out[(rand() * out.length) | 0];
+        m.target = f; m.losPrev.copy(f.pos).sub(m.mesh.position).normalize(); spoofed++; ai.spoofs++;
+      }
+    }
+    say(spoofed ? `${e.type} FLARES — MISSILE DECOYED` : `${e.type} DISPENSING FLARES`, 1.8, spoofed ? '#ffbf3f' : '#ffe0a0');
+    if (env.onSfx) env.onSfx('flare', e.pos, 0.6);
+  }
+
   function updateEnemy(e, dt, playerActive) {
+    e.prev.copy(e.pos);
     const toP = _t.copy(S.position).sub(e.pos);
     const dist = toP.length();
-    const tm = threatMissile(e);
-    if (tm && e.evadeT <= 0) { e.evadeT = 3.2; e.evadeDir = rand() < 0.5 ? -1 : 1; }
-    e.evadeT -= dt;
-    e.mode = e.evadeT > 0 ? 'EVADE' : (playerActive && dist < PURSUE_RANGE ? 'PURSUE' : 'PATROL');
+    if (playerActive) ai.minSep = Math.min(ai.minSep, dist);
+    e.flareCD = Math.max(0, e.flareCD - dt);
 
-    const desired = new THREE.Vector3();
-    let maxG = 6, targetSpeed = 215;
-    if (e.mode === 'PATROL') {
-      const r = new THREE.Vector3(e.pos.x - e.center.x, 0, e.pos.z - e.center.z);
+    // ---- threat picture: our IR lock on this bandit, or a missile tracking it inside 1,800 m
+    const tm = threatMissile(e);
+    const tmD = tm ? tm.mesh.position.distanceTo(e.pos) : Infinity;
+    const locked = playerActive && C.designated === e && C.lockState === 'LOCK';
+    const threat = (tm && tmD < REACT_RANGE) || locked;
+    const defending = e.tac === 'EVADE_BREAK' || e.tac === 'BARREL_ROLL';
+    if (e.tacT > 0) e.tacT -= dt;
+    if (threat) {
+      if (e.reactT === null) e.reactT = 0.35 + rand() * 0.4;              // human reaction delay
+      else if (e.reactT > 0) { e.reactT -= dt; if (e.reactT <= 0) startDefence(e, tm, tmD); }
+      else if (!defending || e.tacT <= 0) startDefence(e, tm, tmD);      // keep defending while the threat lasts
+      else if (tm && e.flaresLeft > 0 && e.flareCD <= 0 && tmD < 1200) banditFlares(e);
+    } else if (e.reactT !== null && e.reactT <= 0 && !defending) e.reactT = null;
+    if (defending && e.tacT <= 0 && !threat) {
+      if (e.speed < e.cruise * 1.05) { e.tac = 'EXTEND_CLIMB'; e.tacT = 2.5 + rand() * 1.5; ai.extends++; }
+      else e.tac = 'PATROL';
+      e.reactT = null;
+    }
+    if (e.tac === 'EXTEND_CLIMB' && e.tacT <= 0) e.tac = 'PATROL';
+    if (e.tac === 'PATROL' || e.tac === 'ENGAGE') {
+      e.tac = playerActive && dist < PURSUE_RANGE && !aiPassive ? 'ENGAGE' : 'PATROL';
+      // Overshoot: the bandit has flown past the player inside 250 m -> extend and come back.
+      if (e.tac === 'ENGAGE' && dist < 250 && e.fwd.dot(toP) < 0) { e.tac = 'EXTEND_CLIMB'; e.tacT = 2.5 + rand(); ai.extends++; }
+    }
+    e.mode = e.tac;
+
+    // ---- lift-plane frame (bank-to-turn)
+    const right = _rt.crossVectors(e.fwd, UP);
+    if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+    right.normalize();
+    const up0 = _u0.crossVectors(right, e.fwd).normalize();
+    const cosPitch = Math.sqrt(Math.max(0, 1 - e.fwd.y * e.fwd.y));
+
+    // ---- terrain / sea look-ahead along the velocity vector (150 / 350 / 650 m)
+    let maxH = groundLevel(e.pos.x, e.pos.z), wall = false;
+    for (const L of LOOK) {
+      const px = e.pos.x + e.fwd.x * L, py = e.pos.y + e.fwd.y * L, pz = e.pos.z + e.fwd.z * L;
+      const h = groundLevel(px, pz);
+      maxH = Math.max(maxH, h);
+      if (py < h + SAFE_TERRAIN) wall = true;
+    }
+    const minSafe = Math.max(SAFE_WATER, maxH + SAFE_TERRAIN);  // water + 35 m / terrain + 55 m
+    const margin = e.pos.y - minSafe;
+    const cruiseFloor = minSafe + AVOID_BAND * 1.4;             // valley-hugging cruise height
+
+    // ---- desired flight direction per tactical state
+    const desired = _d.set(0, 0, 0);
+    let maxG = 6, useAB = false, bankOverride = null;
+    if (e.tac === 'PATROL') {
+      const r = _s.set(e.pos.x - e.center.x, 0, e.pos.z - e.center.z);
       const rl = Math.max(r.length(), 1); r.divideScalar(rl);
       desired.set(-r.z * e.dir, 0, r.x * e.dir).addScaledVector(r, -(rl - e.radius) / e.radius * 0.8);
-      desired.y = clamp((e.alt - e.pos.y) * 0.003, -0.25, 0.25);
-    } else if (e.mode === 'PURSUE') {
-      const lead = S.position.clone().addScaledVector(S.velocity, clamp(dist / 900, 0, 2.5));
+      desired.y = clamp((Math.max(e.alt, cruiseFloor) - e.pos.y) * 0.003, -0.25, 0.25);
+      maxG = 4;
+    } else if (e.tac === 'ENGAGE') {
+      const lead = _s.copy(S.position).addScaledVector(S.velocity, clamp(dist / 900, 0, 2.5));
       desired.copy(lead).sub(e.pos);
-      if (dist < 280) desired.addScaledVector(toP, -2.5);            // overshoot: extend away
-      maxG = 7; targetSpeed = 245;
-    } else {
-      const los = (tm ? tm.mesh.position.clone().sub(e.pos) : toP.clone()).normalize();
-      desired.crossVectors(los, UP).multiplyScalar(e.evadeDir).addScaledVector(UP, 0.12).addScaledVector(los, -0.35);
-      maxG = 9; targetSpeed = 270;
+      maxG = 7; useAB = dist > 1500 || desired.y > 0.25 * desired.length();
+    } else if (e.tac === 'EVADE_BREAK') {
+      // Break perpendicular to the threat line, slightly nose-low, lift vector at 85 deg.
+      const los = _s.copy(e.threatPos ? e.threatPos : S.position);
+      if (tm) los.copy(tm.mesh.position);
+      los.sub(e.pos).normalize();
+      desired.crossVectors(los, UP);
+      if (desired.lengthSq() < 1e-4) desired.copy(right);
+      desired.normalize().multiplyScalar(e.evadeDir).addScaledVector(los, -0.3).addScaledVector(UP, -0.05);
+      maxG = 7; useAB = true; bankOverride = BREAK_BANK * e.evadeDir;
+    } else if (e.tac === 'BARREL_ROLL') {
+      // Helical defensive roll; split-S variant dives toward the cloud deck.
+      e.rollPhase = wrapPi(e.rollPhase + e.rollDir * 3.4 * dt);
+      bankOverride = e.rollPhase;
+      const L = _L.copy(up0).multiplyScalar(Math.cos(e.rollPhase)).addScaledVector(right, -Math.sin(e.rollPhase));
+      const deck = 1250;                                          // mid cloud deck (~4,100 ft)
+      const vBias = e.splitS ? -0.55 : clamp((deck - e.pos.y) * 0.0015, -0.45, 0.3);
+      desired.copy(e.fwd).addScaledVector(L, 0.65).addScaledVector(UP, vBias);
+      maxG = 7; useAB = !e.splitS;
+    } else {                                                      // EXTEND_CLIMB
+      desired.set(-toP.x, 0, -toP.z);
+      if (desired.lengthSq() < 1) desired.copy(e.fwd).setY(0);
+      desired.normalize().addScaledVector(UP, 0.4);
+      maxG = 5; useAB = true;
     }
-    for (const o of enemies) if (o !== e && o.alive) { const d = e.pos.distanceTo(o.pos); if (d < 600) desired.addScaledVector(_a.copy(e.pos).sub(o.pos).normalize(), (600 - d) / 600); }
-    const floor = groundLevel(e.pos.x, e.pos.z) + 320;
-    if (e.pos.y < floor) desired.y = Math.max(desired.y, 0.5) + (floor - e.pos.y) * 0.01;
-    if (e.pos.y > 2400) desired.y = Math.min(desired.y, -0.2);
+    if (desired.lengthSq() < 1e-6) desired.copy(e.fwd);
     desired.normalize();
 
-    // Turn the velocity vector toward the desired direction at a G-limited rate.
-    const ang = e.fwd.angleTo(desired);
-    const maxTurn = (maxG * G0) / Math.max(e.speed, 80);
-    const step = Math.min(ang, maxTurn * dt);
-    if (ang > 1e-4) {
-      const axis = _a.crossVectors(e.fwd, desired).normalize();
-      e.fwd.applyAxisAngle(axis, step).normalize();
+    // ---- wingman separation: soft spread at 350 m, firm repulsion inside 65 m
+    for (const o of enemies) {
+      if (o === e || !o.alive) continue;
+      const d = e.pos.distanceTo(o.pos);
+      ai.minWing = Math.min(ai.minWing, d);
+      if (d < 350) {
+        const away = _w.copy(e.pos).sub(o.pos).normalize();
+        desired.addScaledVector(away, d < SEP_R ? 2.5 * (SEP_R - d) / SEP_R + 0.4 : 0.35 * (350 - d) / 350);
+        if (d < SEP_R * 0.6) e.pos.addScaledVector(away, Math.min(SEP_R * 0.6 - d, 40 * dt));
+      }
     }
-    const turnRate = step / Math.max(dt, 1e-4);
-    const side = Math.sign(new THREE.Vector3().crossVectors(e.fwd, desired).y || 0);
-    const bankT = clamp(Math.atan(turnRate * e.speed / G0), 0, 1.45) * side;
-    e.bank += (bankT - e.bank) * Math.min(1, dt * 3.5);
-    e.speed += (targetSpeed - e.speed) * Math.min(1, dt * 0.4);
+
+    // ---- merge break-away: roll 70-110 deg and pull off-axis so the pass clears the canopy
+    if (playerActive && !e.noBreak) {
+      const rel = _s.copy(e.pos).sub(S.position), w = _w.copy(e.vel).sub(S.velocity);
+      const w2 = w.lengthSq();
+      const tca = w2 > 1 ? clamp(-rel.dot(w) / w2, 0, 2) : 0;
+      const miss = _mv.copy(rel).addScaledVector(w, tca), missD = miss.length();
+      if (e.merge <= 0 && (dist < MERGE_R || (tca < 1.6 && missD < MERGE_R && dist < 1100))) {
+        const wn = w2 > 1 ? w.clone().normalize() : e.fwd.clone();
+        const dir = miss.clone().addScaledVector(wn, -miss.dot(wn));
+        if (dir.lengthSq() < 4) dir.crossVectors(wn, UP).multiplyScalar(rand() < 0.5 ? -1 : 1).addScaledVector(UP, 0.6);
+        if (dir.lengthSq() < 1e-4) dir.copy(UP);
+        e.mergeDir.copy(dir.normalize());
+        const side = Math.sign(-e.mergeDir.dot(right)) || 1;      // roll toward the escape side
+        e.mergeRoll = side * (70 + rand() * 40) * D2R;
+        e.merge = 1.5; ai.merges++;
+      }
+      if (e.merge > 0) {
+        e.merge -= dt;
+        desired.multiplyScalar(0.3).addScaledVector(e.mergeDir, 1.6);
+        maxG = Math.max(maxG, 8);
+        if (bankOverride === null) bankOverride = e.mergeRoll;
+        // Keep a 32 m (+wingspan) gap through the pass: lateral slip along the break direction.
+        if (missD < MERGE_CLEAR && tca < 1.4) e.pos.addScaledVector(e.mergeDir, Math.min(MERGE_CLEAR - missD, 85 * dt));
+      }
+    }
+
+    // ---- terrain / sea safety: hold the cruise floor, emergency pull-up inside the band
+    const wasAvoiding = e.avoiding;
+    e.avoiding = margin < AVOID_BAND * 0.7 || wall;
+    if (e.avoiding) {
+      if (!wasAvoiding) ai.avoid++;
+      const urgency = clamp(1 - margin / AVOID_BAND, 0, 1.6) + (wall ? 0.6 : 0);
+      const fh = _fh.set(e.fwd.x, 0, e.fwd.z);
+      if (fh.lengthSq() < 1e-6) fh.set(0, 0, -1);
+      desired.copy(fh.normalize()).addScaledVector(UP, 0.25 + 1.5 * urgency).normalize();
+      maxG = Math.max(maxG, 7.5); bankOverride = 0;              // wings level, pull
+    } else {
+      if (margin < AVOID_BAND * 1.3) desired.y = Math.max(desired.y, 0.04 + 0.25 * (1 - margin / (AVOID_BAND * 1.3)));
+      if (e.pos.y > 2600) desired.y = Math.min(desired.y, -0.2);
+      desired.normalize();
+    }
+
+    // ---- bank-to-turn dynamics
+    const v = Math.max(e.speed, 80);
+    const cosA = clamp(e.fwd.dot(desired), -1, 1), ang = Math.acos(cosA);
+    const perp = _p.copy(desired).addScaledVector(e.fwd, -cosA);
+    if (perp.lengthSq() > 1e-8) perp.normalize(); else perp.copy(up0);
+    const omega = Math.min(ang * 2.4, (maxG * G0) / v);
+    const liftReq = _lr.copy(perp).multiplyScalar(omega * v).addScaledVector(up0, G0 * cosPitch);
+    let bankT = Math.atan2(-liftReq.dot(right), liftReq.dot(up0)), push = false;
+    if (bankOverride !== null) bankT = bankOverride;
+    else if (Math.abs(bankT) > BANK_MAX) {
+      if (liftReq.dot(up0) < 0) { bankT = wrapPi(bankT - Math.PI); push = true; }    // unload / push over instead of rolling inverted
+      bankT = clamp(bankT, -BANK_MAX, BANK_MAX);
+    }
+    if (e.tac === 'BARREL_ROLL' && !e.avoiding && e.merge <= 0) e.bank = bankT;
+    else e.bank = wrapPi(e.bank + clamp(wrapPi(bankT - e.bank), -ROLL_RATE * dt, ROLL_RATE * dt));
+    const L = _L.copy(up0).multiplyScalar(Math.cos(e.bank)).addScaledVector(right, -Math.sin(e.bank));
+    let n = liftReq.dot(L);                                       // lift actually available in the current lift plane
+    if (e.tac === 'EVADE_BREAK' && !e.avoiding) n = Math.max(n, maxG * G0 * 0.95);   // full-G break
+    n = push ? clamp(n, -2.5 * G0, maxG * G0) : clamp(n, 0, maxG * G0);
+    e.gNow = n / G0;
+    ai.maxG = Math.max(ai.maxG, e.gNow); ai.maxBank = Math.max(ai.maxBank, Math.abs(e.bank) / D2R);
+    const accP = _s.copy(L).multiplyScalar(n).addScaledVector(up0, -G0 * cosPitch);   // perpendicular accel incl. gravity
+    e.fwd.addScaledVector(accP, dt / v).normalize();
+
+    // Throttle: cruise 360-440 kt, afterburner 520-640 kt; energy trades with climb and G.
+    e.ab += ((useAB ? 1 : 0) - e.ab) * Math.min(1, dt * 3);
+    if (e.ab > 0.5) ai.abT += dt;
+    const targetSpeed = e.cruise + (e.abSpeed - e.cruise) * e.ab;
+    e.speed += (targetSpeed - e.speed) * Math.min(1, dt * 0.35) - G0 * e.fwd.y * dt * 0.55 - Math.max(0, e.gNow - 3) * 1.1 * dt;
+    e.speed = clamp(e.speed, 140, 345);
+
     // Smoothed turn acceleration feeds the HUD's LCOS lead computation.
-    const nv = e.fwd.clone().multiplyScalar(e.speed);
-    if (dt > 0) e.acc.lerp(nv.clone().sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
+    const nv = _mv.copy(e.fwd).multiplyScalar(e.speed);
+    if (dt > 0) e.acc.lerp(_w.copy(nv).sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
     e.vel.copy(nv);
     e.pos.addScaledVector(e.vel, dt);
+
+    // ---- hard floor: never below 12 m over ground or water
+    const g0 = groundLevel(e.pos.x, e.pos.z);
+    if (e.pos.y < g0 + HARD_FLOOR) {
+      e.pos.y = g0 + HARD_FLOOR; ai.clamps++;
+      if (e.fwd.y < 0.12) { e.fwd.y = 0.12; e.fwd.normalize(); e.vel.copy(e.fwd).multiplyScalar(e.speed); }
+    }
+    ai.minClear = Math.min(ai.minClear, e.pos.y - g0);
     orient(e);
 
-    // Guns, progressive seeker lock and missiles while pursuing (same model as the player's).
+    // Wingtip condensation streaks in hard pulls (static world points -> streaks).
+    if (e.gNow > 4.8) {
+      e.trailAcc += dt * 170 * clamp((e.gNow - 4.8) / 2, 0.4, 1);
+      while (e.trailAcc >= 1) {
+        e.trailAcc -= 1;
+        for (const tip of WINGTIPS) {
+          const p = _w.copy(tip).applyQuaternion(e.quat).add(e.pos);
+          smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, life: 0.4 + rand() * 0.15, s0: 0.55, s1: 1.5, r: 0.95, g: 0.96, b: 0.98, a: 0.5, drag: 0 });
+          ai.trails++;
+        }
+      }
+    }
+
+    // Guns, progressive seeker lock and missiles while engaging (same model as the player's).
     e.burstCD -= dt; e.mslCD -= dt;
     const toPdir = toP.clone().normalize();
     const aligned = e.fwd.dot(toPdir);
     const pFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const onSix = pFwd.dot(toPdir) > 0;                              // bandit is behind the player
-    const inCone = e.mode === 'PURSUE' && playerActive && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
+    const engaging = e.tac === 'ENGAGE' && playerActive;
+    const inCone = engaging && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
     // Player inside thick cloud: the bandit's seeker loses the picture (-1.5/s).
     const hidden = C.playerCloud > CLOUD_T;
     e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / B_LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
-    if (e.mode === 'PURSUE' && playerActive) {
-      if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
+    if (engaging) {
+      if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300 && dist > 150) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
       const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
       if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
         // Full lock: aggressive, accurate shot.
@@ -519,7 +763,32 @@ export function createCombat(THREE, env) {
     }
   }
 
-  function destroyEnemy(e, byMissile) {
+  // Physical airframe collision (swept, relative motion over this frame): 14 m.
+  const lastPlayerPos = new THREE.Vector3(); let lastPlayerValid = false;
+  function checkRams(playerActive) {
+    if (!playerActive || !lastPlayerValid) return;
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const a = _s.copy(e.prev).sub(lastPlayerPos), b = _w.copy(e.pos).sub(S.position);
+      const seg = _mv.copy(b).sub(a), l2 = seg.lengthSq();
+      const t = l2 > 0 ? clamp(-a.dot(seg) / l2, 0, 1) : 0;
+      const closest = a.addScaledVector(seg, t).length();
+      if (closest < RAM_R) {
+        const mid = e.pos.clone().add(S.position).multiplyScalar(0.5);
+        ai.rams++;
+        shockRing(mid, 0xcfe6ff, true);
+        hitSparks(mid, S.velocity);
+        explosion(mid, 1.3);
+        destroyEnemy(e, false, 'RAM');
+        damagePlayer(45);
+        C.hitFlash = 0.6;
+        say('MID-AIR COLLISION — AIRFRAME DAMAGE', 2.4, '#ff4d3d');
+        if (env.onSfx) env.onSfx('explosion', mid, 1.4);
+      }
+    }
+  }
+
+  function destroyEnemy(e, byMissile, how) {
     if (!e.alive) return;
     e.alive = false;
     explosion(e.pos, 1.7);
@@ -528,7 +797,7 @@ export function createCombat(THREE, env) {
     pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
-    say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
+    if (how !== 'RAM') say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
   }
 
   function updateWreck(e, dt) {
@@ -544,7 +813,10 @@ export function createCombat(THREE, env) {
     smoke.spawn({ x: e.pos.x, y: e.pos.y, z: e.pos.z, vx: (rand() - 0.5) * 4, vy: 2, vz: (rand() - 0.5) * 4, life: 4 + rand() * 2, s0: 6, s1: 30, r: g, g, b: g, a: 0.7, drag: 0.6, rise: 1.5 });
     const ground = terrainHeight(e.pos.x, e.pos.z);
     if (e.pos.y <= Math.max(0, ground) + 1) {
-      if (ground < 0) splash(e.pos, 1.3); else explosion(e.pos, 1.2);
+      // Impact: never let a wreck pass under the map — water geyser or ground fireball.
+      e.pos.y = Math.max(0, ground);
+      impactFx(e.pos, ground < 0, 0.75);
+      ai.impacts++;
       e.wreck = null;
     }
   }
@@ -556,13 +828,22 @@ export function createCombat(THREE, env) {
       const vis = e.alive || !!e.wreck;
       _m4.compose(e.pos, e.quat, vis ? one : zero);
       for (const inst of fleet) inst.setMatrixAt(i, _m4);
+      const ab = e.alive ? e.ab : 0, on = ab > 0.05;
       nozzles.forEach((nz, k) => {
         const p = nz.clone().add(new THREE.Vector3(0, 0, 1.9)).applyQuaternion(e.quat).add(e.pos);
         glowMesh.setMatrixAt(i * 2 + k, new THREE.Matrix4().compose(p, e.quat, e.alive ? one : zero));
+        // Burner plume: base at the nozzle exit, length grows with afterburner.
+        const flick = 0.9 + 0.2 * rand();
+        const lo = (0.45 + 0.75 * ab) * flick, lc = (0.5 + 0.6 * ab) * flick;
+        const po = nz.clone().add(new THREE.Vector3(0, 0, 1.0 + 2.3 * lo)).applyQuaternion(e.quat).add(e.pos);
+        const pc = nz.clone().add(new THREE.Vector3(0, 0, 1.0 + 1.3 * lc)).applyQuaternion(e.quat).add(e.pos);
+        flameOuter.setMatrixAt(i * 2 + k, _m4.compose(po, e.quat, on ? new THREE.Vector3(0.8 + 0.3 * ab, 0.8 + 0.3 * ab, lo) : zero));
+        flameCore.setMatrixAt(i * 2 + k, _m4.compose(pc, e.quat, on ? new THREE.Vector3(1, 1, lc) : zero));
       });
     });
     for (const inst of fleet) inst.instanceMatrix.needsUpdate = true;
     glowMesh.instanceMatrix.needsUpdate = true;
+    flameOuter.instanceMatrix.needsUpdate = true; flameCore.instanceMatrix.needsUpdate = true;
   }
 
   /* =========================================================== lock-on */
@@ -892,10 +1173,25 @@ export function createCombat(THREE, env) {
     r.visible = false; r.frustumCulled = false; scene.add(r); return { r, t: 0, water: false };
   });
   let ringNext = 0;
-  function detonateBomb(pos, water) {
+  // Expanding shockwave ring (flat, or camera-facing for mid-air impacts).
+  function shockRing(pos, color, air) {
     const ring = rings[ringNext]; ringNext = (ringNext + 1) % rings.length;
-    ring.r.position.copy(pos).setY(pos.y + 1.5); ring.t = 0; ring.water = water; ring.r.visible = true;
-    ring.r.material.color.set(water ? 0xdff4ff : 0xffd8a0);
+    ring.r.position.copy(pos).setY(pos.y + (air ? 0 : 1.5)); ring.t = 0; ring.water = !air && color === 0xdff4ff; ring.r.visible = true;
+    ring.r.material.color.set(color);
+    ring.air = !!air;
+    if (air) ring.r.quaternion.copy(camera.quaternion).multiply(_q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+    else ring.r.quaternion.identity();
+    return ring;
+  }
+  function detonateBomb(pos, water) {
+    impactFx(pos, water, 1);
+    // Blast: bandits caught low over the impact are destroyed.
+    for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) destroyEnemy(e, true);
+    if (playerActiveNow && S.position.distanceTo(pos) < BOMB_RADIUS * 0.8) damagePlayer(30);
+  }
+  // Water geyser or ground fireball (bombs and crashing wrecks).
+  function impactFx(pos, water, k) {
+    shockRing(pos, water ? 0xdff4ff : 0xffd8a0, false);
     if (water) {
       // Water geyser: tall white column, falling spray curtain, low mist.
       splash(pos, 2.4);
@@ -909,7 +1205,7 @@ export function createCombat(THREE, env) {
         smoke.spawn({ x: pos.x, y: 2, z: pos.z, vx: Math.cos(a) * (25 + rand() * 25), vy: 2 + rand() * 4, vz: Math.sin(a) * (25 + rand() * 25),
           life: 3 + rand() * 2, s0: 8, s1: 34, r: 0.88, g: 0.92, b: 0.96, a: 0.55, drag: 0.9, rise: 0.4 });
       }
-      if (env.onSfx) env.onSfx('bomb', pos, 0.8);
+      if (env.onSfx) env.onSfx('bomb', pos, 0.8 * k);
     } else {
       // Ground burst: big fireball, dust skirt, rising smoke column.
       explosion(pos, 2.4);
@@ -923,11 +1219,8 @@ export function createCombat(THREE, env) {
         smoke.spawn({ x: pos.x + (rand() - 0.5) * 10, y: pos.y + 5, z: pos.z + (rand() - 0.5) * 10, vx: (rand() - 0.5) * 6, vy: 18 + rand() * 22, vz: (rand() - 0.5) * 6,
           life: 6 + rand() * 4, s0: 14, s1: 60 + rand() * 30, r: g, g, b: g, a: 0.8, drag: 0.5, rise: 3 });
       }
-      if (env.onSfx) env.onSfx('bomb', pos, 1);
+      if (env.onSfx) env.onSfx('bomb', pos, k);
     }
-    // Blast: bandits caught low over the impact are destroyed.
-    for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) destroyEnemy(e, true);
-    if (playerActiveNow && S.position.distanceTo(pos) < BOMB_RADIUS * 0.8) damagePlayer(30);
   }
   function updateRings(dt) {
     for (const g of rings) {
@@ -1012,7 +1305,7 @@ export function createCombat(THREE, env) {
     // Decoy roll for bandit missiles near any burning flare (once per missile per salvo).
     for (const m of missiles) {
       if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
-      const near = flares.find(f => f.alive && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
+      const near = flares.find(f => f.alive && !f.owner && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
       if (!near) continue;
       m.flareSalvo = near.salvo;
       if (rand() < FLR_DECOY_P) {
@@ -1071,6 +1364,7 @@ export function createCombat(THREE, env) {
         if (e.alive) updateEnemy(e, dt, playerActive);
         else if (e.wreck) updateWreck(e, dt);
       }
+      checkRams(playerActive);
       if (!enemies.some(e => e.alive || e.wreck)) {
         waveTimer += dt;
         if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
@@ -1117,6 +1411,7 @@ export function createCombat(THREE, env) {
 
     for (const f of flashes) { if (f.t > 0) { f.t -= dt; f.l.intensity = Math.max(0, f.t) * 900; } else f.l.intensity = 0; }
     fire.update(dt); smoke.update(dt);
+    lastPlayerPos.copy(S.position); lastPlayerValid = playerActive;
   }
 
   return {
@@ -1146,9 +1441,28 @@ export function createCombat(THREE, env) {
       const dir = new THREE.Vector3(Math.sin(az * D2R) * Math.cos(el * D2R), Math.sin(el * D2R), -Math.cos(az * D2R) * Math.cos(el * D2R)).applyQuaternion(S.quaternion);
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
       e.pos.copy(S.position).addScaledVector(dir, dist); e.fwd.copy(fwd); e.alive = true; e.wreck = null; e.hp = 100;
-      e.mode = 'PATROL'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed);
+      resetAI(e); e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
       e.center.copy(e.pos).addScaledVector(new THREE.Vector3(fwd.z, 0, -fwd.x), 40000); e.radius = 40000; e.alt = e.pos.y;
       orient(e); writeFleet();
+    },
+    // Debug: bogey i head-on at `dist` m, nose-to-nose with the player. noBreak = deliberate ram test.
+    placeHeadOn(i, dist, noBreak) {
+      const e = enemies[i]; if (!e) return;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+      e.pos.copy(S.position).addScaledVector(fwd, dist); e.fwd.copy(fwd).negate(); e.alive = true; e.wreck = null; e.hp = 100;
+      resetAI(e); e.noBreak = !!noBreak; e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos); e.mslCD = 99; e.burstCD = 99;
+      orient(e); writeFleet();
+    },
+    // Debug: whole wave patrolling ~120 m over the islands (terrain-avoidance stress test).
+    lowPatrol(alt = 120) {
+      aiPassive = true;
+      enemies.forEach((e, k) => {
+        if (!e.alive) return;
+        const a = k / WAVE_SIZE * Math.PI * 2;
+        e.center.set(env.terrainCenter.x, 0, env.terrainCenter.z); e.radius = 2500 + k * 900; e.alt = alt;
+        e.pos.set(env.terrainCenter.x + Math.sin(a) * e.radius, 0, env.terrainCenter.z + Math.cos(a) * e.radius);
+        e.pos.y = groundLevel(e.pos.x, e.pos.z) + 200; e.prev.copy(e.pos); e.mslCD = 999; e.burstCD = 999;
+      });
     },
     killEnemy(i) { const e = enemies[i]; if (e && e.alive) destroyEnemy(e, true); },
     // Debug: put bogey i on the player's six at `dist` metres, nose on, pursuing.
@@ -1156,10 +1470,13 @@ export function createCombat(THREE, env) {
       const e = enemies[i]; if (!e) return;
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
       e.pos.copy(S.position).addScaledVector(fwd, -dist); e.fwd.copy(fwd); e.alive = true; e.wreck = null; e.hp = 100;
-      e.mode = 'PURSUE'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed); e.mslCD = 0; e.bLock = 0; orient(e); writeFleet();
+      resetAI(e); e.tac = e.mode = 'ENGAGE'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed); e.prev.copy(e.pos); e.mslCD = 0; e.bLock = 0; orient(e); writeFleet();
     },
     stats() {
-      return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? e.mode[0] : '-').join(''),
+      return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? TAC_CODE[e.tac] || '?' : '-').join(''),
+        ai: Object.fromEntries(Object.entries(ai).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(1) : null])),
+        e0: enemies[0] ? { tac: enemies[0].tac, bank: Math.round(enemies[0].bank / D2R), g: +enemies[0].gNow.toFixed(1), kt: Math.round(enemies[0].speed / KT), ab: +enemies[0].ab.toFixed(2),
+          alt: Math.round(enemies[0].pos.y), flr: enemies[0].flaresLeft, alive: enemies[0].alive } : null,
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
         lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         cloud: { player: +(C.playerCloud || 0).toFixed(2), tgt: +((C.designated && C.designated.cloud) || 0).toFixed(2), obscured: !!C.targetObscured, breaks: C.cloudBreaks || 0,

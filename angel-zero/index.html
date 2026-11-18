@@ -286,17 +286,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s21a';
-import { createHUD } from './src/hud.js?v=s21a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s21a';
-import { createCombat } from './src/combat.js?v=s21a';
-import { createEjection } from './src/eject.js?v=s21a';
-import { createAudio } from './src/audio.js?v=s21a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s21a';
-import { createCanopyFX } from './src/canopy.js?v=s21a';
-import { createNVG } from './src/nvg.js?v=s21a';
-import { createWorld, WORLD } from './src/world.js?v=s21a';
-import { createSurfaces } from './src/surfaces.js?v=s21a';
+import { createVFX } from './src/vfx.js?v=s22a';
+import { createHUD } from './src/hud.js?v=s22a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s22a';
+import { createCombat } from './src/combat.js?v=s22a';
+import { createEjection } from './src/eject.js?v=s22a';
+import { createAudio } from './src/audio.js?v=s22a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s22a';
+import { createCanopyFX } from './src/canopy.js?v=s22a';
+import { createNVG } from './src/nvg.js?v=s22a';
+import { createWorld, WORLD } from './src/world.js?v=s22a';
+import { createSurfaces } from './src/surfaces.js?v=s22a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1031,6 +1031,15 @@ function updateCameraAndVisuals(dt, now) {
       camera.up.copy(AX_Y).applyQuaternion(state.quaternion);
       camera.lookAt(state.position.clone().add(new THREE.Vector3(0, DEBUG_CAM.y < 0 ? -1.5 : 0, 0).applyQuaternion(state.quaternion)));
     }
+    if (DEBUG_BANDCAM) {                               // test hook: ?bandcam=i,dist -> chase camera on bandit i
+      const e = combatSys.enemies[DEBUG_BANDCAM[0]];
+      if (e && (e.alive || e.wreck)) {
+        const d = DEBUG_BANDCAM[1] || 45;
+        camera.up.set(0, 1, 0);
+        camera.position.copy(e.pos).addScaledVector(e.fwd, -d).add(new THREE.Vector3(0, d * 0.28, 0));
+        camera.lookAt(e.pos);
+      }
+    }
   }
   if (combat.gunFiring && appMode === 'PLAY' && flightMode === 'FLY') {
     // 6,000 rpm rotary cannon: high-frequency airframe micro-vibration (~1.5 px).
@@ -1303,6 +1312,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
   if (DEBUG && Q.has('six')) combatSys.placeBehind(0, Number(Q.get('six')) || 1200);
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
+  if (DEBUG && Q.has('merge')) combatSys.placeHeadOn(0, Number(Q.get('merge')) || 1500, false);   // head-on merge
+  if (DEBUG && Q.has('ram')) combatSys.placeHeadOn(0, Number(Q.get('ram')) || 900, true);         // deliberate ram (no break)
+  if (DEBUG && Q.has('lowpatrol')) combatSys.lowPatrol(Number(Q.get('lowpatrol')) || 120);       // terrain-avoidance stress
   if (DEBUG && Q.has('wpn')) combatSys.setWeapon(Q.get('wpn').toUpperCase());
   if (DEBUG && Q.has('bomb')) { combatSys.update(0, 0, { playerActive: true, firing: false }); for (let i = 0; i < (Number(Q.get('bomb')) || 1); i++) { combatSys.update(0.25, 0, { playerActive: true, firing: false }); combatSys.dropBomb(); } }
   if (DEBUG && Q.has('flare')) combatSys.dispenseFlares();
@@ -1388,6 +1400,7 @@ const DEBUG_HOLD = DEBUG && Q.has('hold') ? Q.get('hold').split(',') : null;
 let surfaces = null;
 const RWY_X = () => world.runway.x;
 const DEBUG_OVERVIEW = DEBUG && Q.has('overview') ? (Number(Q.get('overview')) || 22000) : 0;
+const DEBUG_BANDCAM = DEBUG && Q.has('bandcam') ? Q.get('bandcam').split(',').map(Number) : null;
 const DEBUG_CAM = DEBUG && Q.has('camat') ? new THREE.Vector3(...Q.get('camat').split(',').map(Number)) : null;   // ?camat=x,y,z (jet frame)            // headless test hook: hold the trigger
 // Title-screen flight path: a banked orbit over the island chain.
 let menuT = 0;

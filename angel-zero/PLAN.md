@@ -85,6 +85,29 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 - [x] **M61A1 Vulcan** — 6,000 rpm, tracers, LCOS lead reticle, gun funnel.
 - [x] **Flares / chaff (`X` / `G`)**, bandit AI with symmetric locks, missile
   break / decoy / cloud loss.
+- [x] **Enemy AI & Collision Overhaul** *(current step, done — `src/combat.js`)*
+  - Bank-to-turn bandits: roll the lift vector onto the turn demand (+/-82 deg,
+    ~205 deg/s), then G-limited pull; gravity / climb / induced-drag energy
+    bleed; throttle cruise 360-440 kt, afterburner 520-640 kt.
+  - States `PATROL` / `ENGAGE` / `EVADE_BREAK` (85 deg, 7 G, burner) /
+    `BARREL_ROLL` (helical roll or split-S toward the cloud deck) /
+    `EXTEND_CLIMB`; our `LOCK` or a missile inside 1,800 m triggers a reaction
+    after 0.35-0.75 s.
+  - AI flares: 1-2 salvos per bandit, 10 s cooldown, 45 % spoof per tracking
+    missile inside 1.2 NM (bandit flares never decoy bandit missiles).
+  - Terrain / sea safety: 150 / 350 / 650 m look-ahead along the velocity
+    vector, `minSafe = max(water + 35, terrain + 55)`, wings-level pull-up
+    inside the 140 m band, hard floor 12 m; wrecks always burst on impact
+    (water geyser / ground fireball).
+  - Separation: merge break-away inside 95 m (or a predicted pass that close,
+    roll 70-110 deg, >= 32 m slip clearance), 65 m wingman repulsion, 14 m swept
+    airframe collision (shockwave, +45 % DMG, bandit destroyed).
+  - Visuals: orange sheath / blue core afterburner cones, wingtip condensation
+    streaks above ~4.8 G.
+  - Verified headless: 70 s low patrol over the islands (min clearance 199 m,
+    0 floor clamps), canyon chase, head-on merge (closest pass 81 m), ram
+    (bandit destroyed, player HP 100 -> 55), lock + launch (break / split-S,
+    flares, `FULL:FLARE` spoof), zero page console errors.
 - [x] **VFX** — afterburner diamonds, contrails, vapor, Mach cone, smoke /
   fire particles, explosions, water geysers, shockwave rings.
 - [x] **Procedural Web Audio** — engines, BRRRT gun, seeker tones, alerts,
@@ -141,9 +164,13 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
-· `logat=t,...` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`.
+· `logat=t,...` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
+· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
+(wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
+camera on bandit i).
 
 ## Next
+0. **4AAM / RWR / ECM** (deferred from the previous slot; next active step).
 1. Pillar 1: extract `state` / `combat` into `src/state.js`; fixed-step
    simulation accumulator.
 2. Pillar 2: extract `updatePhysics` → `src/flight.js` and the chase camera →
