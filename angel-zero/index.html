@@ -286,15 +286,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s18a';
-import { createHUD } from './src/hud.js?v=s18a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s18a';
-import { createCombat } from './src/combat.js?v=s18a';
-import { createEjection } from './src/eject.js?v=s18a';
-import { createAudio } from './src/audio.js?v=s18a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s18a';
-import { createCanopyFX } from './src/canopy.js?v=s18a';
-import { createNVG } from './src/nvg.js?v=s18a';
+import { createVFX } from './src/vfx.js?v=s19a';
+import { createHUD } from './src/hud.js?v=s19a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s19a';
+import { createCombat } from './src/combat.js?v=s19a';
+import { createEjection } from './src/eject.js?v=s19a';
+import { createAudio } from './src/audio.js?v=s19a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s19a';
+import { createCanopyFX } from './src/canopy.js?v=s19a';
+import { createNVG } from './src/nvg.js?v=s19a';
+import { createWorld, WORLD } from './src/world.js?v=s19a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -378,99 +379,18 @@ function fbm(noise, x, y, octaves, lac = 2.0, gain = 0.5) {
 /* ============================================================================
    2. ARCHIPELAGO HEIGHT FIELD (20000 x 20000 m)
    ============================================================================ */
-const TERRAIN_SIZE = 20000;
-const TERRAIN_SEG = 320;
-const TERRAIN_CENTER = new THREE.Vector2(0, -2500);
-const nShape = createNoise2D(4242), nRidge = createNoise2D(991), nDetail = createNoise2D(7);
-const islandRnd = mulberry32(20261118);
-const ISLANDS = [];
-for (let i = 0; i < 11; i++) {
-  const a = islandRnd() * Math.PI * 2, d = 1200 + islandRnd() * 6800;
-  ISLANDS.push({
-    x: TERRAIN_CENTER.x + Math.cos(a) * d,
-    z: TERRAIN_CENTER.y + Math.sin(a) * d,
-    r: 700 + islandRnd() * 1900,
-    h: 0.75 + islandRnd() * 0.55
-  });
-}
-function terrainHeight(x, z) {
-  const lx = x - TERRAIN_CENTER.x, lz = z - TERRAIN_CENTER.y;
-  let e = 0;
-  for (const s of ISLANDS) {
-    const dx = (x - s.x) / s.r, dz = (z - s.z) / s.r;
-    e = Math.max(e, s.h * Math.exp(-(dx * dx + dz * dz) * 1.15));
-  }
-  e += 0.30 * fbm(nShape, lx * 0.00028, lz * 0.00028, 5);
-  const edge = Math.max(Math.abs(lx), Math.abs(lz)) / (TERRAIN_SIZE * 0.5);
-  e -= THREE.MathUtils.smoothstep(edge, 0.78, 0.98) * 0.9;
-  const coast = 0.45;
-  let h = (e - coast) * 820;
-  if (h > 0) {
-    const land = THREE.MathUtils.smoothstep(e, coast, coast + 0.45);
-    const ridge = 1.0 - Math.abs(fbm(nRidge, lx * 0.00042, lz * 0.00042, 4));
-    h += Math.pow(ridge, 1.8) * 560 * land * land;
-    h += fbm(nDetail, lx * 0.0022, lz * 0.0022, 3) * 22 * land;
-    if (h < 14) h *= 0.55;                       // flatten beaches
-  }
-  return Math.max(h, -260);
-}
+// Authored 5-island archipelago (src/world.js). Every height query — crashes,
+// missiles, bombs, spray, radar contours, props — reads the same height grid the
+// terrain mesh is built from (triangle-exact), so nothing floats or clips.
+const TERRAIN_SIZE = WORLD.SIZE;
+const TERRAIN_CENTER = new THREE.Vector2(WORLD.CX, WORLD.CZ);
+const _wt0 = performance.now();
+const world = createWorld(THREE, { scene, createNoise2D, fbm, mulberry32 });
+if (DEBUG) console.log('[ANGELS_ZERO] world built in', Math.round(performance.now() - _wt0), 'ms; obstacles', world.obstacleCount());
+function terrainHeight(x, z) { return world.heightAt(x, z); }
 function groundLevel(x, z) { return Math.max(0, terrainHeight(x, z)); }
 
-function makeDetailTexture(size, seed) {
-  const noise = createNoise2D(seed);
-  const cv = document.createElement('canvas'); cv.width = cv.height = size;
-  const ctx = cv.getContext('2d'); const img = ctx.createImageData(size, size);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const n = fbm(noise, (x / size) * 8, (y / size) * 8, 5);
-    const v = Math.max(0, Math.min(255, (0.80 + n * 0.22) * 255));
-    const i = (y * size + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 
-function buildTerrain() {
-  const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEG, TERRAIN_SEG);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, terrainHeight(pos.getX(i) + TERRAIN_CENTER.x, pos.getZ(i) + TERRAIN_CENTER.y));
-  }
-  geo.computeVertexNormals();
-  const nrm = geo.attributes.normal;
-  const colors = new Float32Array(pos.count * 3);
-  const C = {
-    seabed: new THREE.Color(0xc9b98a), sand: new THREE.Color(0xe0cf9c),
-    grass: new THREE.Color(0x4a7a37), forest: new THREE.Color(0x2f5a2a),
-    rock: new THREE.Color(0x77716a), peak: new THREE.Color(0xa29d95)
-  };
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const h = pos.getY(i), slope = 1 - nrm.getY(i);
-    const wx = pos.getX(i), wz = pos.getZ(i);
-    if (h < 0) c.copy(C.seabed);
-    else if (h < 16) c.copy(C.sand);
-    else {
-      const v = fbm(nDetail, wx * 0.0016, wz * 0.0016, 2) * 0.5 + 0.5;
-      c.copy(C.sand).lerp(C.grass, THREE.MathUtils.smoothstep(h, 16, 55));
-      c.lerp(C.forest, THREE.MathUtils.smoothstep(h, 90, 420) * (0.4 + 0.6 * v));
-      c.lerp(C.rock, Math.max(THREE.MathUtils.smoothstep(slope, 0.30, 0.55), THREE.MathUtils.smoothstep(h, 620, 900)));
-      c.lerp(C.peak, THREE.MathUtils.smoothstep(h, 900, 1200));
-    }
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const detail = makeDetailTexture(256, 777);
-  detail.repeat.set(180, 180);
-  const mat = new THREE.MeshStandardMaterial({ map: detail, vertexColors: true, roughness: 0.95, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(TERRAIN_CENTER.x, 0, TERRAIN_CENTER.y);
-  return mesh;
-}
-scene.add(buildTerrain());
 
 // Water-depth texture for turquoise shallows / surf in the ocean shader.
 function buildDepthTexture(n) {
@@ -480,7 +400,7 @@ function buildDepthTexture(n) {
     const z = TERRAIN_CENTER.y + ((j + 0.5) / n - 0.5) * TERRAIN_SIZE;
     const h = terrainHeight(x, z);
     const k = (j * n + i) * 4;
-    data[k] = Math.round(THREE.MathUtils.clamp(-h / 90, 0, 1) * 255);
+    data[k] = Math.round(THREE.MathUtils.clamp(-h / 60, 0, 1) * 255);   // metres below sea level / 60
     data[k + 1] = h > 0 ? 255 : 0; data[k + 2] = 0; data[k + 3] = 255;
   }
   const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
@@ -521,7 +441,9 @@ const oceanUniforms = {
   uTime: { value: 0 },
   uN1: { value: makeNormalMap(256, 1337, 6.0) },
   uN2: { value: makeNormalMap(256, 90210, 13.0) },
-  uDepth: { value: buildDepthTexture(256) },
+  uDepth: { value: buildDepthTexture(512) },
+  uDeep: { value: new THREE.Color(0x061c33) },       // deep-channel navy
+  uShallow: { value: new THREE.Color(0x1ca39e) },    // reef / sandbar turquoise
   uTerr: { value: new THREE.Vector3(TERRAIN_CENTER.x, TERRAIN_CENTER.y, TERRAIN_SIZE) },
   uSun: { value: SUN_DIR },
   uSunColor: { value: new THREE.Vector3(1.0, 0.88, 0.70) },
@@ -547,6 +469,7 @@ const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new TH
     uniform float uTime; uniform sampler2D uN1; uniform sampler2D uN2; uniform sampler2D uDepth;
     uniform vec3 uTerr; uniform vec3 uSun; uniform vec3 uSunColor; uniform vec3 uSky;
     uniform vec3 uFog; uniform float uFogD; uniform vec3 uCam; uniform float uLevel; uniform float uGlitter;
+    uniform vec3 uDeep; uniform vec3 uShallow;
     void main() {
       #include <logdepthbuf_fragment>
       vec2 p = vWorldPos.xz;
@@ -561,16 +484,20 @@ const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new TH
       float glitter = pow(max(dot(N, H), 0.0), 48.0 / uGlitter) * 0.22 * uGlitter;   // sun / moon path across the swell
       float sparkle = pow(max(dot(N, H), 0.0), 1400.0) * 1.5;
       float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
-      vec3 deep = vec3(0.010, 0.045, 0.082);
-      vec3 mid = vec3(0.028, 0.115, 0.165);
-      vec3 base = mix(deep, mid, clamp(max(dot(N, V), 0.0) * 0.5 + 0.18, 0.0, 1.0));
+      // Water depth under this fragment (metres), from the terrain grid.
       vec2 tuv = (p - uTerr.xy) / uTerr.z + 0.5;
-      float depth = 1.0;
-      if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0) depth = texture2D(uDepth, tuv).r;
-      float shallow = 1.0 - smoothstep(0.0, 0.9, depth);
-      vec3 turq = mix(vec3(0.02, 0.26, 0.30), vec3(0.10, 0.55, 0.50), 1.0 - smoothstep(0.0, 0.25, depth));
-      base = mix(base, turq, shallow);
-      float surf = (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * sin(uTime * 1.6 + depth * 120.0 + n3.x * 4.0));
+      float dm = 200.0;
+      if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0) dm = texture2D(uDepth, tuv).r * 60.0;
+      // Deep-channel navy -> translucent turquoise over sandbars and coral shelves.
+      vec3 deepC = uDeep * (0.8 + 0.4 * max(dot(N, V), 0.0));
+      float shallow = 1.0 - smoothstep(2.0, 30.0, dm);
+      vec3 base = mix(deepC, uShallow * (0.75 + 0.25 * n2.x), shallow * shallow * (3.0 - 2.0 * shallow));
+      base = mix(base, uShallow * 1.35 + vec3(0.05, 0.07, 0.04), (1.0 - smoothstep(0.0, 3.5, dm)) * 0.55);   // bright sandbar
+      // Shoreline surf: foam bands travelling shoreward, broken up by the wave normals.
+      float shore = 1.0 - smoothstep(0.0, 5.0, dm);
+      float bands = 0.5 + 0.5 * sin(dm * 2.1 + uTime * 1.6 + n3.x * 3.0 + n1.y * 2.0);
+      float surf = shore * smoothstep(0.5, 0.95, bands) + (1.0 - smoothstep(0.0, 1.2, dm)) * 0.85;
+      surf *= 0.7 + 0.3 * sin(uTime * 0.9 + (p.x + p.y) * 0.004);
       vec3 col = (base + vec3(0.75) * surf * 0.5) * uLevel + uSky * fres * 0.55 + uSunColor * (spec * 2.4 + sparkle * 1.3 + glitter);
       float dist = length(uCam - vWorldPos);
       col = mix(col, uFog, 1.0 - exp(-uFogD * uFogD * dist * dist));
@@ -669,6 +596,17 @@ function resetAircraft() {
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
   applyPose();
+  if (DEBUG && Q.has('at')) {                           // test hook: ?at=x,y,z,hdg or a named spot
+    const spots = {
+      airbase: [RWY_X(), 140, 4300, 0], canyon: [world.canyonX(-5300), 120, -5300, 0],
+      bridgeA: [-4350, 32, -3880, 92], bridgeB: [2650, 32, -3990, 70],
+      volcano: [2600, 850, -5600, 50], wind: [3300, 95, 3900, 46], harbor: [-4200, 160, -900, 88]
+    };
+    const v = spots[Q.get('at')] || Q.get('at').split(',').map(Number);
+    state.position.set(v[0], v[1], v[2]);
+    state.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(AX_Y, -THREE.MathUtils.degToRad(v[3] || 0)));
+    state.velocity.set(0, 0, -state.speed).applyQuaternion(state.quaternion);
+  }
   combatSys.resetPlayer();
   roll.left = 0;
   vfx.clearTrails(); hud.resetMaxG();
@@ -1012,6 +950,7 @@ function updatePhysics(dt) {
   const ground = groundLevel(state.position.x, state.position.z);
   state.radalt = state.position.y - ground;
   if (state.radalt <= 0.5 && flightMode === 'FLY') triggerEject('crash');
+  else if (flightMode === 'FLY' && world.collide(state.position, 3)) triggerEject('crash');      // bridges, towers, hangars, turbines
 
   state.pitch = Math.asin(THREE.MathUtils.clamp(_fwd.y, -1, 1));
   state.heading = (Math.atan2(_fwd.x, -_fwd.z) * 180 / Math.PI + 360) % 360;
@@ -1098,6 +1037,12 @@ function updateCameraAndVisuals(dt, now) {
   // Cloud fly-through: white-out fog + sky horizon around the camera (src/atmosphere.js).
   atmosphere.update(dt, vfx.mist, nvg.active);
   updateNavLights(simTime);
+  world.update(dt, simTime, Math.max(0.1, navLevel), renderer, camera);
+  if (DEBUG_OVERVIEW) {                                // test hook: ?overview[=height] top-down map camera
+    camera.position.set(WORLD.CX, DEBUG_OVERVIEW, WORLD.CZ + 1); camera.up.set(0, 0, -1);
+    camera.lookAt(WORLD.CX, 0, WORLD.CZ); camera.fov = 52; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    scene.fog.density = 0.000004; oceanUniforms.uFogD.value = 0.000004; oceanUniforms.uCam.value.copy(camera.position);
+  }
   oceanUniforms.uFogD.value = scene.fog.density;
 }
 
@@ -1232,7 +1177,7 @@ const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunD
 const hud = createHUD(THREE, {
   canvas: document.getElementById('hud'), state, combat, camera, missiles, mouse, EYE, STALL_AOA,
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
-  terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE },
+  terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE, marks: world.marks },
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
   getMode: () => flightMode, isHidden: () => appMode === 'MENU', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist,
@@ -1399,6 +1344,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
 const DEBUG_FIRE = DEBUG && Q.has('fire');
+const RWY_X = () => world.runway.x;
+const DEBUG_OVERVIEW = DEBUG && Q.has('overview') ? (Number(Q.get('overview')) || 22000) : 0;
 const DEBUG_CAM = DEBUG && Q.has('camat') ? new THREE.Vector3(...Q.get('camat').split(',').map(Number)) : null;   // ?camat=x,y,z (jet frame)            // headless test hook: hold the trigger
 // Title-screen flight path: a banked orbit over the island chain.
 let menuT = 0;

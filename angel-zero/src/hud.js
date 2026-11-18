@@ -776,30 +776,40 @@ export function createHUD(THREE, A) {
 
   // Island topography contour sheet, world-aligned, built once.
   const topo = (() => {
-    const N = 256, T = A.terrain, cv = document.createElement('canvas');
+    const N = 384, T = A.terrain, cv = document.createElement('canvas');
     cv.width = cv.height = N;
     const h = new Float32Array(N * N);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       h[j * N + i] = T.height(T.cx + ((i + 0.5) / N - 0.5) * T.size, T.cz + ((j + 0.5) / N - 0.5) * T.size);
     }
     const ctx = cv.getContext('2d'), img = ctx.createImageData(N, N);
-    const levels = [[0, 255], [250, 120], [500, 120], [800, 140], [1100, 160]];
+    // Crisp coastline (0 m) + faint contours at 100 / 250 / 500 / 750 m.
+    const levels = [[0, 255], [100, 80], [250, 100], [500, 120], [750, 140]];
     for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
       const a = h[j * N + i], b = h[j * N + i + 1], c = h[(j + 1) * N + i];
       let alpha = 0;
       for (const [lv, al] of levels) if ((a >= lv) !== (b >= lv) || (a >= lv) !== (c >= lv)) alpha = Math.max(alpha, al);
-      if (a > 0 && alpha < 95) alpha = 95;
+      if (a > 0 && alpha < 26) alpha = 26;                // subtle land fill so straits / canyons read clearly
       const k = (j * N + i) * 4;
       img.data[k] = 82; img.data[k + 1] = 255; img.data[k + 2] = 156; img.data[k + 3] = alpha;
     }
     ctx.putImageData(img, 0, 0);
+    // Runway + bridge spans as bright strokes (navigation references at night / in cloud).
+    const toPx = ([wx, wz]) => [((wx - (T.cx - T.size / 2)) / T.size) * N, ((wz - (T.cz - T.size / 2)) / T.size) * N];
+    for (const m of T.marks || []) {
+      ctx.strokeStyle = m.kind === 'runway' ? 'rgba(220,255,235,1)' : 'rgba(88,255,154,0.95)';
+      ctx.lineWidth = m.kind === 'runway' ? 2.2 : 1.6;
+      ctx.beginPath(); m.pts.map(toPx).forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+    }
     return { cv, x0: T.cx - T.size / 2, z0: T.cz - T.size / 2, size: T.size };
   })();
 
   function drawSquareRadar(ctx) {
     const s = Math.round(Math.min(216, HH * 0.30, HW * 0.22)), x0 = 20, y0 = HH - s - 20;
     const cx = x0 + s / 2, cy = y0 + s * 0.54, half = s / 2;
-    const MAX_M = 20 * 1852, k = (half * 0.90) / MAX_M, hRad = S.heading * D2R;
+    // 4 NM scale: islands, straits and the canyon gorge are readable for instrument
+    // navigation at night / in cloud; bandits beyond range ride the rim.
+    const RANGE_NM = 4, MAX_M = RANGE_NM * 1852, k = (half * 0.90) / MAX_M, hRad = S.heading * D2R;
     const border = flashRed() || C.banditLock >= 1 ? WARN : C.rwrTrack ? AMBER : G;
 
     ctx.save();
@@ -810,7 +820,7 @@ export function createHUD(THREE, A) {
     // Island contours (heading-up).
     ctx.save();
     ctx.translate(cx, cy); ctx.rotate(-hRad); ctx.scale(k, k); ctx.translate(-S.position.x, -S.position.z);
-    ctx.globalAlpha = 0.34; ctx.drawImage(topo.cv, topo.x0, topo.z0, topo.size, topo.size);
+    ctx.globalAlpha = 0.6; ctx.drawImage(topo.cv, topo.x0, topo.z0, topo.size, topo.size);
     ctx.restore();
 
     // Three concentric range rings.
@@ -837,9 +847,16 @@ export function createHUD(THREE, A) {
       if (!e.alive) continue;
       const rx = e.pos.x - S.position.x, rz = e.pos.z - S.position.z;
       const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
-      if (Math.hypot(sx, sy) > MAX_M * 1.1) continue;
-      const bx = cx + sx * k, by = cy + sy * k;
+      const rr = Math.hypot(sx, sy), beyond = rr > MAX_M * 0.97, f2 = beyond ? (MAX_M * 0.97) / rr : 1;
+      const bx = cx + sx * k * f2, by = cy + sy * k * f2;
       const kind = blipKind(e);
+      if (beyond) {                                                                 // out of range: hollow rim marker
+        glow(ctx, kind === 'lock' ? WARN : kind === 'bogey' ? AMBER : G, 3); ctx.lineWidth = 1.2;
+        ctx.save(); ctx.translate(bx, by); ctx.rotate(Math.atan2(sx, -sy));
+        ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(4, 3); ctx.lineTo(-4, 3); ctx.closePath(); ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       const bCol = kind === 'lock' ? WARN : kind === 'acq' ? AMBER : kind === 'desig' ? G : AMBER;
       glow(ctx, bCol, 4);
       ctx.save(); ctx.translate(bx, by); ctx.rotate(((e.heading || 0) - S.heading) * D2R);
@@ -878,7 +895,7 @@ export function createHUD(THREE, A) {
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, s - 1, s - 1);
     ctx.font = f(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    labelText(ctx, '20NM', x0 + 6, y0 + 5, G, 2);
+    labelText(ctx, RANGE_NM + 'NM', x0 + 6, y0 + 5, G, 2);
     if (C.rwrTrack || C.banditLock >= 1) {
       const rCol = C.banditLock >= 1 ? WARN : AMBER;
       ctx.textAlign = 'right';

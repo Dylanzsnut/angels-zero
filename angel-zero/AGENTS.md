@@ -40,6 +40,9 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   horizon) and the time-of-day engine (`PRESETS`, `applyTimeOfDay`,
   `randomize`) that drives lights, exposure, ocean, clouds and NVG gain.
 - `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak 2D overlay.
+- `src/world.js` — `createWorld`: archipelago heightfield + terrain mesh, the
+  shared height grid (`heightAt`, triangle-exact), airbase, bridges, port,
+  lighthouses, wind farm, light points and obstacle collision (`collide`).
 - `src/nvg.js` — `createNVG`: N-key night vision; owns the frame render
   (`nvg.render`), HDR target + bloom + green-phosphor composite when active.
 - `src/audio.js` — `createAudio`: procedural Web Audio (engines, gun, seeker,

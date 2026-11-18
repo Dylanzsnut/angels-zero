@@ -532,5 +532,48 @@ briefing (no audio until a real LAUNCH click). Flags other than
       page console errors. Hooks: `?tod=NAME&az=deg`, `?todto=NAME:t`,
       `?todlog=t,..`, `?rolls=n`. Build tag `s18a`.
 
+## Archipelago world map, ARCHIPELAGO AFB, bridges & reef ocean (2026-11-18)
+- [x] `src/world.js` (new): authored deterministic 20 x 20 km heightfield —
+      MAIN airbase island (coastal plateau, rolling hills, harbour bay, runway
+      peninsula), Twin Canyon Ridge (NW, ~280 m sea-level gorge with
+      650-800 ft walls and twin rim crests), Volcanic Caldera (NE, ~975 m /
+      3,200 ft rim, radial ridges, terraced basalt), east + west crescent
+      atolls (sea cliffs, lagoons, radar hills), headland spits leaving
+      ~1.3 km straits, a shallow reef bank. Domain-warped coastlines.
+- [x] Terrain mesh 480 x 480 (41.7 m) with altitude / slope biomes (wet ->
+      dry sand to 25 ft, emerald / olive vegetation to 650 ft, striated
+      cliff rock on steep faces, alpine slate to 2,200 ft, snow-dusted
+      summit ridges above) and a world-space triplanar detail + rock-strata
+      shader (`onBeforeCompile`). `heightAt()` interpolates the same two
+      triangles per quad the GPU draws; `terrainHeight` / `groundLevel`
+      (crashes, missiles, bombs / CCIP, flares, spray, radar, props) all use it.
+- [x] Ocean: 512 px depth texture (metres below sea level); deep-channel
+      navy #061c33 -> turquoise #1ca39e over shelves / lagoons / reef, bright
+      sandbars, animated shoreward surf-foam bands. Night-scaled.
+- [x] ARCHIPELAGO AFB: 3,000 m runway 18/36 (canvas texture: piano keys,
+      numbers, centreline, touchdown bars), parallel taxiway + connectors,
+      apron, 4 arched hangars, control tower with rotating green / white
+      beacon, 4 spherical fuel tanks, white edge / green threshold / red end
+      lights, sequenced approach strobes over the sea, blue taxiway lights.
+- [x] Two suspension bridges (red towers to 190 m, deck underside 56 m =
+      184 ft, catenary main cables, suspenders, deck lights, blinking red
+      aviation beacons). Harbour quay, warehouses, gantry cranes,
+      breakwaters with harbour lights, 170-house instanced waterfront town
+      with night window lights, three lighthouses with rotating beams, two
+      radar stations with spinning antennas, 9-turbine offshore wind farm.
+      All lights are one instanced point draw that scales with time of day.
+- [x] Collision: 50 oriented obstacle boxes (`world.collide`) — bridge decks
+      and towers, hangars, tower, tanks, cranes, warehouses, lighthouses,
+      turbine masts + rotor discs. Radar: 4 NM tactical scale, crisp
+      coastline + 100 / 250 / 500 / 750 m contours, runway and bridge spans
+      drawn bright, out-of-range bandits as rim markers.
+- [x] Headless: top-down overview; airbase at golden hour / night (runway
+      lights) / day close-up; bridge fly-under (survive at 33 m) vs deck
+      (crash at 58 m) vs tower (crash); canyon leg flyable, straight-line
+      run into the meander crashes; volcano flank crash; NVG night bridge;
+      night cockpit; combat regression; zero page console errors. World
+      build ~1.0 s. Hooks: `?at=x,y,z,hdg|airbase|canyon|bridgeA|bridgeB|
+      volcano|wind|harbor`, `?overview[=height]`. Build tag `s19a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.
