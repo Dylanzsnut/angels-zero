@@ -787,7 +787,10 @@ export function createHUD(THREE, A) {
     ctx.font = f(12, true);
     labelText(ctx, 'BANDITS ' + alive, x, y + 40, G, 3);
     let ey = y + 62;
-    if (A.isNVG && A.isNVG()) { drawNVGBadge(ctx, x, y + 58); ey += 26; }
+    let by = y + 58;
+    if (A.isNVG && A.isNVG()) { drawNVGBadge(ctx, x, by); ey += 26; by += 26; }
+    const wx = A.getWeather && A.getWeather();
+    if (wx && wx.rain > 0.02) { drawBadge(ctx, x, by, `[ WX: ${wx.label} ]`, wx.storm ? AMBER : CYAN); ey += 26; }
 
     // Floating kill / evade event popups.
     const now = performance.now();
@@ -1301,6 +1304,13 @@ export function createHUD(THREE, A) {
     if (!A.isModal()) drawStickCue(hctx);
   }
 
+  // Generic bracketed status badge (weather etc.).
+  function drawBadge(ctx, x, y, txt, col) {
+    ctx.save();
+    ctx.font = f(12, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    labelText(ctx, txt, x, y + 10.5, col, 3);
+    ctx.restore();
+  }
   // [ NVG ] status badge (top-left telemetry block).
   function drawNVGBadge(ctx, x, y) {
     ctx.save();

@@ -66,9 +66,28 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   collision for bridges, towers, hangars, turbines. *(`src/world.js`)*
 - [x] **Reef ocean** — depth-driven navy → turquoise water, sandbars,
   shoreline surf foam. *(ocean shader in `index.html`)*
-- [x] **Cloud decks + lock-breaking** — 32 drifting cumulus formations,
-  `cloudDensity()`, bandit / player seeker and missile loss in cloud, canopy
-  moisture. *(`src/vfx.js`, `src/canopy.js`, `src/combat.js`)*
+- [x] **Cloud decks + lock-breaking** — 112 drifting formations in three decks
+  (3.5x): 36 low sea-mist / valley banks (900-2,200 ft, seeded on ridges and
+  straits), 56 towering cumulus (2,600-5,800 ft, slate-indigo bellies under
+  overcast), 20 high cirrus / stratus streaks (7,500-10,500 ft, stretched thin
+  billboards); weather coverage shows 30 % (CLEAR) to 100 % (OVERCAST / STORM);
+  every visible formation feeds `cloudDensity()` (two-way seeker / missile
+  lock loss, white-out, canopy moisture). *(`src/vfx.js`, `src/canopy.js`,
+  `src/combat.js`)*
+- [x] **Randomized weather** *(build `s25a`, `src/weather.js`)* — `CLEAR` /
+  `SCATTERED` / `OVERCAST_RAIN` / `THUNDERSTORM` rolled with the time of day on
+  every sortie and restart, `[ CYCLE WEATHER ]` + `WX:` chip on the briefing,
+  `[ WX: ... ]` HUD badge in rain. Overcast greys sky / fog / clouds / sea toward
+  slate (#4a5568 day, #0d131f night) and dims sun, mie, stars and glitter;
+  FogExp2 x2.3-2.9; wind-chopped sea + whitecaps; 1,800-drop aircraft-centred
+  rain volume streaked along the drop velocity relative to the jet (tilts with
+  airspeed / slip, fades at the canopy); storm gusts +/-0.4 G with roll / pitch
+  kicks; sheet lightning lighting clouds, sky and ocean with thunder after the
+  sound delay. 1st person: rain splats + airstream rivulets racing over the
+  canopy, clearing above ~6,200 ft. Audio: filtered pink-noise rain patter
+  (cockpit-muffled) and procedural thunder rolls. Verified headless: CLEAR /
+  OVERCAST_RAIN / THUNDERSTORM in chase + cockpit, night storm, rain off above
+  the deck, briefing chip / button, zero page console errors.
 - [x] **Time of day + NVG** — randomized DAWN / DAYLIGHT / GOLDEN_HOUR / DUSK
   / NIGHT presets (sky, sun / moon, stars, lights, fog, ocean, clouds),
   briefing `[ CYCLE TIME ]`, `N` night vision with per-preset gain.
@@ -202,7 +221,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
-· `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
+· `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).

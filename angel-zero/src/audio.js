@@ -120,6 +120,12 @@ export function createAudio() {
     N.cloudRush.connect(N.cloudLP).connect(N.cloudGain).connect(master);
     N.cloudHiss.connect(N.cloudBP).connect(N.cloudHissGain).connect(cockpitLP);
 
+    // Rain patter: band-passed pink noise (cockpit-muffled) + bright droplet ticks.
+    N.rain = loopNoise(pink); N.rainBP = filt('bandpass', 2400, 0.55); N.rainGain = gain(0);
+    N.rain.connect(N.rainBP).connect(N.rainGain).connect(cockpitLP);
+    N.rainLow = loopNoise(brown); N.rainLowLP = filt('lowpass', 380, 0.7); N.rainLowGain = gain(0);
+    N.rainLow.connect(N.rainLowLP).connect(N.rainLowGain).connect(master);
+
     N.white = white; N.brown = brown;
     ready = true;
     resume();
@@ -293,6 +299,31 @@ export function createAudio() {
     o.connect(lp).connect(og).connect(master); o.start(t); o.stop(t + 0.5);
   }
 
+  // Thunder: a sharp crack (nearby) into a long rolling low rumble of brown noise
+  // with random amplitude swells, k 0..1.2 by distance.
+  function thunder(k = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime, dur = 3.5 + 3 * Math.random();
+    const n = ctx.createBufferSource(); n.buffer = N.brown; n.loop = true;
+    const lp = filt('lowpass', 160 + 260 * Math.min(1, k), 0.8);
+    lp.frequency.setValueAtTime(260 + 520 * Math.min(1, k), t); lp.frequency.exponentialRampToValueAtTime(90, t + dur);
+    const g = gain(0);
+    g.gain.setValueAtTime(0, t);
+    let tt = t;
+    for (let i = 0; i < 6; i++) {                          // rolling swells
+      tt += 0.25 + Math.random() * (dur / 6);
+      g.gain.linearRampToValueAtTime((0.25 + Math.random() * 0.45) * k, Math.min(tt, t + dur - 0.3));
+    }
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    n.connect(lp).connect(g).connect(master); n.start(t, Math.random() * 2); n.stop(t + dur + 0.1);
+    if (k > 0.75) {                                        // close strike: initial crack
+      const c = ctx.createBufferSource(); c.buffer = N.white;
+      const bp = filt('bandpass', 900, 0.8);
+      const cg = gain(0); cg.gain.setValueAtTime(0.35 * k, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      c.connect(bp).connect(cg).connect(master); c.start(t, Math.random()); c.stop(t + 0.4);
+    }
+  }
+
   // Overdrive curve (classic k-shaped soft/hard clip), amount = 35.
   function distortionCurve(amount) {
     const n = 2048, curve = new Float32Array(n), deg = Math.PI / 180;
@@ -383,6 +414,10 @@ export function createAudio() {
     set(N.windBP.frequency, 1500 - 900 * Math.min(1, wf), 0.08);
     set(N.windGain.gain, 0.08 * wl, 0.08);
 
+    const rn = Math.min(1, Math.max(0, p.rain || 0));
+    set(N.rainGain.gain, 0.11 * rn * (p.cockpit ? 1 : 0.6), 0.4);
+    set(N.rainBP.frequency, p.cockpit ? 1700 : 3200, 0.3);
+    set(N.rainLowGain.gain, 0.07 * rn * (p.cockpit ? 1.2 : 0.5), 0.4);
     const cl = Math.min(1, Math.max(0, p.cloud || 0));
     set(N.cloudGain.gain, 0.32 * cl * (0.6 + 0.4 * Math.min(1, th + ab)), 0.25);
     set(N.cloudLP.frequency, 300 + 380 * cl, 0.3);
@@ -413,7 +448,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

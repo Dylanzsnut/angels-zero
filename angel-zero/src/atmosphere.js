@@ -88,7 +88,7 @@ export function createAtmosphere(THREE, env) {
   const skyUniforms = {
     uSun: { value: skyDir },
     uHorizon: { value: fogColor },
-    uMid: { value: cur.mid }, uZenith: { value: cur.zenith },
+    uMid: { value: new THREE.Color() }, uZenith: { value: new THREE.Color() },
     uSunColor: { value: cur.disc }, uMie: { value: cur.mie },
     uMieK: { value: 1 }, uDiscK: { value: 1 }, uDiscSize: { value: 0.9999 },
     uStars: { value: 0 }, uTime: { value: 0 }, uMoon: { value: 0 },
@@ -211,6 +211,13 @@ export function createAtmosphere(THREE, env) {
 
   /* ------------------------------------------------- time-of-day engine */
   const bound = {};                                      // lights, ocean uniforms, clouds, callbacks
+  // Weather overlay (src/weather.js): overcast 0..1 greys the sky toward slate
+  // (#4a5568 day / #0d131f night), dims sun / moon, mie glow, stars and glitter;
+  // fogMul tightens the haze; flash 0..1 is a lightning pulse.
+  const wx = { overcast: 0, fogMul: 1, flash: 0 };
+  const SLATE_DAY = new THREE.Color(0x4a5568), SLATE_NIGHT = new THREE.Color(0x0d131f);
+  const slate = new THREE.Color(), _ct = new THREE.Color(), _cb = new THREE.Color(), FLASH = new THREE.Color(0.82, 0.86, 1.0);
+  function setWeather(o) { Object.assign(wx, o); }
   function bind(o) { Object.assign(bound, o); }
   const dirFrom = (el, az, out) => out.set(Math.sin(az * D2R) * Math.cos(el * D2R), Math.sin(el * D2R), -Math.cos(az * D2R) * Math.cos(el * D2R)).normalize();
   function fillTarget(name, az) {
@@ -250,25 +257,36 @@ export function createAtmosphere(THREE, env) {
   function applyToScene() {
     skyDir.copy(cur.skyDir);
     sunDir.copy(cur.lightDir);
-    skyUniforms.uMieK.value = cur.mieK; skyUniforms.uDiscK.value = cur.discK;
-    skyUniforms.uDiscSize.value = cur.discSize; skyUniforms.uStars.value = cur.stars;
+    const oc = wx.overcast, fl = wx.flash;
+    slate.copy(SLATE_DAY).lerp(SLATE_NIGHT, Math.min(1, cur.nav));
+    const grey = Math.min(1, oc * 1.12);
+    skyUniforms.uMid.value.copy(cur.mid).lerp(slate.clone().multiplyScalar(1.15), grey).lerp(FLASH, fl * 0.35);
+    skyUniforms.uZenith.value.copy(cur.zenith).lerp(slate.clone().multiplyScalar(0.85), grey).lerp(FLASH, fl * 0.25);
+    skyUniforms.uMieK.value = cur.mieK * (1 - 0.85 * oc); skyUniforms.uDiscK.value = cur.discK * (1 - 0.95 * oc);
+    skyUniforms.uDiscSize.value = cur.discSize; skyUniforms.uStars.value = cur.stars * (1 - oc);
     const L = bound;
     if (L.sunLight) {
-      L.sunLight.color.copy(cur.light); L.sunLight.intensity = cur.lightI;
+      L.sunLight.color.copy(cur.light); L.sunLight.intensity = cur.lightI * (1 - 0.72 * oc) + fl * 2.2;
       if (!L.sunLight.castShadow) { L.sunLight.position.copy(sunDir).multiplyScalar(1000); L.sunLight.target.position.set(0, 0, 0); L.sunLight.target.updateMatrixWorld(); }
     }
     const fill = nvgOn ? 2.4 : 1;                        // NVG light intensification on top of the preset
-    if (L.hemiLight) { L.hemiLight.color.copy(cur.hemiSky); L.hemiLight.groundColor.copy(cur.hemiGround); L.hemiLight.intensity = cur.hemiI * fill; }
+    if (L.hemiLight) { L.hemiLight.color.copy(cur.hemiSky).lerp(slate, oc * 0.4); L.hemiLight.groundColor.copy(cur.hemiGround); L.hemiLight.intensity = cur.hemiI * fill * (1 - 0.3 * oc) + fl * 3.0; }
     if (L.ambLight) { L.ambLight.color.copy(cur.amb); L.ambLight.intensity = cur.ambI * fill; }
     if (L.renderer) L.renderer.toneMappingExposure = cur.exposure;
     if (L.ocean) {
       const u = L.ocean;
-      u.uSunColor.value.set(cur.oceanSun.r, cur.oceanSun.g, cur.oceanSun.b).multiplyScalar(cur.oceanSunK);
-      u.uSky.value.set(cur.oceanSky.r, cur.oceanSky.g, cur.oceanSky.b);
-      if (u.uLevel) u.uLevel.value = cur.oceanLevel;
-      if (u.uGlitter) u.uGlitter.value = cur.glitter;
+      u.uSunColor.value.set(cur.oceanSun.r, cur.oceanSun.g, cur.oceanSun.b).multiplyScalar(cur.oceanSunK * (1 - 0.85 * oc) + fl * 0.8);
+      _ct.copy(cur.oceanSky).lerp(slate, oc * 0.7).lerp(FLASH, fl * 0.5);
+      u.uSky.value.set(_ct.r, _ct.g, _ct.b);
+      if (u.uLevel) u.uLevel.value = cur.oceanLevel * (1 - 0.3 * oc) + fl * 0.6;
+      if (u.uGlitter) u.uGlitter.value = cur.glitter * (1 - 0.9 * oc) + 0.05;
     }
-    if (L.setCloudColors) L.setCloudColors(cur.cloudTop, cur.cloudBelly);
+    if (L.setCloudColors) {
+      // Overcast: slate cloud bodies, darker indigo bellies; lightning floods them.
+      _ct.copy(cur.cloudTop).lerp(slate.clone().multiplyScalar(1.6), Math.min(1, oc * 0.95));
+      _cb.copy(cur.cloudBelly).lerp(slate.clone().multiplyScalar(0.5), Math.min(1, oc * 1.0));
+      L.setCloudColors(_ct, _cb);
+    }
     if (L.setEnv) L.setEnv(cur.env);
     if (L.setNavLights) L.setNavLights(cur.nav);
     if (L.setNvgGain) L.setNvgGain(cur.nvgGain);
@@ -300,15 +318,17 @@ export function createAtmosphere(THREE, env) {
     applyToScene();
     skyUniforms.uTime.value = time;
     sky.position.copy(camera.position);
-    fogColor.copy(cur.horizon).lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel)), Math.min(1, mist * 1.15));
+    fogColor.copy(cur.horizon).lerp(slate.clone().multiplyScalar(1.3), Math.min(1, wx.overcast * 1.05))
+      .lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel * (1 - 0.5 * wx.overcast))), Math.min(1, mist * 1.15))
+      .lerp(FLASH, wx.flash * 0.3);
     skyUniforms.uWhite.value = Math.min(1, mist * 1.1);
-    scene.fog.density = BASE_DENSITY * cur.fogK * (1 + mist * 28);
+    scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * (1 + mist * 28);
 
     corona.position.copy(skyDir).multiplyScalar(SUN_DIST).add(camera.position);
     const moon = skyUniforms.uMoon.value > 0.5;
     corona.scale.setScalar(SUN_DIST * (moon ? 0.16 : 0.34));
     corona.material.color.copy(moon ? cur.disc : cur.light.clone().lerp(new THREE.Color(1, 1, 1), 0.5));
-    const target = (sunOccluded() || skyDir.y < -0.01 ? 0 : 1 - Math.min(1, mist * 1.4)) * cur.corona;
+    const target = (sunOccluded() || skyDir.y < -0.01 ? 0 : 1 - Math.min(1, mist * 1.4)) * cur.corona * (1 - wx.overcast);
     sunVis += (target - sunVis) * Math.min(1, dt * 6);
     corona.material.opacity = 0.95 * sunVis;
     corona.visible = sunVis > 0.01;
@@ -329,7 +349,7 @@ export function createAtmosphere(THREE, env) {
   }
 
   return {
-    sky, corona, fogColor, update, bind, applyTimeOfDay, randomize,
+    sky, corona, fogColor, update, bind, applyTimeOfDay, randomize, setWeather,
     get active() { return active; },
     get current() { return cur; },
     get settled() { return blend >= 1; },

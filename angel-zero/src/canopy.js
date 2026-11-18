@@ -5,6 +5,9 @@
 //    speed set by airspeed, leaving short wet streaks; a faint moisture film
 //    lingers a few seconds after leaving the cloud.
 //  - 3rd person: soft peripheral mist streaks rushing past the camera.
+//  - Rain (1st person): raindrops splat and immediately race back over the
+//    curved glass, plus thin airstream rivulets sweeping outward from the
+//    flight-path centre; clears when the jet climbs out of the rain.
 // Only paints while wet, so it costs nothing in clear air.
 
 export function createCanopyFX() {
@@ -23,7 +26,8 @@ export function createCanopyFX() {
   resize();
   addEventListener('resize', resize);
 
-  const drops = [], streaks = [];
+  const drops = [], streaks = [], rivulets = [];
+  let rainAcc = 0, rivAcc = 0, rainLvl = 0;
   let wet = 0, spawnAcc = 0, mistAcc = 0, painted = false;
   const rand = Math.random;
 
@@ -33,26 +37,40 @@ export function createCanopyFX() {
     drops.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7 - 0.05, size: 1.4 + rand() * 3.2, age: 0,
       stick: 0.25 + rand() * 0.6, life: 1.6 + rand() * 1.8, trail: [] });
   }
+  function spawnRainDrop() {
+    const a = rand() * Math.PI * 2, r = Math.pow(rand(), 0.6) * 0.9;
+    drops.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7 - 0.05, size: 0.9 + rand() * 2.2, age: 0,
+      stick: 0.03 + rand() * 0.12, life: 0.55 + rand() * 0.7, trail: [], rain: true });
+  }
+  function spawnRivulet() {
+    const a = rand() * Math.PI * 2;
+    rivulets.push({ a, r: 0.12 + rand() * 0.35, v: 2.2 + rand() * 2.0, len: 0.05 + rand() * 0.1, w: 0.6 + rand() * 1.4, age: 0, life: 0.25 + rand() * 0.3 });
+  }
   function spawnStreak() {
     const a = rand() * Math.PI * 2;
     streaks.push({ a, r: 0.55 + rand() * 0.3, v: 1.6 + rand() * 1.6, len: 0.08 + rand() * 0.12, age: 0, life: 0.35 + rand() * 0.3 });
   }
 
-  // density: player-in-cloud 0..1; speed m/s; fp: cockpit view.
-  function update(dt, density, speed, fp, visible = true) {
-    const target = visible ? density : 0;
+  // density: player-in-cloud 0..1; speed m/s; fp: cockpit view; rain 0..1 at the jet.
+  function update(dt, density, speed, fp, visible = true, rain = 0) {
+    rainLvl = visible && fp ? rain : 0;
+    const target = visible ? Math.max(density, rainLvl * 0.8) : 0;
     wet += (target - wet) * Math.min(1, dt * (target > wet ? 2.5 : 0.35));     // lingers after the cloud
     const sp = Math.min(1.6, Math.max(0.2, speed / 220));
-    if (wet < 0.01 && !drops.length && !streaks.length) {
+    if (wet < 0.01 && !drops.length && !streaks.length && !rivulets.length) {
       if (painted) { ctx.clearRect(0, 0, W, H); painted = false; }
       return;
     }
     if (fp) {
       spawnAcc += dt * 140 * Math.max(0, density) * sp;
       while (spawnAcc >= 1 && drops.length < 140) { spawnAcc -= 1; spawnDrop(); }
+      rainAcc += dt * 260 * rainLvl * (0.6 + 0.4 * sp);
+      while (rainAcc >= 1 && drops.length < 220) { rainAcc -= 1; spawnRainDrop(); }
+      rivAcc += dt * 70 * rainLvl * sp;
+      while (rivAcc >= 1 && rivulets.length < 90) { rivAcc -= 1; spawnRivulet(); }
       streaks.length = 0;
     } else {
-      drops.length = 0;
+      drops.length = 0; rivulets.length = 0;
       mistAcc += dt * 90 * density * sp;
       while (mistAcc >= 1 && streaks.length < 80) { mistAcc -= 1; spawnStreak(); }
     }
@@ -74,7 +92,7 @@ export function createCanopyFX() {
         if (d.age > d.life) { drops.splice(i, 1); continue; }
         // Beads cling briefly, then the airflow drags them back over the glass.
         if (d.age > d.stick) {
-          const k = (d.age - d.stick) * 0.9 * sp;
+          const k = (d.age - d.stick) * (d.rain ? 3.2 : 0.9) * sp;
           const dir = Math.atan2(d.y - 0.12, d.x) || -Math.PI / 2;
           d.trail.push([d.x, d.y]); if (d.trail.length > 7) d.trail.shift();
           d.x += Math.cos(dir) * k * dt * 1.4;
@@ -96,6 +114,20 @@ export function createCanopyFX() {
         ctx.beginPath(); ctx.arc(px, py, s, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = `rgba(255,255,255,${0.75 * a})`;              // specular glint
         ctx.beginPath(); ctx.arc(px - s * 0.35, py - s * 0.35, s * 0.32, 0, Math.PI * 2); ctx.fill();
+      }
+      // Airstream rivulets: thin water lines whipped outward across the curved glass.
+      ctx.lineCap = 'round';
+      for (let i = rivulets.length - 1; i >= 0; i--) {
+        const q = rivulets[i];
+        q.age += dt;
+        if (q.age > q.life) { rivulets.splice(i, 1); continue; }
+        q.r += q.v * sp * dt;
+        const a = Math.sin(Math.PI * q.age / q.life) * 0.42;
+        const bend = 0.18 * q.r;                                       // curves up over the canopy
+        const x0 = Math.cos(q.a) * q.r, y0 = Math.sin(q.a) * q.r * 0.7 - bend * 0.3;
+        const x1 = Math.cos(q.a) * (q.r + q.len), y1 = Math.sin(q.a) * (q.r + q.len) * 0.7 - bend * 0.3 - 0.02;
+        ctx.strokeStyle = `rgba(185,205,222,${a})`; ctx.lineWidth = q.w * dpr;
+        ctx.beginPath(); ctx.moveTo(cx + x0 * R, cy + y0 * R); ctx.lineTo(cx + x1 * R, cy + y1 * R); ctx.stroke();
       }
     } else {
       ctx.lineCap = 'round';
@@ -119,6 +151,7 @@ export function createCanopyFX() {
     update,
     get wetness() { return wet; },
     get dropCount() { return drops.length; },
+    get rivuletCount() { return rivulets.length; },
     get streakCount() { return streaks.length; },
     canvas: cv
   };

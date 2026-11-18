@@ -1,7 +1,8 @@
 // ANGELS ZERO — flight & atmospheric VFX.
 // Afterburner mach diamonds, wingtip contrails, over-wing vapor, supersonic
 // speed streaks, Prandtl-Glauert vapor cone, low-level sea spray and a
-// 32-formation cumulus deck (2,400-5,500 ft) with wind drift, a cloudDensity()
+// 112 formations in low / mid / high decks (900 ft - 10,500 ft) with wind drift,
+// weather-driven coverage, lightning-lit bellies, a cloudDensity()
 // query for gameplay, and a camera mist factor for the white-out / canopy fx.
 
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -396,32 +397,69 @@ export function createVFX(THREE, env) {
   const puffs = [];
   const volumes = [];
   const cr = rng(31337);
-  const BASE_LO = 2400 * FT, TOP_HI = 5500 * FT;
-  const N_CLUSTERS = 32;
-  for (let c = 0; c < N_CLUSTERS; c++) {
-    const rx = 420 + cr() * 480, ry = 130 + cr() * 150, rz = 380 + cr() * 460;
-    const cx = (cr() - 0.5) * 30000, cz = (cr() - 0.5) * 30000 - 2500;
-    const base = BASE_LO + cr() * (TOP_HI - BASE_LO - ry * 2.2);
-    addCluster(cx, base, cz, rx, ry, rz, 34 + Math.floor(cr() * 16), cr);
-  }
-  function addCluster(cx, base, cz, rx, ry, rz, n, r) {
-    const height = ry * 2.1;
+  // Three decks, 112 formations (3.5x the old single deck):
+  //   low   900-2,200 ft  broken sea-mist / valley banks hugging ridges + straits
+  //   mid 2,600-5,800 ft  towering multi-puff cumulus, dark bellies, sunlit rims
+  //   high 7,500-10,500 ft wide thin cirrus / stratus streaks (stretched billboards)
+  // Each formation has a coverage rank; the weather engine shows the fraction it
+  // needs (CLEAR ~30 % ... OVERCAST / STORM 100 %). Hidden formations neither
+  // render nor count for cloudDensity().
+  const clusters = [];
+  const tH = env.terrainHeight || (() => 0);
+  function addCluster(cx, base, cz, rx, ry, rz, n, r, kind) {
+    const ci = clusters.length;
+    const cl = { rank: r(), kind, on: true };
+    clusters.push(cl);
+    const height = ry * (kind === 'mid' ? 2.6 : kind === 'low' ? 1.5 : 0.6);
     for (let i = 0; i < n; i++) {
       // Flat-ish base, billowing dome on top: higher puffs pull toward the axis.
-      const u = Math.pow(r(), 0.85), shrink = 1 - 0.55 * u;
+      const u = Math.pow(r(), kind === 'mid' ? 0.75 : 1.2), shrink = 1 - (kind === 'mid' ? 0.6 : 0.3) * u;
       const ox = (r() * 2 - 1) * rx * shrink, oz = (r() * 2 - 1) * rz * shrink;
       const oy = u * height;
       const lateral = Math.hypot(ox / rx, oz / rz);
       const sunSide = Math.max(0, (ox * SUN.x + oz * SUN.z) / Math.max(rx, rz)) * 0.35;
-      const shade = Math.min(1, 0.08 + 0.85 * u + sunSide + 0.12 * (1 - lateral));
-      puffs.push({ x: cx + ox, y: base + oy, z: cz + oz, s: (190 + r() * 230) * (1 - 0.3 * u), shade,
-        rot: r() * Math.PI * 2, tex: r() < 0.5 ? 0 : 1 });
+      let shade = Math.min(1, 0.06 + 0.85 * u + sunSide + 0.12 * (1 - lateral));
+      let size = (190 + r() * 230) * (1 - 0.3 * u), stretch = 1, alpha = 1;
+      if (kind === 'low') { size *= 0.85; shade = Math.min(1, 0.3 + 0.5 * u + sunSide); alpha = 0.78; }
+      if (kind === 'high') { size = 420 + r() * 520; stretch = 3.2 + r() * 2.6; shade = 0.75 + 0.25 * r(); alpha = 0.34 + r() * 0.2; }
+      puffs.push({ x: cx + ox, y: base + oy, z: cz + oz, s: size, shade, rot: kind === 'high' ? (r() - 0.5) * 0.35 : r() * Math.PI * 2,
+        tex: r() < 0.5 ? 0 : 1, str: stretch, al: alpha, ci });
     }
-    volumes.push({ c: new THREE.Vector3(cx, base + ry * 0.95, cz), r: new THREE.Vector3(rx * 1.08, ry * 1.15, rz * 1.08), on: true });
+    volumes.push({ c: new THREE.Vector3(cx, base + ry * 0.95, cz), r: new THREE.Vector3(rx * 1.08, ry * (kind === 'high' ? 1.6 : 1.15), rz * 1.08), on: true, ci,
+      k: kind === 'high' ? 0.55 : 1 });
+  }
+  // Low banks: seeded near ridges (terrain 60-700 m) or over the straits.
+  for (let c = 0, guard = 0; c < 36 && guard < 900; guard++) {
+    const cx = (cr() - 0.5) * 26000, cz = (cr() - 0.5) * 26000 - 2500;
+    const h = tH(cx, cz), ridge = h > 60 && h < 700, strait = h < -2 && h > -40;
+    if (!ridge && !strait && guard < 700) continue;
+    const base = Math.max(900 * FT, h + 80) + cr() * (2200 * FT - Math.max(900 * FT, h + 80) - 160) * 0.8;
+    addCluster(cx, Math.min(base, 2200 * FT - 150), cz, 520 + cr() * 560, 70 + cr() * 50, 480 + cr() * 520, 18 + Math.floor(cr() * 10), cr, 'low');
+    c++;
+  }
+  // Mid towering cumulus.
+  for (let c = 0; c < 56; c++) {
+    const rx = 420 + cr() * 520, ry = 140 + cr() * 190, rz = 380 + cr() * 500;
+    const cx = (cr() - 0.5) * 32000, cz = (cr() - 0.5) * 32000 - 2500;
+    const base = 2600 * FT + cr() * Math.max(0, 5800 * FT - 2600 * FT - ry * 2.6);
+    addCluster(cx, base, cz, rx, ry, rz, 30 + Math.floor(cr() * 18), cr, 'mid');
+  }
+  // High cirrus / stratus veil.
+  for (let c = 0; c < 20; c++) {
+    const cx = (cr() - 0.5) * 40000, cz = (cr() - 0.5) * 40000 - 2500;
+    const base = 7500 * FT + cr() * (10500 * FT - 7500 * FT);
+    addCluster(cx, base, cz, 1400 + cr() * 1600, 60 + cr() * 40, 900 + cr() * 1200, 12 + Math.floor(cr() * 6), cr, 'high');
+  }
+  let coverage = 1;
+  function setCoverage(k) {
+    coverage = k;
+    for (const cl of clusters) cl.on = cl.kind === 'high' ? cl.rank < Math.max(0.55, k) : cl.rank < k;
+    for (const v of volumes) if (v.ci !== undefined) v.on = clusters[v.ci].on;
+    sortClouds(0, true);
   }
   // Debug slot: a reserved formation (hidden until placed) for deterministic tests.
   const DBG_N = 44, dbgStart = puffs.length;
-  for (let i = 0; i < DBG_N; i++) puffs.push({ x: 0, y: -1e5, z: 0, s: 0, shade: 1, rot: 0, tex: 0 });
+  for (let i = 0; i < DBG_N; i++) puffs.push({ x: 0, y: -1e5, z: 0, s: 0, shade: 1, rot: 0, tex: 0, str: 1, al: 1, ci: -1 });
   const dbgVol = { c: new THREE.Vector3(0, -1e5, 0), r: new THREE.Vector3(1, 1, 1), on: false };
   volumes.push(dbgVol);
   function placeDebugCloud(center, rx = 650, ry = 220, rz = 650) {
@@ -444,26 +482,28 @@ export function createVFX(THREE, env) {
   cloudGeo.setAttribute('uv', quad.attributes.uv);
   const aOff = new THREE.InstancedBufferAttribute(new Float32Array(NP * 3), 3);
   const aData = new THREE.InstancedBufferAttribute(new Float32Array(NP * 4), 4);
+  const aExt = new THREE.InstancedBufferAttribute(new Float32Array(NP * 2), 2);   // x stretch, alpha
   cloudGeo.setAttribute('aOff', aOff);
   cloudGeo.setAttribute('aData', aData);
+  cloudGeo.setAttribute('aExt', aExt);
   cloudGeo.instanceCount = NP;
   const cloudMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uOpacity: { value: 0.9 }, uWind: { value: new THREE.Vector3() },
-      uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1.0 }
+      uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1.0 }, uFlash: { value: 0 }
     }]),
     vertexShader: `
       #include <common>
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
-      attribute vec3 aOff; attribute vec4 aData;
+      attribute vec3 aOff; attribute vec4 aData; attribute vec2 aExt;
       uniform vec3 uWind;
-      varying vec2 vUv; varying float vShade; varying float vTex;
+      varying vec2 vUv; varying float vShade; varying float vTex; varying float vAlpha;
       void main() {
-        vUv = uv; vShade = aData.y; vTex = aData.w;
+        vUv = uv; vShade = aData.y; vTex = aData.w; vAlpha = aExt.y;
         float c = cos(aData.z), s = sin(aData.z);
         vec4 mvPosition = modelViewMatrix * vec4(aOff + uWind, 1.0);
-        mvPosition.xy += mat2(c, s, -s, c) * position.xy * aData.x;
+        mvPosition.xy += mat2(c, s, -s, c) * (position.xy * vec2(aData.x * aExt.x, aData.x));
         gl_Position = projectionMatrix * mvPosition;
         #include <logdepthbuf_vertex>
         #include <fog_vertex>
@@ -473,8 +513,8 @@ export function createVFX(THREE, env) {
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
       uniform sampler2D mapA; uniform sampler2D mapB; uniform float uOpacity;
-      uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain;
-      varying vec2 vUv; varying float vShade; varying float vTex;
+      uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain; uniform float uFlash;
+      varying vec2 vUv; varying float vShade; varying float vTex; varying float vAlpha;
       void main() {
         #include <logdepthbuf_fragment>
         float a = vTex < 0.5 ? texture2D(mapA, vUv).a : texture2D(mapB, vUv).a;
@@ -482,7 +522,8 @@ export function createVFX(THREE, env) {
         // Lower half of each billboard is a touch darker: soft self-shadowed underside.
         float self = mix(0.82, 1.0, smoothstep(0.15, 0.75, vUv.y));
         vec3 col = mix(uBelly, uTop, vShade) * self * uGain;
-        gl_FragColor = vec4(col, a * uOpacity);
+        col += vec3(0.75, 0.8, 1.0) * uFlash * (0.45 + 0.55 * (1.0 - vShade));   // lightning lights the cloud bodies
+        gl_FragColor = vec4(col, a * uOpacity * vAlpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -506,9 +547,11 @@ export function createVFX(THREE, env) {
     for (let k = 0; k < NP; k++) {
       const q = puffs[order[k]];
       aOff.array[k * 3] = q.x; aOff.array[k * 3 + 1] = q.y; aOff.array[k * 3 + 2] = q.z;
-      aData.array[k * 4] = q.s; aData.array[k * 4 + 1] = q.shade; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tex;
+      const vis = q.ci < 0 || clusters[q.ci].on;
+      aData.array[k * 4] = vis ? q.s : 0; aData.array[k * 4 + 1] = q.shade; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tex;
+      aExt.array[k * 2] = q.str || 1; aExt.array[k * 2 + 1] = q.al ?? 1;
     }
-    aOff.needsUpdate = true; aData.needsUpdate = true;
+    aOff.needsUpdate = true; aData.needsUpdate = true; aExt.needsUpdate = true;
   }
   sortClouds(0, true);
   // 0 outside every formation .. 1 deep inside one (drifting with the wind).
@@ -519,7 +562,7 @@ export function createVFX(THREE, env) {
       const ox = windOff.x, oz = windOff.z;
       const dx = (p.x - v.c.x - ox) / v.r.x, dy = (p.y - v.c.y) / v.r.y, dz = (p.z - v.c.z - oz) / v.r.z;
       const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < 1) best = Math.max(best, smooth(1 - Math.sqrt(d2), 0, 0.45));
+      if (d2 < 1) best = Math.max(best, smooth(1 - Math.sqrt(d2), 0, 0.45) * (v.k ?? 1));
     }
     return best;
   }
@@ -590,6 +633,10 @@ export function createVFX(THREE, env) {
     get cloudCount() { return volumes.filter(v => v.on).length; },
     get puffCount() { return NP; },
     setCloudGain(k) { cloudMat.uniforms.uGain.value = k; },
+    setCloudCoverage: setCoverage,
+    setCloudFlash(k) { cloudMat.uniforms.uFlash.value = k; },
+    get cloudCoverage() { return coverage; },
+    get cloudLayers() { const o = { low: 0, mid: 0, high: 0 }; for (const c of clusters) if (c.on) o[c.kind]++; return o; },
     setCloudColors(top, belly) { cloudMat.uniforms.uTop.value.copy(top); cloudMat.uniforms.uBelly.value.copy(belly); },
     // New sortie: random wind heading (5-9 m/s) and drift phase so the decks never repeat.
     reseedClouds() {

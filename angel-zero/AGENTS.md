@@ -43,7 +43,13 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   sun / moon corona + lens ghosts, owns `scene.fog` (FogExp2, colour = sky
   horizon) and the time-of-day engine (`PRESETS`, `applyTimeOfDay`,
   `randomize`) that drives lights, exposure, ocean, clouds and NVG gain.
-- `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak 2D overlay.
+- `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak / rain
+  rivulet 2D overlay.
+- `src/weather.js` — `createWeather`: CLEAR / SCATTERED / OVERCAST_RAIN /
+  THUNDERSTORM state (coverage, overcast, fog multiplier, rain, chop, gusts),
+  the camera-centred rain line volume, lightning + thunder timing; index.html
+  feeds it into `atmosphere.setWeather`, `vfx.setCloudCoverage / setCloudFlash`,
+  the ocean `uChop`, physics gusts, canopy and audio.
 - `src/world.js` — `createWorld`: archipelago heightfield + terrain mesh, the
   shared height grid (`heightAt`, triangle-exact), airbase, bridges, port,
   lighthouses, wind farm, light points and obstacle collision (`collide`).

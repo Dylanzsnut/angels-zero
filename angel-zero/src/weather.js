@@ -1,0 +1,168 @@
+// ANGELS ZERO — randomized dynamic weather.
+// Four states rolled with the time of day on every sortie / restart (or picked
+// with the briefing's [ CYCLE WEATHER ] button):
+//   CLEAR          crisp visibility, a few cumulus decks, high cirrus
+//   SCATTERED      scattered-to-heavy cumulus, light haze
+//   OVERCAST_RAIN  slate overcast (#4a5568 day / #0d131f night), tight haze,
+//                  wind-chopped sea, steady rain
+//   THUNDERSTORM   dense storm cover, heavy slanting rain, +/-0.4 G gust
+//                  buffeting, sheet lightning (flash -> delayed thunder roll)
+// Owns: the weather parameters every other module reads (coverage, overcast,
+// fog multiplier, rain, chop, turbulence, lightning flash), the aircraft-
+// centred rain volume (velocity-streaked line segments, alpha-faded per drop)
+// and the lightning / gust timers. Rain falls below the cloud deck only and
+// clears above ~6,200 ft.
+
+export const WEATHER = {
+  CLEAR:         { label: 'CLEAR',             chip: 'CLEAR',             coverage: 0.3,  overcast: 0.0,  fogMul: 0.9, rain: 0,    chop: 0.05, turb: 0,    storm: 0 },
+  SCATTERED:     { label: 'SCATTERED',         chip: 'SCATTERED CLOUD',   coverage: 0.72, overcast: 0.12, fogMul: 1.05, rain: 0,   chop: 0.2,  turb: 0.05, storm: 0 },
+  OVERCAST_RAIN: { label: 'OVERCAST // RAIN',  chip: 'OVERCAST // RAIN',  coverage: 1.0,  overcast: 0.86, fogMul: 2.3, rain: 0.62, chop: 0.62, turb: 0.15, storm: 0 },
+  THUNDERSTORM:  { label: 'THUNDERSTORM',      chip: 'THUNDERSTORM // HEAVY RAIN', coverage: 1.0, overcast: 0.9, fogMul: 2.9, rain: 1.0, chop: 1.0, turb: 1.0, storm: 1 }
+};
+export const WEATHER_ORDER = ['CLEAR', 'SCATTERED', 'OVERCAST_RAIN', 'THUNDERSTORM'];
+const NUM = ['coverage', 'overcast', 'fogMul', 'rain', 'chop', 'turb', 'storm'];
+const FT = 0.3048;
+const RAIN_TOP = 6200 * FT, RAIN_FADE = 600 * FT;
+
+export function createWeather(THREE, env) {
+  const { scene, camera } = env;
+  const smooth = THREE.MathUtils.smoothstep;
+  const cur = {}, tgt = {};
+  for (const k of NUM) cur[k] = tgt[k] = WEATHER.CLEAR[k];
+  let active = { name: 'CLEAR', ...WEATHER.CLEAR };
+  let blend = 1;
+
+  function set(name, opts = {}) {
+    if (!WEATHER[name]) name = 'CLEAR';
+    active = { name, ...WEATHER[name] };
+    for (const k of NUM) tgt[k] = WEATHER[name][k];
+    if (opts.instant) { for (const k of NUM) cur[k] = tgt[k]; blend = 1; } else blend = 0;
+    lightning.next = 4 + Math.random() * 6;
+    if (env.onChange) env.onChange(active);
+    return active;
+  }
+  // Random roll: clear / scattered most often, rain and storms common enough to matter.
+  function roll(opts = {}) {
+    const r = Math.random();
+    const name = r < 0.24 ? 'CLEAR' : r < 0.56 ? 'SCATTERED' : r < 0.82 ? 'OVERCAST_RAIN' : 'THUNDERSTORM';
+    return set(name, opts);
+  }
+
+  /* ------------------------------------------------------------ rain volume */
+  // N drops in a 140 x 90 x 140 m box that wraps around the camera. Each drop
+  // is a 2-vertex segment drawn along its velocity relative to the jet, so the
+  // streaks tilt with airspeed and slip; the tail vertex is fully transparent.
+  const N = 1800, BX = 140, BY = 90, BZ = 140;
+  const pos = new Float32Array(N * 6), col = new Float32Array(N * 8);
+  const drops = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    drops[i * 3] = (Math.random() - 0.5) * BX; drops[i * 3 + 1] = (Math.random() - 0.5) * BY; drops[i * 3 + 2] = (Math.random() - 0.5) * BZ;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  const rainMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: true, toneMapped: true });
+  const rainMesh = new THREE.LineSegments(geo, rainMat);
+  rainMesh.frustumCulled = false; rainMesh.renderOrder = 3;
+  scene.add(rainMesh);
+  const wind = new THREE.Vector3(), rel = new THREE.Vector3(), base = new THREE.Vector3();
+  let fallOff = 0;                                   // world-space drop drift, kept bounded
+
+  /* ------------------------------------------------- lightning / gusts */
+  const lightning = { next: 8, flash: 0, t: -1, pulses: [], thunder: [], count: 0, lastDist: 0 };
+  const gust = { g: 0, roll: 0, pitch: 0, a: 0, b: 0, c: 0 };
+  let time = 0, rainHere = 0, rainLevelSmooth = 0;
+
+  // dt, playerVel (world m/s), alt (m) of the camera; nightK 0..1 (darker drops).
+  function update(dt, playerVel, nightK = 0) {
+    time += dt;
+    if (blend < 1) {
+      blend = Math.min(1, blend + dt / 2);
+      const k = blend >= 1 ? 1 : 1 - Math.exp(-dt * 2.5);
+      for (const key of NUM) cur[key] += (tgt[key] - cur[key]) * k;
+    }
+    const cam = camera.position;
+    // Rain only under the deck: full below ~5,600 ft, gone above 6,200 ft.
+    rainHere = cur.rain * (1 - smooth(cam.y, RAIN_TOP - RAIN_FADE, RAIN_TOP));
+    rainLevelSmooth += (rainHere - rainLevelSmooth) * Math.min(1, dt * 3);
+
+    // Storm wind slant + gentle swirl.
+    wind.set(5 + 9 * cur.storm, 0, 2.5 + 4 * cur.storm).multiplyScalar(0.4 + 0.6 * cur.rain);
+    const fall = 9 + 2 * cur.storm;
+    rainMesh.visible = rainLevelSmooth > 0.01;
+    if (rainMesh.visible) {
+      const nDraw = Math.floor(N * Math.min(1, 0.25 + 0.75 * rainLevelSmooth));
+      rel.set(wind.x - playerVel.x, -fall - playerVel.y, wind.z - playerVel.z);   // drop velocity seen from the jet
+      const relLen = rel.length();
+      const L = Math.min(11, Math.max(0.7, relLen * 0.014));                        // ~1/70 s exposure streak
+      const dir = rel.clone().divideScalar(Math.max(relLen, 1e-3));
+      const bright = 0.62 - 0.4 * nightK;
+      const cr = bright * 0.92, cg = bright * 0.96, cb = bright;
+      const aMax = (0.22 + 0.33 * rainLevelSmooth) * (1 - 0.35 * nightK);
+      base.copy(cam);
+      for (let i = 0; i < N; i++) {
+        let x = drops[i * 3] + wind.x * dt, y = drops[i * 3 + 1] - fall * dt, z = drops[i * 3 + 2] + wind.z * dt;
+        // World-fixed drops, wrapped into the box around the moving camera.
+        x = ((x - base.x) % BX + BX * 1.5) % BX - BX / 2 + base.x;
+        y = ((y - base.y) % BY + BY * 1.5) % BY - BY / 2 + base.y;
+        z = ((z - base.z) % BZ + BZ * 1.5) % BZ - BZ / 2 + base.z;
+        drops[i * 3] = x; drops[i * 3 + 1] = y; drops[i * 3 + 2] = z;
+        const o = i * 6, c = i * 8;
+        pos[o] = x; pos[o + 1] = y; pos[o + 2] = z;
+        pos[o + 3] = x - dir.x * L; pos[o + 4] = y - dir.y * L; pos[o + 5] = z - dir.z * L;
+        // Fade drops right at the eye (canopy) and toward the box edge.
+        const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const a = i < nDraw ? aMax * smooth(d, 3.5, 9) * (1 - smooth(d, 48, 66)) : 0;
+        col[c] = cr; col[c + 1] = cg; col[c + 2] = cb; col[c + 3] = a;
+        col[c + 4] = cr; col[c + 5] = cg; col[c + 6] = cb; col[c + 7] = 0;
+      }
+      geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+    }
+
+    // Sheet lightning: a double / triple flicker, thunder after the sound delay.
+    lightning.flash = 0;
+    if (cur.storm > 0.5) {
+      lightning.next -= dt;
+      if (lightning.next <= 0) {
+        lightning.next = 6 + Math.random() * 11;
+        const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+        lightning.pulses = Array.from({ length: n }, (_, k) => ({ t: k * (0.07 + Math.random() * 0.09), k: k ? 0.55 + Math.random() * 0.4 : 1 }));
+        lightning.t = 0; lightning.count++;
+        const dist = 2500 + Math.random() * 9000;
+        lightning.lastDist = dist;
+        lightning.thunder.push({ t: Math.min(9, dist / 343), k: Math.max(0.25, 1.2 - dist / 11000) });
+        if (env.onLightning) env.onLightning(dist);
+      }
+    }
+    if (lightning.t >= 0) {
+      lightning.t += dt;
+      for (const p of lightning.pulses) {
+        const u = lightning.t - p.t;
+        if (u >= 0 && u < 0.16) lightning.flash = Math.max(lightning.flash, p.k * (u < 0.02 ? u / 0.02 : Math.exp(-(u - 0.02) * 22)));
+      }
+      if (lightning.t > 0.7) lightning.t = -1;
+    }
+    for (let i = lightning.thunder.length - 1; i >= 0; i--) {
+      const th = lightning.thunder[i]; th.t -= dt;
+      if (th.t <= 0) { lightning.thunder.splice(i, 1); if (env.onThunder) env.onThunder(th.k); }
+    }
+
+    // Gust buffeting: smooth band-limited noise, +/-0.4 G at full storm.
+    const tb = cur.turb;
+    gust.g = tb * 0.4 * (0.55 * Math.sin(time * 2.3 + 1.1) * Math.sin(time * 0.71) + 0.3 * Math.sin(time * 5.7 + Math.sin(time * 1.3) * 2) + 0.15 * Math.sin(time * 11.3));
+    gust.roll = tb * 0.05 * (Math.sin(time * 1.9 + 0.4) + 0.5 * Math.sin(time * 4.4));
+    gust.pitch = tb * 0.02 * Math.sin(time * 3.1 + 2.0);
+  }
+
+  return {
+    set, roll, update,
+    get active() { return active; },
+    get current() { return cur; },
+    get rainHere() { return rainHere; },
+    get flash() { return lightning.flash; },
+    get gust() { return gust; },
+    get lightningCount() { return lightning.count; },
+    get rainVisible() { return rainMesh.visible; },
+    get rainMesh() { return rainMesh; }
+  };
+}
