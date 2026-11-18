@@ -601,10 +601,19 @@ export function createCockpit3D(THREE, env) {
   }
 
   /* =================================================================
-     10. CAMERA RIG: head inertia (<= 14 px), vibration, shadows
+     10. CAMERA RIG: pilot head decoupled from the airframe
+     -----------------------------------------------------------------
+     The cockpit group is rigidly bolted to the jet; the camera (pilot's head)
+     has its own spring-damped orientation and position relative to it:
+       - roll inertia: the canopy bow / combiner roll up to 11 deg ahead of the head
+       - look-into-turn: up to +14 deg pitch and 12 deg yaw toward the low wing
+       - eye shifts: +/-0.09 m sway, -0.07 m G compression, +/-0.05 m fore/aft
+     HUD symbology is projected from world directions through this camera, so it
+     stays on the real horizon whatever the head does.
      ================================================================= */
-  const head = { yaw: 0, roll: 0, pitch: 0, vy: 0, vr: 0, vp: 0 };
-  const _e = new THREE.Euler(0, 0, 0, 'YXZ'), _q = new THREE.Quaternion();
+  const head = { yaw: 0, roll: 0, pitch: 0, look: 0, lookYaw: 0, off: new THREE.Vector3() };
+  const MAX_ROLL_LAG = 11 * D2R, LOOK_PITCH = 14 * D2R, LOOK_YAW = 12 * D2R;
+  const _e = new THREE.Euler(0, 0, 0, 'YXZ'), _q = new THREE.Quaternion(), _offT = new THREE.Vector3();
   let active = false, frame = 0;
   function setActive(on) {
     active = on; rig.visible = on; sunLight.castShadow = on;
@@ -614,21 +623,43 @@ export function createCockpit3D(THREE, env) {
     if (!active) return;
     frame++;
     rig.position.copy(eyeWorld); rig.quaternion.copy(jetQuat); rig.updateMatrixWorld(true);
-    // Max head offset equivalent to 14 screen pixels at the current FOV / resolution.
-    const focal = (renderer.domElement.clientHeight / 2) / Math.tan(camera.fov / 2 * D2R);
-    const lim = Math.atan(14 / Math.max(focal, 1));
-    const n = v => clamp(v, -1, 1) * lim;
-    const tYaw = n(S.rollRate * 0.28 + Math.sin(S.bank) * Math.max(0, S.gLoad - 1) * 0.18 - S.yawRate);
-    const tRoll = n(-S.rollRate * 0.32);
-    const tPitch = n(-(S.gLoad - 1) * 0.12 - S.pitchRate * 0.35);
-    const k = 42, c = 9;
-    head.vy += ((tYaw - head.yaw) * k - head.vy * c) * dt; head.yaw += head.vy * dt;
-    head.vr += ((tRoll - head.roll) * k - head.vr * c) * dt; head.roll += head.vr * dt;
-    head.vp += ((tPitch - head.pitch) * k - head.vp * c) * dt; head.pitch += head.vp * dt;
-    const vib = lim * (S.afterburner * 0.18 + smooth(S.gLoad, 5, 9) * 0.25 + smooth(S.mach, 0.92, 1.05) * 0.12);
-    _e.set(PITCH_BASE + clamp(head.pitch, -lim, lim) + (Math.random() - 0.5) * vib, clamp(head.yaw, -lim, lim) + (Math.random() - 0.5) * vib, clamp(head.roll, -lim, lim));
+    const ex = k => Math.min(1, k * dt);                 // exponential spring factor
+
+    // Roll inertia: the head resists the airframe's roll, so the canopy bow and
+    // combiner visibly swing up to 11 deg ahead of it (spring 8.5/s). A scripted
+    // barrel roll uses a softer gain so the 360 stays controlled, not jarring.
+    const rollGain = S.barrelRoll ? 0.09 : 0.14;
+    const tRoll = clamp(-S.rollRate * rollGain, -MAX_ROLL_LAG, MAX_ROLL_LAG);
+    head.roll += (tRoll - head.roll) * ex(S.barrelRoll ? 5.5 : 8.5);
+
+    // Look-into-turn: banked (> 15 deg) and pulling -> eyes lift toward the turn apex
+    // through the upper canopy and swing toward the low wing.
+    const bankAbs = Math.abs(S.bank);
+    const pull = clamp(S.pitchRate / 1.2, 0, 1);
+    const lookK = smooth(bankAbs, 15 * D2R, 60 * D2R) * pull;
+    head.look += (lookK * LOOK_PITCH - head.look) * ex(3.5);
+    head.lookYaw += (Math.sign(S.bank) * lookK * LOOK_YAW - head.lookYaw) * ex(3.5);
+    // Small G slump on the pitch axis, quick yaw/pitch twitch from rate changes.
+    const tPitch = clamp(-(S.gLoad - 1) * 0.004 - S.pitchRate * 0.02, -0.05, 0.03);
+    head.pitch += (tPitch - head.pitch) * ex(9);
+    const tYaw = clamp(-S.yawRate * 0.05, -0.04, 0.04);
+    head.yaw += (tYaw - head.yaw) * ex(9);
+
+    // Eye position shifts inside the canopy (jet frame, metres).
+    const airbrake = S.throttle < 0.12 && S.afterburner < 0.05 ? 1 : 0;
+    _offT.set(
+      clamp(S.rollRate * 0.026 + S.yawRate * 0.05, -0.09, 0.09),                  // lateral sway
+      -0.07 * smooth(S.gLoad, 1.2, 9),                                              // G compression
+      0.05 * S.afterburner - 0.05 * airbrake                                        // pushed back by AB, forward on airbrake
+    );
+    head.off.lerp(_offT, ex(6));
+
+    const vib = 0.0015 * (S.afterburner * 0.6 + smooth(S.gLoad, 5, 12) + smooth(S.mach, 0.92, 1.05) * 0.5);
+    _e.set(PITCH_BASE + head.look + head.pitch + (Math.random() - 0.5) * vib,
+      head.lookYaw + head.yaw + (Math.random() - 0.5) * vib,
+      head.roll);
     _q.setFromEuler(_e);
-    camera.position.copy(eyeWorld);
+    camera.position.copy(head.off).applyQuaternion(jetQuat).add(eyeWorld);
     camera.quaternion.copy(jetQuat).multiply(_q);
     sunLight.position.copy(eyeWorld).addScaledVector(sunDir, 6);
     sunLight.target.position.copy(eyeWorld); sunLight.target.updateMatrixWorld();
@@ -642,6 +673,9 @@ export function createCockpit3D(THREE, env) {
     rig, setActive, update, missionClock,
     get active() { return active; },
     glassOutlineWorld() { return glassOutline.map(p => _w.copy(p).applyMatrix4(rig.matrixWorld).clone()); },
-    get head() { return { yaw: head.yaw / D2R, roll: head.roll / D2R, pitch: head.pitch / D2R }; }
+    get head() {
+      return { roll: +(head.roll / D2R).toFixed(1), lookPitch: +(head.look / D2R).toFixed(1), lookYaw: +(head.lookYaw / D2R).toFixed(1),
+        off: head.off.toArray().map(v => +v.toFixed(3)) };
+    }
   };
 }

@@ -232,7 +232,8 @@ export function createVFX(THREE, env) {
   }
   for (let i = 0; i < SL; i++) { const st = {}; respawnStreak(st, true, false); streaks.push(st); }
   function updateSpeedLines(s, dt, fp) {
-    const k = smooth(s.mach, 0.95, 1.25);
+    // Supersonic streaks; also peripheral motion streaks during a cockpit-view barrel roll.
+    const k = Math.max(smooth(s.mach, 0.95, 1.25), fp && s.barrelRoll ? 0.65 : 0);
     speedLines.visible = k > 0.01;
     if (!speedLines.visible) return;
     const pos = slGeo.attributes.position.array, col = slGeo.attributes.color.array;

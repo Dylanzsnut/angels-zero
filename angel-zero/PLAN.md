@@ -259,6 +259,19 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       (202 -> 159 m/s); high-G = 247 deg in 2.2 s with FOV 56; hands-off 15 s
       holds altitude. `?highg` debug flag forces the high-G state.
 
+## Cockpit pilot-head dynamics (2026-11-18)
+- [x] Pilot head decoupled from the cockpit frame (`src/cockpit3d.js`): roll
+      inertia lets the canopy bow / combiner swing up to 11 deg ahead of the head
+      (spring 8.5/s; softer during barrel rolls); look-into-turn up to +14 deg
+      pitch and 12 deg yaw toward the low wing when banked > 15 deg and pulling;
+      eye sway +/-0.09 m, -0.07 m G compression, +/-0.05 m fore/aft (AB / idle).
+- [x] HUD stays conformal (world-direction projection through the camera).
+- [x] Peripheral speed streaks during a cockpit-view barrel roll.
+- [x] Eye point kept at the canopy-tuned (0, 0.42, -4.75) of this model; the
+      brief's [0, 1.24, -3.55] would sit above this F-15's canopy (top ~0.78 m).
+- [x] Headless: rolling -> head roll lag 10.9 deg; banked pull -> look 13 deg up,
+      11.2 deg into the turn, -0.07 m compression; level -> all zero.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`

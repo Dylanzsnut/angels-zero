@@ -154,12 +154,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s8a';
-import { createHUD } from './src/hud.js?v=s8a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s8a';
-import { createCombat } from './src/combat.js?v=s8a';
-import { createEjection } from './src/eject.js?v=s8a';
-import { createAudio } from './src/audio.js?v=s8a';
+import { createVFX } from './src/vfx.js?v=s9a';
+import { createHUD } from './src/hud.js?v=s9a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s9a';
+import { createCombat } from './src/combat.js?v=s9a';
+import { createEjection } from './src/eject.js?v=s9a';
+import { createAudio } from './src/audio.js?v=s9a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -759,6 +759,7 @@ function updatePhysics(dt) {
   state.rollRate += (targetRoll * authority - state.rollRate) * Math.min(1, 14 * dt);
   state.yawRate += (targetYaw - state.yawRate) * Math.min(1, 8 * dt);
   rotateBody(AX_X, state.pitchRate * dt);
+  state.barrelRoll = roll.left > 0;
   if (roll.left > 0) {                                           // scripted 360 deg evasive roll
     const step = Math.min(roll.left, ROLL_RATE * dt);
     roll.left -= step;
@@ -1037,7 +1038,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2),
       'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead,
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
-      'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1));
+      'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head));
   }
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));
 }, undefined, err => {
