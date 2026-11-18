@@ -389,5 +389,29 @@ briefing (no audio until a real LAUNCH click). Flags other than
       page console errors, `[ COCKPIT PREVIEW ]` toggles FOV `62 -> 74`,
       updated screenshots in `docs/screenshots/`.
 
+## Strict boresight target designation on `C` (2026-11-18)
+- [x] `src/combat.js`: removed round-robin cycling (`cycleTarget`) and the
+      auto-designation of the nearest bandit. `designated` starts `null`.
+      `C` (`designateInSight`) scores every live target in front of the jet
+      (`dot(noseFwd, toTarget) > 0`) by angular error from the boresight `W`
+      inside the 22 deg sight cone (11 deg off the nose) + 0.002 rad/NM
+      range tie-breaker, designates the best one and restarts
+      `lockProgress` at 0 (pressing `C` on the target already designated keeps
+      its progress). Nothing in the cone -> designation cleared ("NO TARGET IN
+      SIGHT"). A destroyed target leaves nothing designated: no auto-switch.
+      `Tab` no longer cycles. Only air targets exist in the game today.
+- [x] `C.nextTarget` (`NEXT` cue) is exactly what `C` would grab now: the
+      boresight candidate when it is not already designated; drawn fainter.
+- [x] `src/hud.js`: Boresight Acquisition Ring (dotted 22 deg ring around the
+      `W`) that pulses bright `#52ff9c` for 0.6 s when `C` snaps on (amber when
+      nothing is in sight). `src/audio.js`: two-note designation chirp (single
+      low blip on a miss). Briefing / pause overlay: `C — Lock Target in Sight`.
+- [x] Headless (`?place=i:az:el:dist,...`, `?cat=s`, `?killat=s`): no target
+      at start; `C` picks BANDIT 04 at 3.6 deg over BANDIT 02 at 8 deg and a
+      closer BANDIT 01 at 20 deg (outside the cone); ACQ 0.27 s -> LOCK
+      1.6 s; empty cone and all-behind -> none; equal 4 deg bearings -> the
+      1,500 m target over 5,000 m; after the kill `designated` stays null with
+      `NEXT` on BANDIT 02; zero page console errors. Build tag `s14a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

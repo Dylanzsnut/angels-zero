@@ -54,7 +54,7 @@ Take the stick of a **McDonnell Douglas F-15 Eagle** over a 20 km procedural arc
 
 ### Dogfighting, Strike Ordnance & Countermeasures
 - **M61A1 20mm Vulcan Cannon (`L-Click` / `F`)**: Starboard wing-root port harmonized to `1,500 ft` (`940` rounds, `6,000 rpm`, `1,050 m/s`, `8 mrad` dispersion) with gold-to-amber velocity tracers, cordite smoke, own-rate-bending **HUD gun funnel**, and 4-step iterative **LCOS lead reticle** (`SHOOT` cue inside `0.6 NM`).
-- **Progressive IR Seeker & AIM-9 Sidewinders (`R-Click` / `M`)**: Cycle targets in nose-alignment order with `C` / `Tab`. Hold a bandit inside the `14°` seeker circle and `3.5 NM` for `1.3 s` (`SCAN` → `ACQ` amber rotating diamond → `LOCK` red pulsing diamond). Launches clone the real wing-pylon GLB store and fly turn-rate-limited proportional navigation (`N = 4.2`, `34°/s` on full lock).
+- **Progressive IR Seeker & AIM-9 Sidewinders (`R-Click` / `M`)**: Point the nose at a bandit and press `C` to designate the target closest to the boresight `W` inside the `22°` sight cone (nothing in the cone clears the designation; no auto-switching after a kill). Hold a bandit inside the `14°` seeker circle and `3.5 NM` for `1.3 s` (`SCAN` → `ACQ` amber rotating diamond → `LOCK` red pulsing diamond). Launches clone the real wing-pylon GLB store and fly turn-rate-limited proportional navigation (`N = 4.2`, `34°/s` on full lock).
 - **CCIP Free-Fall Bombing (`R` / `1` / `2` → `>BOMB`)**: Switch to air-to-ground ordnance to drop 12 conformal-tank bombs (`Pylon_BOMB_1..12`) guided by an exact closed-form ballistic **CCIP fall line and impact pipper**, producing water geysers, ground fireballs, and shockwave rings (`70 m` blast radius).
 - **Flares, Chaff & Evasive AI (`X` / `G`)**: Six-ship aggressor waves run `PATROL`, `PURSUE`, and 9 G `EVADE` behaviors, locking the player's rear hemisphere (`RWR TRACK` / `MISSILE ALERT`) and firing red-smoke missiles. Dispense magnesium flare + chaff salvos (`X` / `G`) or break-roll inside `900 m` to break locks and decoy inbound missiles.
 - **Ejection & Rescue Respawn (`E`)**: Manual bailout, `0 HP`, or ground/sea contact fires the rocket seat, deploys a steerable 16-gore orange/white parachute (`0.7 s`) with pendulum sway while your burning jet spirals in, and inserts a fresh F-15 at `4,500 ft` after `5.0 s`.
@@ -85,7 +85,7 @@ No external MP3/WAV files are downloaded or played. `src/audio.js` synthesizes e
 | **Right-Click / M** | Fire selected weapon (`>MSL` AIM-9 / drop `>BOMB`) |
 | **R / 1 / 2** | Switch `>MSL` / `>BOMB` (CCIP) |
 | **X / G** | Dispense flares + chaff salvo (`FLR`) |
-| **C / Tab** | Cycle designated target (nose-alignment order) |
+| **C** | Lock Target in Sight (closest to the boresight `W`, inside the 22° cone) |
 
 ### Systems
 | Input | Action |

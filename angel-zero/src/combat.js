@@ -563,40 +563,57 @@ export function createCombat(THREE, env) {
   }
 
   /* =========================================================== lock-on */
-  // Candidates ordered by how close they sit to the nose, then by range.
-  function sortedCandidates() {
+  // Strict boresight designation. Nothing is ever designated automatically:
+  // pressing C picks the live target closest to the boresight W inside the
+  // 22 deg sight cone (11 deg off the nose), with a tiny range tie-breaker.
+  // No target in the cone -> designation is cleared. A destroyed target leaves
+  // nothing designated until the pilot points at the next one and presses C.
+  const SIGHT_HALF = 11 * D2R;
+  const SIGHT_TIE = 0.002;                                    // rad per NM: only separates near-equal bearings
+  function boresightTarget(exclude) {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
-    return enemies.filter(e => e.alive).map(e => {
+    let best = null, bestScore = Infinity;
+    for (const e of enemies) {
+      if (!e.alive || e === exclude) continue;
       const to = e.pos.clone().sub(S.position), d = to.length();
-      const ang = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1)) / D2R;
-      return { e, score: ang + (d / NM) * 4 };
-    }).sort((a, b) => a.score - b.score).map(c => c.e);
+      if (d < 1) continue;
+      const dot = to.divideScalar(d).dot(fwd);
+      if (dot <= 0) continue;                                 // behind the jet
+      const err = Math.acos(clamp(dot, -1, 1));               // angularError from the W, radians
+      if (err > SIGHT_HALF) continue;
+      const score = err + (d / NM) * SIGHT_TIE;
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    return best;
   }
   function designate(e) {
     if (e === C.designated) return;
     C.designated = e; C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null;
   }
-  // C / Tab: step to the next bandit in nose-alignment order.
-  function cycleTarget() {
-    const list = sortedCandidates();
-    if (!list.length) return null;
-    const i = list.indexOf(C.designated);
-    designate(list[(i + 1) % list.length]);
-    say('TARGET — ' + C.designated.label, 1.0);
-    return C.designated;
+  // C: designate the target in sight. Pressing C on the target already
+  // designated keeps its seeker progress (a double-tap never throws a lock away).
+  function designateInSight() {
+    const t = boresightTarget(null);
+    C.designateT = performance.now(); C.designateOk = !!t;
+    if (!t) {
+      designate(null);
+      say('NO TARGET IN SIGHT', 1.0, '#ffbf3f');
+    } else {
+      designate(t);
+      say('TARGET — ' + (t.type ? t.type + ' ' : '') + t.label, 1.0);
+    }
+    if (env.onSfx) env.onSfx('designate', null, t ? 1 : 0);
+    return t;
   }
   // Progressive IR seeker: build lock while the designated bandit sits inside the
   // 14 deg seeker circle and inside 3.5 NM; decay at 0.8/s when it leaves.
   function updateLock(dt) {
-    if (!C.designated || !C.designated.alive) {               // auto-designate the nearest only when nothing is selected
-      let best = null, bd = Infinity;
-      for (const e of enemies) if (e.alive) { const d = e.pos.distanceTo(S.position); if (d < bd) { bd = d; best = e; } }
-      designate(best);
-    }
+    if (C.designated && !C.designated.alive) designate(null);   // no auto-switch after a kill
+    // NEXT cue: exactly what C would grab right now (if it isn't already designated).
+    const cand = boresightTarget(null);
+    C.nextTarget = cand && cand !== C.designated ? cand : null;
     const t = C.designated;
-    if (!t) { C.nextTarget = null; C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
-    const cands = sortedCandidates();
-    C.nextTarget = cands.find(e => e !== t) || null;
+    if (!t) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; C.seekerOff = 0; C.targetRange = 0; return; }
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const to = t.pos.clone().sub(S.position), d = to.length();
     const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
@@ -982,7 +999,7 @@ export function createCombat(THREE, env) {
     rearm('msl'); rearm('bomb');
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null });
     flareRecharge = 0;
-    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
+    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
@@ -1058,7 +1075,7 @@ export function createCombat(THREE, env) {
   }
 
   return {
-    init, update, resetPlayer, fireMissile, cycleTarget, designate, explosion, splash, say,
+    init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
     fireSelected, dropBomb, setWeapon, toggleWeapon, dispenseFlares,
     get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
@@ -1078,6 +1095,17 @@ export function createCombat(THREE, env) {
       launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true, soft ? BANDIT_SOFT : BANDIT_FULL);
       e.mslCD = 99;
     },
+    // Debug: put bogey i at azimuth az (deg, + right) / elevation el (deg, + up) off the nose at `dist` m, flying our heading.
+    placeAt(i, az, el, dist) {
+      const e = enemies[i]; if (!e) return;
+      const dir = new THREE.Vector3(Math.sin(az * D2R) * Math.cos(el * D2R), Math.sin(el * D2R), -Math.cos(az * D2R) * Math.cos(el * D2R)).applyQuaternion(S.quaternion);
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+      e.pos.copy(S.position).addScaledVector(dir, dist); e.fwd.copy(fwd); e.alive = true; e.wreck = null; e.hp = 100;
+      e.mode = 'PATROL'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed);
+      e.center.copy(e.pos).addScaledVector(new THREE.Vector3(fwd.z, 0, -fwd.x), 40000); e.radius = 40000; e.alt = e.pos.y;
+      orient(e); writeFleet();
+    },
+    killEnemy(i) { const e = enemies[i]; if (e && e.alive) destroyEnemy(e, true); },
     // Debug: put bogey i on the player's six at `dist` metres, nose on, pursuing.
     placeBehind(i, dist) {
       const e = enemies[i]; if (!e) return;
@@ -1088,7 +1116,7 @@ export function createCombat(THREE, env) {
     stats() {
       return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? e.mode[0] : '-').join(''),
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
-        lock: { tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
+        lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         bandit: { lock: +C.banditLock.toFixed(2), rwr: C.rwrTrack, incoming: C.incoming || 0, warn: +C.missileWarning.toFixed(2) },
         shots: C.mslLog.map(l => l.tag + ':' + l.result + '@' + l.t).join(' '),
         stores: { wpn: C.weapon, msl: C.missiles, mslOnPylons: stores.msl.filter(s => s.node.visible).map(s => s.n).join(','),

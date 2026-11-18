@@ -203,6 +203,21 @@ export function createAudio() {
     s.connect(hp).connect(sg).connect(cockpitLP); s.start(t, Math.random()); s.stop(t + 2.3); lfo.start(t); lfo.stop(t + 2.3);
   }
 
+  // C-key designation chirp: two quick rising sine blips (target in sight), or a
+  // single low blip when nothing is in the sight cone.
+  function designate(ok = true) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const notes = ok ? [[1320, 0], [1980, 0.055]] : [[520, 0]];
+    for (const [f0, dt] of notes) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f0, t + dt); o.frequency.exponentialRampToValueAtTime(f0 * 1.08, t + dt + 0.045);
+      const g = gain(0); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(ok ? 0.07 : 0.05, t + dt + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.05);
+      o.connect(g).connect(master); o.start(t + dt); o.stop(t + dt + 0.06);
+    }
+  }
+
   // Overdrive curve (classic k-shaped soft/hard clip), amount = 35.
   function distortionCurve(amount) {
     const n = 2048, curve = new Float32Array(n), deg = Math.PI / 180;
@@ -312,7 +327,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

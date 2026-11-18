@@ -373,6 +373,36 @@ export function createHUD(THREE, A) {
     ctx.restore();
   }
 
+  // Boresight Acquisition Ring: the 22 deg C-key designation zone around the W.
+  // Faint dotted ring normally; pulses bright emerald when C snaps onto a target
+  // (amber flash when C finds nothing in the cone).
+  function drawAcquisitionRing(ctx) {
+    if (C.dead) return;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
+    const c = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
+    const e = toScreen(cam.position.clone().addScaledVector(fwd, 5000).addScaledVector(up, 5000 * Math.tan(11 * D2R)));
+    if (!c.ok || !e.ok) return;
+    const r = Math.hypot(e.x - c.x, e.y - c.y);
+    const age = (performance.now() - (C.designateT || -1e9)) / 1000;
+    const pulse = age < 0.6 ? 1 - age / 0.6 : 0;
+    ctx.save();
+    if (pulse > 0) {
+      const col = C.designateOk ? '#52ff9c' : AMBER;
+      glow(ctx, col, 10 * pulse);
+      ctx.globalAlpha = 0.35 + 0.65 * pulse;
+      ctx.lineWidth = 1.2 + 1.8 * pulse;
+      ctx.beginPath(); ctx.arc(c.x, c.y, r * (1 + 0.06 * pulse), 0, Math.PI * 2); ctx.stroke();
+    } else {
+      glow(ctx, 'rgba(82, 255, 156, 0.5)', 0);
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 6]);
+      ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
   function formatDist(m) {
     return m < 0.5 * 1852 ? Math.round(m) + ' M' : (m / 1852).toFixed(1) + ' NM';
   }
@@ -391,6 +421,7 @@ export function createHUD(THREE, A) {
       const p = toScreen(pos);
       return { p, on: pos.clone().sub(cam.position).dot(fwd) > 0 && p.ok && p.x > 36 && p.x < HW - 36 && p.y > 42 && p.y < HH - 42 && !inCorner(p.x, p.y) && (isPrim || !inTape(p.x, p.y)) };
     };
+    drawAcquisitionRing(ctx);
     drawSeekerCircle(ctx);
 
     const prim = C.designated && C.designated.alive ? C.designated : null;
@@ -409,7 +440,7 @@ export function createHUD(THREE, A) {
       if (e !== prim) {
         const isNext = e === nextTgt;
         const s = isNext ? 15 : 11;
-        const col = isNext ? G : 'rgba(82, 255, 156, 0.72)';
+        const col = isNext ? 'rgba(82, 255, 156, 0.85)' : 'rgba(82, 255, 156, 0.6)';
         ctx.save();
         glow(ctx, col, isNext ? 3 : 2);
         ctx.lineWidth = isNext ? 1.25 : 1;
@@ -417,8 +448,8 @@ export function createHUD(THREE, A) {
         ctx.font = f(10, true);
         if (isNext) {
           ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-          labelText(ctx, 'NEXT', p.x + s + 5, p.y - 5, G, 2);
-          labelText(ctx, formatDist(range), p.x + s + 5, p.y + 6, G, 2);
+          labelText(ctx, 'NEXT', p.x + s + 5, p.y - 5, col, 2);
+          labelText(ctx, formatDist(range), p.x + s + 5, p.y + 6, col, 2);
         } else {
           ctx.textAlign = 'center'; ctx.textBaseline = 'top';
           labelText(ctx, (range / 1852).toFixed(1), p.x, p.y + s + 3, col, 2);
