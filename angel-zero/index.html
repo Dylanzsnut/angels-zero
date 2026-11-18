@@ -5,56 +5,129 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ANGELS ZERO</title>
 <style>
-  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; font-family:"Courier New",monospace; }
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; font-family:'Rajdhani','Share Tech Mono',monospace; }
   #gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
   #hud { position:fixed; inset:0; width:100vw; height:100vh; display:block; pointer-events:none; z-index:10; }
-  #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#ffcf8a; font-size:12px; letter-spacing:2px; pointer-events:none; }
-  /* Title briefing / pause overlay */
-  #menu { position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;
-    background:radial-gradient(ellipse at center, rgba(2,10,8,.35) 0%, rgba(2,8,10,.72) 100%); font-family:'Share Tech Mono','Consolas',monospace; }
-  #menu.hidden { display:none; }
-  #menu .panel { width:min(940px, 100%); min-width:0; max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box; padding:26px 30px 22px;
-    background:linear-gradient(180deg, rgba(6,22,16,.58), rgba(3,12,10,.70)); border:1px solid rgba(77,255,145,.55);
-    box-shadow:0 0 0 1px rgba(77,255,145,.12) inset, 0 20px 60px rgba(0,0,0,.65); backdrop-filter:blur(2px); color:#bfffd6; }
-  #menu .col, #menu .bind, #menu .bind .a { min-width:0; }
-  #menu .bind { flex-wrap:wrap; column-gap:10px; row-gap:2px; }
-  #menu .bind .a { flex:1 1 110px; }
-  #menu .eyebrow { font-size:12px; letter-spacing:4px; color:#4dff91; opacity:.85; }
-  #menu h1 { margin:6px 0 2px; font-size:clamp(28px, 5vw, 46px); letter-spacing:8px; color:#e8fff1; font-weight:normal; text-shadow:0 0 18px rgba(77,255,145,.35); }
-  #menu .op { font-size:clamp(13px, 1.8vw, 16px); letter-spacing:5px; color:#7dffb0; margin-bottom:12px; }
-  #menu .brief { font-size:13px; line-height:1.6; color:#a9e8c4; border-left:2px solid rgba(77,255,145,.5); padding:4px 0 4px 12px; margin:0 0 16px; }
-  #menu .grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-bottom:16px; }
-  #menu .col { border:1px solid rgba(77,255,145,.28); background:rgba(0,20,10,.45); padding:10px 12px; }
-  #menu .col h2 { margin:0 0 8px; font-size:13px; letter-spacing:3px; color:#4dff91; font-weight:normal; border-bottom:1px solid rgba(77,255,145,.25); padding-bottom:6px; }
-  #menu .bind { display:flex; justify-content:space-between; gap:10px; font-size:13px; line-height:1.4; padding:4px 0; }
-  #menu .bind .k { color:#ffffff; white-space:nowrap; }
-  #menu .bind .k kbd { display:inline-block; min-width:16px; padding:1px 5px; margin:0 1px; border:1px solid rgba(220,255,235,.6); border-bottom-width:2px; border-radius:3px; background:rgba(255,255,255,.06); font:inherit; font-size:12px; text-align:center; }
-  #menu .bind .a { color:#a9e8c4; text-align:right; }
-  #menu .row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; }
-  #menu .audio { display:flex; align-items:center; gap:10px; font-size:13px; color:#a9e8c4; }
-  #menu input[type=range] { width:160px; accent-color:#4dff91; }
-  #menu button { font-family:inherit; cursor:pointer; letter-spacing:3px; }
-  #menu .mute { padding:6px 10px; background:rgba(0,20,10,.6); color:#bfffd6; border:1px solid rgba(77,255,145,.45); font-size:12px; }
-  #menu .launch { padding:12px 26px; font-size:18px; color:#03140a; background:#4dff91; border:none; box-shadow:0 0 22px rgba(77,255,145,.55); }
-  #menu .launch:hover, #menu .launch:focus-visible { background:#8dffb9; outline:2px solid #e8fff1; outline-offset:3px; }
-  #menu .hint { font-size:11px; letter-spacing:2px; color:#6fcf96; margin-top:10px; text-align:right; }
+  #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#52ff9c; font-size:13px; font-weight:600; letter-spacing:3px; pointer-events:none; text-shadow:0 0 10px rgba(0,255,110,.55); }
+
+  /* AC7 Tactical OS Briefing & Pause HUD */
+  #menu {
+    position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;
+    background:radial-gradient(ellipse at 70% 45%, rgba(2,12,18,.18) 0%, rgba(2,8,14,.74) 100%);
+    font-family:'Rajdhani','Share Tech Mono',monospace;
+    opacity:1; translate:0 0;
+    transition:display 0.32s, opacity 0.32s ease-out, translate 0.32s ease-out;
+    transition-behavior:allow-discrete;
+  }
+  @starting-style {
+    #menu { opacity:0; translate:0 10px; }
+  }
+  #menu:where([hidden], [data-closing]) { opacity:0; translate:0 -10px; pointer-events:none; }
+  #menu[hidden] { display:none; }
+  @media (prefers-reduced-motion: reduce) {
+    #menu { translate:none; transition-duration:0.1s; }
+    @starting-style { #menu { translate:none; } }
+    #menu:where([hidden], [data-closing]) { translate:none; }
+  }
+
+  #menu .panel {
+    position:relative; width:min(940px, 100%); min-width:0; max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box;
+    padding:20px 24px 18px; color:#d2ffea;
+    background:
+      repeating-linear-gradient(0deg, rgba(82,255,156,.025) 0 1px, transparent 1px 3px),
+      linear-gradient(165deg, rgba(4,16,24,.76), rgba(2,10,16,.84));
+    border:1px solid rgba(82,255,156,.45);
+    box-shadow:0 0 0 1px rgba(82,255,156,.12) inset, 0 24px 64px rgba(0,0,0,.72);
+    backdrop-filter:blur(8px);
+    clip-path:polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+  }
+  #menu .panel::before, #menu .panel::after {
+    content:""; position:absolute; width:26px; height:26px; pointer-events:none; border-color:#52ff9c; border-style:solid; opacity:.75;
+  }
+  #menu .panel::before { top:0; left:0; border-width:2px 0 0 2px; }
+  #menu .panel::after { bottom:0; right:0; border-width:0 2px 2px 0; }
+
+  #menu .top-bar { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:10px; border-bottom:1px solid rgba(82,255,156,.28); padding-bottom:10px; margin-bottom:14px; }
+  #menu .eyebrow { font-size:12px; font-weight:600; letter-spacing:3.5px; color:#52ff9c; }
+  #menu h1 { margin:2px 0 0; font-size:clamp(28px, 4.4vw, 44px); line-height:1; letter-spacing:7px; color:#ecfff5; font-weight:700; text-shadow:0 0 18px rgba(82,255,156,.38); }
+  #menu .op { font-size:14px; font-weight:600; letter-spacing:4px; color:#8bffbe; }
+  #menu .tac-tags { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  #menu .tac-tags span { font-size:11px; font-weight:600; letter-spacing:1.4px; padding:3px 8px; border:1px solid rgba(82,255,156,.35); background:rgba(82,255,156,.08); color:#b8ffda; }
+  #menu .tac-tags span.hot { border-color:rgba(255,184,56,.5); background:rgba(255,184,56,.10); color:#ffd27d; }
+
+  #menu .ac7-layout { display:grid; grid-template-columns:minmax(0, .95fr) minmax(0, 1.15fr); gap:14px; margin-bottom:14px; }
+  #menu .sec-box { border:1px solid rgba(82,255,156,.24); background:rgba(2,14,20,.46); padding:12px 14px; min-width:0; }
+  #menu .sec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:12px; font-weight:700; letter-spacing:2.2px; color:#52ff9c; border-bottom:1px solid rgba(82,255,156,.22); padding-bottom:6px; margin-bottom:10px; }
+  #menu .brief { font-size:14px; font-weight:500; line-height:1.45; color:#bfead4; border-left:2px solid #52ff9c; padding:2px 0 2px 10px; margin:0 0 12px; }
+
+  #menu .preview-row { display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  #menu .preview-lbl { font-size:11px; font-weight:600; letter-spacing:1.8px; color:#7ad6a8; margin-right:auto; }
+  #menu .cam-btn { padding:4px 8px; font-size:11px; font-weight:600; letter-spacing:1.4px; color:#9ce9c1; background:rgba(4,20,26,.65); border:1px solid rgba(82,255,156,.32); transition:background .15s, border-color .15s, color .15s; white-space:nowrap; }
+  #menu .cam-btn:hover { border-color:#52ff9c; color:#ecfff5; }
+  #menu .cam-btn.active { background:rgba(82,255,156,.20); border-color:#52ff9c; color:#ecfff5; box-shadow:0 0 10px rgba(82,255,156,.25) inset; }
+
+  #menu .loadout-card { border:1px solid rgba(82,255,156,.30); background:rgba(0,22,16,.44); padding:10px 12px; }
+  #menu .loadout-title { font-size:12px; font-weight:700; letter-spacing:1.8px; color:#ecfff5; margin-bottom:2px; }
+  #menu .loadout-sub { font-size:11px; font-weight:600; letter-spacing:1.2px; color:#52ff9c; margin-bottom:8px; }
+  #menu .stations { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px; }
+  #menu .station { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 7px; background:rgba(82,255,156,.06); border-left:2px solid rgba(82,255,156,.55); font-size:11px; font-weight:600; letter-spacing:.8px; white-space:nowrap; }
+  #menu .station span:first-child { color:#9adbbd; }
+  #menu .station span:last-child { color:#ecfff5; }
+
+  #menu .pause-stats { display:none; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+  #menu .pause-stats.show { display:grid; }
+  #menu .stat-cell { border:1px solid rgba(82,255,156,.32); background:rgba(0,24,18,.55); padding:7px 10px; }
+  #menu .stat-k { font-size:11px; font-weight:600; letter-spacing:2px; color:#7cdcb0; }
+  #menu .stat-v { font-size:20px; font-weight:700; letter-spacing:2px; color:#ecfff5; line-height:1.15; }
+
+  #menu .bind-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); column-gap:14px; row-gap:2px; }
+  #menu .bind { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:6px; font-size:13px; line-height:1.35; padding:4px 0; border-bottom:1px solid rgba(82,255,156,.08); min-width:0; }
+  #menu .bind .k { color:#ffffff; white-space:nowrap; font-weight:600; }
+  #menu .bind .k kbd { display:inline-block; min-width:16px; padding:1px 5px; margin:0 1px; border:1px solid rgba(82,255,156,.55); border-bottom-width:2px; border-radius:2px; background:rgba(82,255,156,.10); color:#ecfff5; font-family:'Share Tech Mono',monospace; font-size:11px; text-align:center; }
+  #menu .bind .a { color:#a8e6c8; text-align:right; font-weight:500; flex:1 1 auto; }
+
+  #menu .action-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid rgba(82,255,156,.26); padding-top:12px; }
+  #menu .audio { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; font-weight:600; letter-spacing:1.6px; color:#9de5c3; }
+  #menu input[type=range] { width:min(140px, 38vw); accent-color:#52ff9c; }
+  #menu button { font-family:inherit; cursor:pointer; }
+  #menu .mute { padding:5px 10px; background:rgba(4,20,26,.7); color:#c8ffe3; border:1px solid rgba(82,255,156,.42); font-size:12px; font-weight:600; letter-spacing:2px; }
+  #menu .mute:hover { border-color:#52ff9c; }
+  #menu .btns { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-left:auto; }
+  #menu .secondary-btn { display:none; padding:10px 16px; font-size:14px; font-weight:700; letter-spacing:2.4px; color:#ffd27d; background:rgba(40,24,4,.58); border:1px solid rgba(255,184,56,.6); }
+  #menu .secondary-btn.show { display:inline-block; }
+  #menu .secondary-btn:hover { background:rgba(80,44,6,.75); }
+  #menu .launch { padding:10px 24px; font-size:17px; font-weight:700; letter-spacing:3px; color:#03140b; background:#52ff9c; border:none; box-shadow:0 0 22px rgba(82,255,156,.5); clip-path:polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+  #menu .launch:hover, #menu .launch:focus-visible { background:#8dffbe; outline:2px solid #ecfff5; outline-offset:2px; }
   #menu .launch.pulse { animation:launchPulse 1.6s ease-in-out infinite; }
-  @keyframes launchPulse { 0%,100% { box-shadow:0 0 14px rgba(77,255,145,.45); } 50% { box-shadow:0 0 30px rgba(77,255,145,.85); } }
-  /* Wide screens: briefing on the left, the orbiting F-15 framed in the open space on the right. */
-  @media (min-width: 1150px) { #menu { justify-content:flex-start; padding-left:4vw; } #menu .panel { width:min(760px, 58vw); } }
-  @media (max-width: 760px) { #menu .grid { grid-template-columns:1fr; } #menu .panel { padding:18px 16px; } #menu h1 { letter-spacing:4px; } #menu .op { letter-spacing:3px; } }
-  #hBadge { position:fixed; z-index:30; top:14px; right:18px; padding:7px 12px; background:rgba(4,12,18,.85); border:1px solid rgba(77,255,145,.6); color:#bfffd6;
-    font:12px 'Share Tech Mono','Consolas',monospace; letter-spacing:2px; cursor:pointer; display:none; }
-  #hBadge kbd { font:inherit; color:#03140a; background:#4dff91; padding:0 5px; margin-right:6px; }
-  #hBadge:hover { background:rgba(20,60,42,.92); }
-  #patchButton { position:fixed; z-index:30; top:14px; right:170px; padding:7px 12px; background:rgba(4,12,18,.85); border:1px solid rgba(0,255,102,.5); color:#9dffc4; font:11px "Courier New",monospace; letter-spacing:2px; cursor:pointer; }
-  #patchButton:hover { background:rgba(20,60,42,.92); }
-  #patchPanel { position:fixed; z-index:29; top:52px; right:18px; width:min(344px, calc(100vw - 36px)); max-height:62vh; overflow-y:auto; display:none; box-sizing:border-box; background:rgba(4,12,18,.93); border:1px solid rgba(0,255,102,.45); color:#a8f7c8; font:12px "Courier New",monospace; line-height:1.6; padding:16px 18px; box-shadow:0 12px 40px rgba(0,0,0,.7); }
+  @keyframes launchPulse { 0%,100% { box-shadow:0 0 14px rgba(82,255,156,.45); } 50% { box-shadow:0 0 28px rgba(82,255,156,.85); } }
+  #menu .hint { font-size:11px; font-weight:600; letter-spacing:2.4px; color:#6fd6a0; margin-top:8px; text-align:right; }
+
+  /* Wide screens: briefing docked left so the orbiting F-15C frames cleanly on the right. */
+  @media (min-width: 1150px) { #menu { justify-content:flex-start; padding-left:3.5vw; } #menu .panel { width:min(820px, 60vw); } }
+  @media (max-width: 820px) {
+    #menu { padding:10px; }
+    #menu .ac7-layout, #menu .bind-grid { grid-template-columns:minmax(0, 1fr); }
+    #menu .tac-tags { justify-content:flex-start; }
+    #menu .panel { padding:16px 14px; max-height:calc(100vh - 20px); }
+    #menu .sec-box { padding:10px 10px; }
+    #menu h1 { letter-spacing:4px; }
+    #menu .btns { margin-left:0; width:100%; }
+    #menu .launch, #menu .secondary-btn { width:100%; text-align:center; }
+  }
+  @media (max-width: 480px) { #menu .stations { grid-template-columns:minmax(0, 1fr); } #menu .bind .k { white-space:normal; } }
+
+  #hBadge { position:fixed; z-index:30; top:14px; right:18px; padding:6px 12px; background:rgba(4,16,24,.78); backdrop-filter:blur(6px); border:1px solid rgba(82,255,156,.55); color:#c8ffe3;
+    font:600 12px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:2px; cursor:pointer; display:none; }
+  #hBadge kbd { font:700 11px 'Share Tech Mono',monospace; color:#03140b; background:#52ff9c; padding:0 5px; margin-right:6px; }
+  #hBadge:hover { background:rgba(16,48,38,.88); }
+  #patchButton { position:fixed; z-index:30; top:14px; right:160px; padding:6px 12px; background:rgba(4,16,24,.78); backdrop-filter:blur(6px); border:1px solid rgba(82,255,156,.45); color:#9dffcc; font:600 12px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:2px; cursor:pointer; }
+  #patchButton:hover { background:rgba(16,48,38,.88); }
+  #patchPanel { position:fixed; z-index:45; top:52px; right:18px; width:min(360px, calc(100vw - 36px)); max-height:64vh; overflow-y:auto; display:none; box-sizing:border-box; background:rgba(4,14,22,.92); backdrop-filter:blur(8px); border:1px solid rgba(82,255,156,.45); color:#b4f7d4; font:500 13px 'Rajdhani','Share Tech Mono',monospace; line-height:1.5; padding:16px 18px; box-shadow:0 14px 44px rgba(0,0,0,.72); }
   #patchPanel.open { display:block; }
-  #patchPanel h2 { margin:0 0 10px; font-size:14px; letter-spacing:2px; color:#d6ffe8; }
-  #patchPanel h3 { margin:14px 0 4px; font-size:12px; color:#7effa8; letter-spacing:1px; }
+  #patchPanel h2 { margin:0 0 10px; font-size:15px; font-weight:700; letter-spacing:2.5px; color:#ecfff5; }
+  #patchPanel h3 { margin:12px 0 4px; font-size:13px; font-weight:700; color:#52ff9c; letter-spacing:1.4px; }
   #patchPanel ul { margin:0; padding-left:18px; }
-  #patchPanel .close { cursor:pointer; float:right; color:#7effa8; }
+  #patchPanel .close { cursor:pointer; float:right; color:#52ff9c; font-weight:700; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -74,47 +147,78 @@
   <div id="status">LOADING F-15...</div>
   <div id="menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
     <div class="panel">
-      <div class="eyebrow" id="menuEyebrow">TACTICAL BRIEFING // ALPHA FLIGHT</div>
-      <h1 id="menuTitle">ANGELS ZERO</h1>
-      <div class="op">OPERATION ARCHIPELAGO</div>
-      <p class="brief" id="menuBrief">Six aggressor fighters are patrolling the island chain between 1,800 and 6,500 ft.
-        Launch, lock them up inside 3.5&nbsp;NM and splash every bandit. Waves keep coming. If the jet is lost, punch out &mdash; rescue will put you back in the fight.</p>
-      <div class="grid">
-        <div class="col">
-          <h2>FLIGHT</h2>
-          <div class="bind"><span class="k"><kbd>MOUSE</kbd></span><span class="a">Pitch / roll</span></div>
-          <div class="bind"><span class="k"><kbd>W</kbd> <kbd>S</kbd></span><span class="a">Throttle up / down (airbrake)</span></div>
-          <div class="bind"><span class="k"><kbd>SHIFT</kbd></span><span class="a">Afterburner</span></div>
-          <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
-          <div class="bind"><span class="k"><kbd>A</kbd><kbd>A</kbd> / <kbd>D</kbd><kbd>D</kbd> <kbd>Q</kbd></span><span class="a">Evasive barrel roll</span></div>
+      <div class="top-bar">
+        <div>
+          <div class="eyebrow" id="menuEyebrow">MISSION 01 // OPERATION ARCHIPELAGO</div>
+          <h1 id="menuTitle">ANGELS ZERO</h1>
+          <div class="op">TACTICAL OS // ALPHA FLIGHT</div>
         </div>
-        <div class="col">
-          <h2>COMBAT</h2>
-          <div class="bind"><span class="k"><kbd>L-CLICK</kbd> <kbd>F</kbd></span><span class="a">M61 Vulcan cannon (hold)</span></div>
-          <div class="bind"><span class="k"><kbd>R-CLICK</kbd> <kbd>M</kbd></span><span class="a">Fire selected: AIM-9 / drop bomb</span></div>
-          <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Switch &gt;MSL / &gt;BOMB (CCIP)</span></div>
-          <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Flares + chaff (FLR)</span></div>
-          <div class="bind"><span class="k"><kbd>C</kbd> <kbd>TAB</kbd></span><span class="a">Cycle target (nose order)</span></div>
-          <div class="bind"><span class="k">SEEKER</span><span class="a">Hold target in circle ~1.3 s: ACQ &rarr; LOCK</span></div>
-          <div class="bind"><span class="k">PIPPER</span><span class="a">Fly the boresight onto it, fire</span></div>
-        </div>
-        <div class="col">
-          <h2>SYSTEMS</h2>
-          <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
-          <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject (parachute bailout)</span></div>
-          <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Pause &amp; controls</span></div>
-          <div class="bind"><span class="k"><kbd>M</kbd></span><span class="a">Mute (in this menu)</span></div>
-          <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
+        <div class="tac-tags">
+          <span class="hot">AIRSPACE: CONTESTED</span>
+          <span>WEATHER: CLEAR</span>
+          <span>ROE: WEAPONS FREE</span>
         </div>
       </div>
-      <div class="row">
+
+      <div class="ac7-layout">
+        <div class="sec-box">
+          <div class="sec-head"><span>SORTIE BRIEFING</span><span>F-15C EAGLE</span></div>
+          <p class="brief" id="menuBrief">Six aggressor fighters patrol the archipelago between 1,800 and 6,500&nbsp;ft. Engage inside 3.5&nbsp;NM, splash every bandit, or drop MK-82 ordnance with CCIP. Punch out with E if critical.</p>
+          <div class="pause-stats" id="pauseStats">
+            <div class="stat-cell"><div class="stat-k">MISSION TIME</div><div class="stat-v" id="statTime">00:00:00</div></div>
+            <div class="stat-cell"><div class="stat-k">SCORE</div><div class="stat-v" id="statScore">000000</div></div>
+            <div class="stat-cell"><div class="stat-k">BANDITS SPLASHED</div><div class="stat-v" id="statKills">0</div></div>
+            <div class="stat-cell"><div class="stat-k">AIRFRAME DMG</div><div class="stat-v" id="statDmg">0%</div></div>
+          </div>
+          <div class="preview-row" id="previewRow">
+            <span class="preview-lbl">CAM</span>
+            <button class="cam-btn active" id="camOrbitBtn" type="button">[ ORBIT VIEW ]</button>
+            <button class="cam-btn" id="camCockpitBtn" type="button">[ COCKPIT PREVIEW ]</button>
+          </div>
+          <div class="loadout-card">
+            <div class="loadout-title">F-15C EAGLE // AIR-TO-AIR &amp; STRIKE</div>
+            <div class="loadout-sub">M61A1 VULCAN &bull; AIM-9M &bull; MK-82 UGB &bull; FLARES</div>
+            <div class="stations">
+              <div class="station"><span>M61A1 20MM</span><span>940 RDS</span></div>
+              <div class="station"><span>AIM-9M IR</span><span>4 RAILS</span></div>
+              <div class="station"><span>MK-82 UGB</span><span>12 STORES</span></div>
+              <div class="station"><span>FLR / CHAFF</span><span>4 SALVOS</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec-box">
+          <div class="sec-head"><span>FLIGHT &amp; COMBAT SYSTEMS</span><span>KEYBIND MATRIX</span></div>
+          <div class="bind-grid">
+            <div class="bind"><span class="k"><kbd>MOUSE</kbd></span><span class="a">Pitch / roll</span></div>
+            <div class="bind"><span class="k"><kbd>LMB</kbd> <kbd>F</kbd></span><span class="a">Vulcan cannon</span></div>
+            <div class="bind"><span class="k"><kbd>W</kbd> <kbd>S</kbd></span><span class="a">Throttle / brake</span></div>
+            <div class="bind"><span class="k"><kbd>RMB</kbd> <kbd>M</kbd></span><span class="a">Fire MSL / BOMB</span></div>
+            <div class="bind"><span class="k"><kbd>SHIFT</kbd></span><span class="a">Afterburner / Hi-G</span></div>
+            <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Switch weapon</span></div>
+            <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
+            <div class="bind"><span class="k"><kbd>C</kbd> <kbd>TAB</kbd></span><span class="a">Cycle target</span></div>
+            <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
+            <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Deploy flares</span></div>
+            <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
+            <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject bailout</span></div>
+            <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Tactical menu</span></div>
+            <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-bar">
         <div class="audio">
-          <label for="vol">MASTER VOLUME</label>
+          <label for="vol">MASTER VOL</label>
           <input type="range" id="vol" min="0" max="100" step="1" />
           <span id="volVal">70</span>
           <button class="mute" id="muteBtn" type="button">MUTE [M]</button>
         </div>
-        <button class="launch pulse" id="launchBtn" type="button">[ LAUNCH SORTIE ]</button>
+        <div class="btns">
+          <button class="secondary-btn" id="restartBtn" type="button">[ RESTART MISSION ]</button>
+          <button class="launch pulse" id="launchBtn" type="button">[ LAUNCH SORTIE ]</button>
+        </div>
       </div>
       <div class="hint" id="menuHint">CLICK LAUNCH OR PRESS ENTER</div>
     </div>
@@ -124,6 +228,12 @@
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
+    <h3>v1.8.0 &mdash; AC7 TACTICAL OS BRIEFING &amp; PAUSE HUD</h3>
+    <ul>
+      <li>Chamfered AC7 Tactical OS briefing screen with status tags, F-15C loadout card, and live Orbit / Cockpit preview toggle.</li>
+      <li>Tactical Pause HUD with sortie telemetry (TIME, SCORE, KILLS, DMG %) and instant RESTART MISSION.</li>
+      <li>Crimson alert color shift for PULL UP and STALL WARNING alongside streamlined HUD tape typography.</li>
+    </ul>
     <h3>v1.7.0 &mdash; ACE COMBAT 7 HUD OVERHAUL</h3>
     <ul>
       <li>Luminous mint-emerald (#52ff9c) phosphor HUD with Rajdhani avionics typography and crimson alert shift.</li>
@@ -170,12 +280,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s12a';
-import { createHUD } from './src/hud.js?v=s12a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s12a';
-import { createCombat } from './src/combat.js?v=s12a';
-import { createEjection } from './src/eject.js?v=s12a';
-import { createAudio } from './src/audio.js?v=s12a';
+import { createVFX } from './src/vfx.js?v=s13a';
+import { createHUD } from './src/hud.js?v=s13a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s13a';
+import { createCombat } from './src/combat.js?v=s13a';
+import { createEjection } from './src/eject.js?v=s13a';
+import { createAudio } from './src/audio.js?v=s13a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -622,30 +732,85 @@ function setView(fp) {
 
 // App state: MENU (title briefing, jet orbits in the background), PLAY, PAUSED.
 // Flight never starts until LAUNCH SORTIE is clicked or Enter is pressed.
-let appMode = 'MENU';
+let appMode = 'MENU', menuPreviewCockpit = false;
 const menuEl = document.getElementById('menu');
 const hBadge = document.getElementById('hBadge');
 const launchBtn = document.getElementById('launchBtn');
+const restartBtn = document.getElementById('restartBtn');
+const pauseStatsEl = document.getElementById('pauseStats');
+const previewRowEl = document.getElementById('previewRow');
+const camOrbitBtn = document.getElementById('camOrbitBtn');
+const camCockpitBtn = document.getElementById('camCockpitBtn');
 const volSlider = document.getElementById('vol'), volVal = document.getElementById('volVal'), muteBtn = document.getElementById('muteBtn');
+
+let supportsDisplayTransition;
+function canTransitionDisplay() {
+  if (supportsDisplayTransition !== undefined) return supportsDisplayTransition;
+  if (!window.CSS?.supports?.('transition-behavior', 'allow-discrete') || !document.body) return false;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
+  document.body.appendChild(probe);
+  getComputedStyle(probe).display;
+  probe.style.display = 'none';
+  supportsDisplayTransition = getComputedStyle(probe).display === 'block';
+  probe.remove();
+  return supportsDisplayTransition;
+}
+function showMenuEl() {
+  menuEl.removeAttribute('data-closing');
+  menuEl.hidden = false;
+  hBadge.style.display = 'none';
+}
+async function hideMenuEl() {
+  hBadge.style.display = 'block';
+  if (canTransitionDisplay()) menuEl.hidden = true;
+  else menuEl.setAttribute('data-closing', '');
+  const animations = menuEl.getAnimations();
+  if (animations.length > 0) {
+    await Promise.race([
+      Promise.allSettled(animations.map(a => a.finished)),
+      new Promise(r => setTimeout(r, 600))
+    ]);
+  }
+  if (menuEl.hasAttribute('data-closing')) {
+    menuEl.removeAttribute('data-closing');
+    menuEl.hidden = true;
+  }
+}
+
 function syncAudioUI() {
   volSlider.value = String(Math.round(audio.volume * 100));
   volVal.textContent = volSlider.value;
   muteBtn.textContent = audio.muted ? 'UNMUTE [M]' : 'MUTE [M]';
   muteBtn.setAttribute('aria-pressed', audio.muted ? 'true' : 'false');
 }
+function setMenuPreview(cockpitOn) {
+  menuPreviewCockpit = !!cockpitOn;
+  camOrbitBtn.classList.toggle('active', !menuPreviewCockpit);
+  camCockpitBtn.classList.toggle('active', menuPreviewCockpit);
+  if (appMode === 'MENU' && modelReady) setView(menuPreviewCockpit);
+}
 function showMenu(kind) {
   const pause = kind === 'pause';
-  document.getElementById('menuEyebrow').textContent = pause ? 'SIMULATION PAUSED // CONTROLS REFERENCE' : 'TACTICAL BRIEFING // ALPHA FLIGHT';
+  document.getElementById('menuEyebrow').textContent = pause ? 'TACTICAL PAUSE // SORTIE SUSPENDED' : 'MISSION 01 // OPERATION ARCHIPELAGO';
   document.getElementById('menuBrief').style.display = pause ? 'none' : '';
+  previewRowEl.style.display = pause ? 'none' : '';
+  pauseStatsEl.classList.toggle('show', pause);
+  restartBtn.classList.toggle('show', pause);
+  if (pause) {
+    document.getElementById('statTime').textContent = cockpit.missionClock(simTime);
+    document.getElementById('statScore').textContent = String(combat.score || 0).padStart(6, '0');
+    document.getElementById('statKills').textContent = String(combat.kills || 0);
+    document.getElementById('statDmg').textContent = Math.round(100 - combat.health) + '%';
+  }
   launchBtn.textContent = pause ? '[ RESUME SORTIE ]' : '[ LAUNCH SORTIE ]';
   launchBtn.classList.toggle('pulse', !pause);
   document.getElementById('menuHint').textContent = pause ? 'H / ESC / ENTER TO RESUME' : 'CLICK LAUNCH OR PRESS ENTER';
-  menuEl.classList.remove('hidden');
-  hBadge.style.display = 'none';
+  showMenuEl();
   syncAudioUI();
   launchBtn.focus({ preventScroll: true });
 }
-function hideMenu() { menuEl.classList.add('hidden'); hBadge.style.display = 'block'; }
+function hideMenu() { return hideMenuEl(); }
 function launchSortie() {
   if (appMode !== 'MENU' || !modelReady) return;
   audio.init();                                        // AudioContext is created/resumed inside this user gesture
@@ -653,7 +818,7 @@ function launchSortie() {
   for (const k in keys) keys[k] = false;
   mouse.nx = 0; mouse.ny = 0;                          // centre the stick until the mouse moves
   resetAircraft();
-  setView(Q.has('cockpit'));
+  setView(Q.has('cockpit') || menuPreviewCockpit);
   hideMenu();
   combatSys.say('ALPHA 1, CLEARED HOT — SPLASH THE BANDITS', 3);
 }
@@ -671,7 +836,22 @@ function resumeSim() {
   audio.resume();
   hideMenu();
 }
+function restartMission() {
+  if (appMode !== 'PAUSED') return;
+  combat.score = 0; combat.kills = 0; combat.deaths = 0; combat.wave = 0;
+  simTime = 0;
+  combatSys.enemies.forEach(e => { e.alive = false; e.wreck = null; });
+  flightMode = 'FLY';
+  eject.stop();
+  resetAircraft();
+  combatSys.update(4.1, 0, { playerActive: false, firing: false });
+  resumeSim();
+  combatSys.say('MISSION RESTARTED — WEAPONS FREE', 2.4);
+}
 launchBtn.addEventListener('click', e => { e.stopPropagation(); if (appMode === 'MENU') launchSortie(); else resumeSim(); });
+restartBtn.addEventListener('click', e => { e.stopPropagation(); restartMission(); });
+camOrbitBtn.addEventListener('click', e => { e.stopPropagation(); setMenuPreview(false); });
+camCockpitBtn.addEventListener('click', e => { e.stopPropagation(); setMenuPreview(true); });
 hBadge.addEventListener('click', e => { e.stopPropagation(); pauseSim(); });
 volSlider.addEventListener('input', () => { audio.setVolume(Number(volSlider.value) / 100); syncAudioUI(); });
 muteBtn.addEventListener('click', e => { e.stopPropagation(); audio.toggleMute(); syncAudioUI(); });
@@ -685,7 +865,9 @@ addEventListener('mousemove', e => {
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (appMode === 'MENU' || appMode === 'PAUSED') {
-    if (k === 'enter') { e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim(); }
+    if (k === 'enter' && !['restartBtn', 'camOrbitBtn', 'camCockpitBtn', 'muteBtn'].includes(document.activeElement?.id)) {
+      e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim();
+    }
     else if ((k === 'h' || k === 'escape') && appMode === 'PAUSED' && !e.repeat) resumeSim();
     else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
     if (e.code === 'Space') e.preventDefault();
@@ -857,14 +1039,19 @@ function updateCameraAndVisuals(dt, now) {
   }
 
   if (appMode === 'MENU') {
-    // Title screen: slow cinematic orbit around the jet circling the archipelago.
-    const ca = menuT * 0.11;
-    camera.up.set(0, 1, 0);
-    camera.position.copy(state.position).add(new THREE.Vector3(Math.sin(ca) * 30, 6 + 4 * Math.sin(menuT * 0.27), Math.cos(ca) * 30));
-    // On wide layouts aim left of the jet so it sits in the right-hand third, beside the briefing panel.
-    const toJet = state.position.clone().sub(camera.position).normalize();
-    const right = new THREE.Vector3().crossVectors(toJet, AX_Y).normalize();
-    camera.lookAt(state.position.clone().addScaledVector(right, innerWidth >= 1150 ? -13 : 0).add(new THREE.Vector3(0, -2, 0)));
+    if (menuPreviewCockpit) {
+      updateCockpitClip();
+      cockpit.update(dt, now, EYE.clone().applyQuaternion(q).add(state.position), q);
+    } else {
+      // Title screen: slow cinematic orbit around the jet circling the archipelago.
+      const ca = menuT * 0.11;
+      camera.up.set(0, 1, 0);
+      camera.position.copy(state.position).add(new THREE.Vector3(Math.sin(ca) * 30, 6 + 4 * Math.sin(menuT * 0.27), Math.cos(ca) * 30));
+      // On wide layouts aim left of the jet so it sits in the right-hand third, beside the briefing panel.
+      const toJet = state.position.clone().sub(camera.position).normalize();
+      const right = new THREE.Vector3().crossVectors(toJet, AX_Y).normalize();
+      camera.lookAt(state.position.clone().addScaledVector(right, innerWidth >= 1150 ? -13 : 0).add(new THREE.Vector3(0, -2, 0)));
+    }
   } else if (flightMode === 'EJECT') {
     // camera owned by the ejection sequence
   } else if (firstPerson) {
@@ -1052,7 +1239,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   });
   combatSys.update(0, 0, { playerActive: false, firing: false });   // place the wave before the first frame
   modelReady = true;
-  setView(appMode === 'PLAY' ? firstPerson : false);
+  setView(appMode === 'PLAY' ? firstPerson : menuPreviewCockpit);
   statusEl.remove();
   launchBtn.disabled = false;
   if (appMode === 'MENU') document.getElementById('menuHint').textContent = 'CLICK LAUNCH OR PRESS ENTER';
@@ -1100,6 +1287,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
       'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head));
   }
+  if (DEBUG && Q.has('pause')) pauseSim();
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));
 }, undefined, err => {
   console.error('[ANGELS_ZERO] GLTF load failed', err);
@@ -1166,7 +1354,7 @@ if (DEBUG) {
 }
 resetAircraft();
 hud.resize();
-if (Q.has('nointro')) { appMode = 'PLAY'; hideMenu(); }        // test hook: skip the briefing
+if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; hBadge.style.display = 'block'; }        // test hook: skip the briefing
 else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 if (document.fonts && document.fonts.load) {
   document.fonts.load("600 16px 'Rajdhani'").catch(() => {});

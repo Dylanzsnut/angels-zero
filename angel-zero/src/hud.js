@@ -283,9 +283,8 @@ export function createHUD(THREE, A) {
 
     if (sub) {
       const sc = subCol || col;
-      numBack(ctx, bx - 4, bot + 5, boxW + 8, 17, 'rgba(0, 14, 8, 0.42)');
       ctx.font = f(compact ? 11 : 12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      labelText(ctx, sub, bx + boxW / 2, bot + 7, sc, 3);
+      labelText(ctx, sub, bx + boxW / 2, bot + 7, sc, 4);
     }
     ctx.restore();
   }
@@ -384,10 +383,13 @@ export function createHUD(THREE, A) {
     prevLockState = C.lockState;
 
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const ch = A.isFirstPerson() ? null : chaseLayout();
+    const inTape = (px, py) => ch && py > ch.tapeTop - 22 && py < ch.tapeBot + 28 &&
+      ((px > ch.tapeL - 66 && px < ch.tapeL + 24) || (px > ch.tapeR - 24 && px < ch.tapeR + 66));
     const inCorner = (px, py) => (px < 268 && py < 195) || (px < 252 && py > HH - 248) || (px > HW - 294 && py > HH - 210);
-    const onScreenOf = pos => {
+    const onScreenOf = (pos, isPrim = false) => {
       const p = toScreen(pos);
-      return { p, on: pos.clone().sub(cam.position).dot(fwd) > 0 && p.ok && p.x > 36 && p.x < HW - 36 && p.y > 42 && p.y < HH - 42 && !inCorner(p.x, p.y) };
+      return { p, on: pos.clone().sub(cam.position).dot(fwd) > 0 && p.ok && p.x > 36 && p.x < HW - 36 && p.y > 42 && p.y < HH - 42 && !inCorner(p.x, p.y) && (isPrim || !inTape(p.x, p.y)) };
     };
     drawSeekerCircle(ctx);
 
@@ -398,7 +400,7 @@ export function createHUD(THREE, A) {
     for (const e of A.getEnemies()) {
       if (!e.alive) continue;
       const range = e.pos.distanceTo(S.position);
-      const { p, on } = onScreenOf(e.pos);
+      const { p, on } = onScreenOf(e.pos, e === prim);
       if (!on) {
         offRing.push({ pos: e.pos, isPrim: e === prim, isThreat: (e.bLock || 0) >= 0.45, range, label: e.type || e.label });
         continue;
@@ -683,7 +685,7 @@ export function createHUD(THREE, A) {
   function drawTopLeft(ctx) {
     const x = 20, y = 16, w = 232;
     ctx.save();
-    numBack(ctx, x, y, w, 108, 'rgba(0, 14, 8, 0.34)');
+    numBack(ctx, x, y, w, 108, 'rgba(0, 14, 8, 0.24)');
     glow(ctx, G, 3); ctx.lineWidth = 1.1;
     ctx.beginPath(); ctx.moveTo(x, y + 12); ctx.lineTo(x, y); ctx.lineTo(x + 28, y); ctx.stroke();
 
@@ -853,7 +855,7 @@ export function createHUD(THREE, A) {
   function drawBottomRight(ctx) {
     const w = 258, h = 176, x = HW - w - 20, y = HH - h - 20;
     ctx.save();
-    numBack(ctx, x, y, w, h, 'rgba(0, 14, 8, 0.38)');
+    numBack(ctx, x, y, w, h, 'rgba(0, 14, 8, 0.24)');
     glow(ctx, G, 3); ctx.lineWidth = 1.1;
     ctx.beginPath(); ctx.moveTo(x + w - 28, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + 20); ctx.stroke();
 
@@ -1025,8 +1027,8 @@ export function createHUD(THREE, A) {
     if (spdPrev !== null && dt > 0) spdAcc += (((S.speed - spdPrev) / dt) - spdAcc) * Math.min(1, dt * 2.5);
     spdPrev = S.speed;
 
-    const hudCol = alertOn() ? WARN : G;
-    const spdCol = stallOn() ? AMBER : hudCol;
+    const hudCol = (alertOn() || pullUpOn() || stallOn()) ? WARN : G;
+    const spdCol = stallOn() ? WARN : hudCol;
     const altCol = pullUpOn() ? WARN : hudCol;
     const kts = S.speed * 1.94384;
     const altFt = S.position.y * 3.28084;

@@ -359,5 +359,27 @@ briefing (no audio until a real LAUNCH click). Flags other than
       errors, crisp readability over sky and archipelago, updated repo
       screenshots in `docs/screenshots/`.
 
+## Ace Combat 7 Tactical Briefing & Pause Menu UI overhaul (2026-11-18)
+- [x] `index.html`: chamfered AC7 Tactical OS `#menu` glass panel with
+      `backdrop-filter: blur(8px)`, scanlines, `@starting-style` +
+      `transition-behavior: allow-discrete` (with `[data-closing]` fallback via
+      `canTransitionDisplay()`), `MISSION 01 // OPERATION ARCHIPELAGO` briefing
+      column with tactical status tags (`AIRSPACE: CONTESTED`, `WEATHER: CLEAR`,
+      `ROE: WEAPONS FREE`), live `[ ORBIT VIEW ]` / `[ COCKPIT PREVIEW ]`
+      camera feed switcher (`setMenuPreview`), F-15C loadout station grid,
+      two-column Keybind Matrix, Tactical Pause sortie telemetry (`MISSION TIME`,
+      `SCORE`, `BANDITS SPLASHED`, `AIRFRAME DMG`), `[ RESTART MISSION ]`,
+      `?pause` debug flag, `v1.8.0` patch notes, and `?v=s13a` cache tag bump.
+- [x] `src/hud.js`: unified `#ff2e43` crimson shift on `MISSILE ALERT`,
+      `PULL UP`, and `STALL WARNING`; removed `MACH`/`RALT` sub-boxes in favor
+      of crisp text drop-shadows; translucent `rgba(0, 14, 8, 0.24)` corner
+      clusters; and tape-column overlap guard for secondary `NEXT` brackets in
+      3rd-person chase view.
+- [x] Headless Edge CDP verified across Start Briefing Menu (`1440x810` and
+      `375x667` with `0` horizontal overflow), Tactical Pause Menu (`?pause`),
+      1st-Person Cockpit combiner `LOCK`, and 3rd-Person Chase `LOCK`: zero
+      page console errors, `[ COCKPIT PREVIEW ]` toggles FOV `62 -> 74`,
+      updated screenshots in `docs/screenshots/`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.
