@@ -3,1894 +3,227 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ANGELS ZERO</title>
+<title>ANGELS ZERO — Step 1A Asset Inspection</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    font-family: "Courier New", monospace;
-  }
-  #glcanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  #hud {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 10;
-  }
-  #intro {
-    position: absolute;
-    z-index: 20;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(4, 10, 16, 0.82);
-    border: 1px solid rgba(120, 255, 180, 0.45);
-    color: #9dffc4;
-    padding: 26px 34px;
-    text-align: center;
-    letter-spacing: 1px;
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(40, 120, 90, 0.08);
-    transition: opacity 0.8s ease;
-    pointer-events: none;
-  }
-  #intro h1 {
-    margin: 0 0 6px 0;
-    font-size: 26px;
-    letter-spacing: 6px;
-    color: #c8ffe0;
-  }
-  #intro .sub {
-    margin-bottom: 18px;
-    font-size: 11px;
-    color: #5fae86;
-    letter-spacing: 3px;
-  }
-  #intro .row {
-    font-size: 12px;
-    line-height: 1.9;
-    color: #8fe6b5;
-  }
-  #intro .key {
-    color: #e0fff0;
-    font-weight: bold;
-  }
-  #intro .go {
-    margin-top: 18px;
-    font-size: 12px;
-    color: #eafff2;
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
-  #hint {
-    position: absolute;
-    z-index: 15;
-    bottom: 12px;
-    right: 16px;
-    color: rgba(140, 220, 180, 0.55);
-    font-size: 11px;
-    pointer-events: none;
-    letter-spacing: 1px;
-  }
-  #patchButton {
-    position: absolute;
-    z-index: 30;
-    top: 14px;
-    right: 18px;
-    padding: 7px 12px;
-    background: rgba(4, 12, 18, 0.85);
-    border: 1px solid rgba(126, 255, 168, 0.5);
-    color: #9dffc4;
-    font: 11px "Courier New", monospace;
-    letter-spacing: 2px;
-    cursor: pointer;
-  }
-  #patchButton:hover { background: rgba(20, 60, 42, 0.92); }
-  #patchPanel {
-    position: absolute;
-    z-index: 29;
-    top: 52px;
-    right: 18px;
-    width: 344px;
-    max-height: 62vh;
-    overflow-y: auto;
-    display: none;
-    background: rgba(4, 12, 18, 0.93);
-    border: 1px solid rgba(126, 255, 168, 0.45);
-    color: #a8f7c8;
-    font: 12px "Courier New", monospace;
-    line-height: 1.6;
-    padding: 16px 18px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-  }
-  #patchPanel.open { display: block; }
-  #patchPanel h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: 2px; color: #d6ffe8; }
-  #patchPanel h3 { margin: 14px 0 4px; font-size: 12px; color: #7effa8; letter-spacing: 1px; }
-  #patchPanel ul { margin: 0; padding-left: 18px; }
-  #patchPanel li { margin-bottom: 3px; }
-  #patchPanel .close { cursor: pointer; float: right; color: #7effa8; }
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; color:#bfe9d3; font-family:"Courier New",monospace; }
+  canvas { display:block; }
+  #ui { position:absolute; z-index:10; pointer-events:none; }
+  #brand { top:18px; left:22px; font-size:15px; letter-spacing:3px; color:#d8ffe9; text-shadow:0 0 12px rgba(90,255,170,.35); }
+  #brand small { display:block; font-size:10px; color:#6fbf95; letter-spacing:2px; margin-top:4px; }
+  #help { bottom:18px; left:22px; font-size:12px; line-height:1.7; color:#9fdcbb; }
+  #help b { color:#e6fff1; }
+  #viewtag { top:18px; right:22px; font-size:12px; letter-spacing:2px; padding:6px 10px; border:1px solid rgba(126,255,168,.4); background:rgba(4,12,18,.7); }
+  #nodes { position:absolute; z-index:10; right:18px; top:60px; width:250px; max-height:72vh; overflow:auto; font-size:10px; line-height:1.45; color:#8fe0b4; background:rgba(3,10,14,.72); border:1px solid rgba(126,255,168,.22); padding:10px 12px; }
+  #nodes h3 { margin:0 0 6px; font-size:10px; color:#d2ffe6; letter-spacing:1px; }
+  #nodes div:hover { color:#fff; }
+  #status { position:absolute; z-index:10; left:22px; top:70px; font-size:11px; color:#ffcf8a; }
 </style>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
   }
 }
 </script>
 </head>
 <body>
-  <canvas id="glcanvas"></canvas>
-  <canvas id="hud"></canvas>
-  <div id="intro">
-    <h1>ANGELS ZERO</h1>
-    <div class="sub">COMBAT FLIGHT SIMULATOR</div>
-    <div class="row">
-      <div><span class="key">MOUSE</span> &nbsp; STEER (POINTER / AUTO-ROLL)</div>
-      <div><span class="key">W / S</span> &nbsp; THROTTLE</div>
-      <div><span class="key">SHIFT</span> &nbsp; THRUSTER BOOST</div>
-      <div><span class="key">A / D</span> &nbsp; RUDDER</div>
-      <div><span class="key">L-CLICK / SPACE</span> &nbsp; CANNON</div>
-      <div><span class="key">R-CLICK / M</span> &nbsp; MISSILE (LOCK REQUIRED)</div>
-      <div><span class="key">R</span> &nbsp; RESET AIRCRAFT</div>
+  <div id="ui">
+    <div id="brand">ANGELS ZERO<small>STEP 1A // STEALTH FIGHTER ASSET INSPECTION</small></div>
+    <div id="help">
+      <div><b>MOUSE</b> &nbsp; deflect elevons / ailerons / rudders</div>
+      <div><b>SPACE</b> &nbsp; toggle chase view / pilot eye</div>
+      <div><b>DRAG</b> &nbsp; orbit camera (chase view only)</div>
     </div>
-    <div class="go">MOVE MOUSE TO FLY</div>
   </div>
-  <div id="hint">ANGELS ZERO // DOGFIGHT // 3 HOSTILES</div>
-  <button id="patchButton">PATCH NOTES</button>
-  <div id="patchPanel">
-    <span class="close" id="patchClose">[X]</span>
-    <h2>ANGELS ZERO // PATCH NOTES</h2>
-    <h3>v1.1.0 — DOGFIGHT UPDATE</h3>
-    <ul>
-      <li>Project rebranded as ANGELS ZERO.</li>
-      <li>Added cannon (300 rounds), 6 homing missiles and 3 respawning bandits.</li>
-      <li>Added lock-on brackets, missile warning and hit markers to the HUD.</li>
-      <li>Added this patch notes tab.</li>
-    </ul>
-    <h3>v1.0.0 — INITIAL FLIGHT MODEL</h3>
-    <ul>
-      <li>6-DOF physics with lift, drag, stall and a 9G limiter.</li>
-      <li>Procedural ocean, noise heightmap islands and atmospheric sky.</li>
-      <li>Spring-damper chase camera and high-G wingtip contrails.</li>
-      <li>Ace Combat style HUD with pitch ladder, tapes and radar.</li>
-    </ul>
-  </div>
+  <div id="viewtag">VIEW: CHASE</div>
+  <div id="status">LOADING ASSET...</div>
+  <div id="nodes"><h3>GLTF SCENE GRAPH</h3><div>loading...</div></div>
 
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-/* ============================================================================
-   0. RENDERER / SCENE / CAMERA / LIGHTS
-   ============================================================================ */
-const glCanvas = document.getElementById('glcanvas');
-const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+/* ---------------------------------------------------------------- renderer */
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.85;
+document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x8fa9bf, 0.0009);
 
-const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 30000);
-camera.position.set(0, 1405, 20);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 4000);
+const CHASE_POS = new THREE.Vector3(0, 3.5, 14);
+const CHASE_LOOK = new THREE.Vector3(0, 0.65, 0);
+const PILOT_EYE = new THREE.Vector3(0, 1.15, -3.8);
+const PILOT_LOOK = new THREE.Vector3(0, 1.02, -12);
+camera.position.copy(CHASE_POS);
+camera.lookAt(CHASE_LOOK);
 
-const FOG_COLOR = new THREE.Color(0xa9c0d4);
-const FOG_DENSITY = 0.00019;
-scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
+// Environment reflections for metallic skin / gold canopy glass.
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.16;
 
-// Sun direction points FROM the scene TOWARD the sun.
-const SUN_DIR = new THREE.Vector3(-0.35, 0.27, -0.90).normalize();
-const SUN_COLOR = new THREE.Color(0xfff0d6);
-
-const sunLight = new THREE.DirectionalLight(SUN_COLOR, 3.2);
-sunLight.position.copy(SUN_DIR).multiplyScalar(1000);
-scene.add(sunLight);
-
-const hemiLight = new THREE.HemisphereLight(0xbdd6ee, 0x3b4a40, 1.7);
-scene.add(hemiLight);
-
-const ambientLight = new THREE.AmbientLight(0xa8bdd0, 0.45);
-scene.add(ambientLight);
-
-const fillLight = new THREE.DirectionalLight(0x88aacc, 0.35);
-fillLight.position.set(0.6, -0.4, 0.7).multiplyScalar(1000);
-scene.add(fillLight);
-
-/* ============================================================================
-   1. PROCEDURAL NOISE (seeded Simplex 2D + fBm)
-   ============================================================================ */
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function createNoise2D(seed) {
-  const rnd = mulberry32(seed);
-  const p = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) p[i] = i;
-  for (let i = 255; i > 0; i--) {
-    const r = Math.floor(rnd() * (i + 1));
-    const tmp = p[i]; p[i] = p[r]; p[r] = tmp;
-  }
-  const perm = new Uint8Array(512);
-  const permMod12 = new Uint8Array(512);
-  for (let i = 0; i < 512; i++) {
-    perm[i] = p[i & 255];
-    permMod12[i] = perm[i] % 12;
-  }
-  const grad = new Float32Array([
-     1, 1,  -1, 1,   1,-1,  -1,-1,
-     1, 0,  -1, 0,   1, 0,  -1, 0,
-     0, 1,   0,-1,   0, 1,   0,-1
-  ]);
-  const F2 = 0.5 * (Math.sqrt(3) - 1);
-  const G2 = (3 - Math.sqrt(3)) / 6;
-
-  return function (xin, yin) {
-    const s = (xin + yin) * F2;
-    const i = Math.floor(xin + s);
-    const j = Math.floor(yin + s);
-    const t = (i + j) * G2;
-    const x0 = xin - (i - t);
-    const y0 = yin - (j - t);
-    let i1, j1;
-    if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
-    const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
-    const x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
-    const ii = i & 255, jj = j & 255;
-    const g0 = permMod12[ii + perm[jj]] * 2;
-    const g1 = permMod12[ii + i1 + perm[jj + j1]] * 2;
-    const g2 = permMod12[ii + 1 + perm[jj + 1]] * 2;
-    let n0 = 0, n1 = 0, n2 = 0;
-    let t0 = 0.5 - x0 * x0 - y0 * y0;
-    if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * (grad[g0] * x0 + grad[g0 + 1] * y0); }
-    let t1 = 0.5 - x1 * x1 - y1 * y1;
-    if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * (grad[g1] * x1 + grad[g1 + 1] * y1); }
-    let t2 = 0.5 - x2 * x2 - y2 * y2;
-    if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * (grad[g2] * x2 + grad[g2 + 1] * y2); }
-    return 70 * (n0 + n1 + n2);
-  };
-}
-
-function fbm(noise, x, y, octaves, lacunarity = 2.0, gain = 0.5) {
-  let amp = 1, freq = 1, sum = 0, norm = 0;
-  for (let o = 0; o < octaves; o++) {
-    sum += amp * noise(x * freq, y * freq);
-    norm += amp;
-    amp *= gain;
-    freq *= lacunarity;
-  }
-  return sum / norm;
-}
-
-/* ============================================================================
-   2. PROCEDURAL TEXTURES (ocean normal maps, terrain albedo)
-   ============================================================================ */
-function makeNormalMap(size, seed, scale) {
-  const noise = createNoise2D(seed);
-  const h = new Float32Array(size * size);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      h[y * size + x] = fbm(noise, (x / size) * scale, (y / size) * scale, 4);
-    }
-  }
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = size;
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const l = h[y * size + ((x - 1 + size) % size)];
-      const r = h[y * size + ((x + 1) % size)];
-      const d = h[((y - 1 + size) % size) * size + x];
-      const u = h[((y + 1) % size) * size + x];
-      const nx = (l - r) * 2.2, ny = (d - u) * 2.2, nz = 1.0;
-      const inv = 1 / Math.hypot(nx, ny, nz);
-      const idx = (y * size + x) * 4;
-      img.data[idx]     = (nx * inv * 0.5 + 0.5) * 255;
-      img.data[idx + 1] = (ny * inv * 0.5 + 0.5) * 255;
-      img.data[idx + 2] = (nz * inv * 0.5 + 0.5) * 255;
-      img.data[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  return tex;
-}
-
-function makeTerrainTexture(size, seed) {
-  const noise = createNoise2D(seed);
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = size;
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const n = fbm(noise, (x / size) * 9, (y / size) * 9, 5);
-      const v = 0.72 + n * 0.28;
-      const idx = (y * size + x) * 4;
-      img.data[idx]     = Math.max(0, Math.min(255, 210 * v));
-      img.data[idx + 1] = Math.max(0, Math.min(255, 214 * v));
-      img.data[idx + 2] = Math.max(0, Math.min(255, 200 * v));
-      img.data[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(10, 10);
-  return tex;
-}
-
-/* ============================================================================
-   3. ATMOSPHERIC SKY + OCEAN
-   ============================================================================ */
-const skyUniforms = {
-  uSun: { value: SUN_DIR },
-  uSunColor: { value: new THREE.Vector3(SUN_COLOR.r, SUN_COLOR.g, SUN_COLOR.b) }
-};
-
-const skyMaterial = new THREE.ShaderMaterial({
-  uniforms: skyUniforms,
-  side: THREE.BackSide,
-  depthWrite: false,
-  fog: false,
-  vertexShader: `
-    varying vec3 vDir;
-    void main() {
-      vDir = position;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    varying vec3 vDir;
-    uniform vec3 uSun;
-    uniform vec3 uSunColor;
-    void main() {
-      vec3 d = normalize(vDir);
-      float h = clamp(d.y, -0.1, 1.0);
-      float t = pow(clamp(h + 0.05, 0.0, 1.0), 0.42);
-      vec3 horizon = vec3(0.60, 0.72, 0.85);
-      vec3 zenith  = vec3(0.05, 0.19, 0.46);
-      vec3 col = mix(horizon, zenith, t);
-      float sd = max(dot(d, normalize(uSun)), 0.0);
-      col += uSunColor * pow(sd, 220.0) * 6.0;
-      col += uSunColor * pow(sd, 9.0) * 0.38;
-      float hz = pow(1.0 - t, 3.0) * pow(sd, 2.0);
-      col += vec3(0.40, 0.20, 0.08) * hz * 0.85;
-      // subtle lower-hemisphere darkening below horizon
-      col *= mix(0.78, 1.0, smoothstep(-0.12, 0.02, d.y));
-      gl_FragColor = vec4(col, 1.0);
+/* -------------------------------------------------------------- sky + sun */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite:false, fog:false,
+  uniforms:{ sun:{ value:new THREE.Vector3(-0.4,0.55,-0.7).normalize() } },
+  vertexShader:`varying vec3 vD; void main(){ vD=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`
+    varying vec3 vD; uniform vec3 sun;
+    void main(){
+      vec3 d=normalize(vD);
+      float h=clamp(d.y*0.5+0.5,0.0,1.0);
+      vec3 col=mix(vec3(0.78,0.86,0.94), vec3(0.10,0.30,0.62), pow(h,0.9));
+      float s=max(dot(d,normalize(sun)),0.0);
+      col += vec3(1.0,0.86,0.62)*pow(s,180.0)*4.0;
+      col += vec3(1.0,0.78,0.48)*pow(s,12.0)*0.30;
+      gl_FragColor=vec4(col,1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
-    }
-  `
+    }`
 });
-const sky = new THREE.Mesh(new THREE.SphereGeometry(24000, 32, 16), skyMaterial);
-sky.renderOrder = -1000;
+const sky = new THREE.Mesh(new THREE.SphereGeometry(1800,32,20), skyMat);
 scene.add(sky);
 
-const normalMapA = makeNormalMap(256, 1337, 6.0);
-const normalMapB = makeNormalMap(256, 90210, 13.0);
+const sun = new THREE.DirectionalLight(0xfff1d8, 1.2);
+sun.position.set(-300, 420, -520);
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbcd9f2, 0x2b3230, 0.55));
+scene.add(new THREE.AmbientLight(0x93a9bd, 0.10));
 
-const oceanUniforms = {
-  uTime: { value: 0 },
-  uN1: { value: normalMapA },
-  uN2: { value: normalMapB },
-  uSun: { value: SUN_DIR },
-  uSunColor: { value: new THREE.Vector3(1.0, 0.88, 0.70) },
-  uSky: { value: new THREE.Vector3(0.30, 0.44, 0.62) },
-  uFog: { value: new THREE.Vector3(FOG_COLOR.r, FOG_COLOR.g, FOG_COLOR.b) },
-  uFogD: { value: FOG_DENSITY },
-  uCam: { value: new THREE.Vector3() }
-};
+/* ------------------------------------------------------------ hangar deck */
+const deckMat = new THREE.MeshStandardMaterial({ color:0x1c252c, metalness:0.65, roughness:0.55 });
+const deck = new THREE.Mesh(new THREE.CylinderGeometry(34,34,0.35,64), deckMat);
+deck.position.y = -2.7;
+scene.add(deck);
+const grid = new THREE.GridHelper(68, 34, 0x3f6b58, 0x26403a);
+grid.position.y = -2.5;
+grid.material.transparent = true;
+grid.material.opacity = 0.45;
+scene.add(grid);
 
-const oceanMaterial = new THREE.ShaderMaterial({
-  uniforms: oceanUniforms,
-  vertexShader: `
-    varying vec3 vWorldPos;
-    void main() {
-      vec4 wp = modelMatrix * vec4(position, 1.0);
-      vWorldPos = wp.xyz;
-      gl_Position = projectionMatrix * viewMatrix * wp;
-    }
-  `,
-  fragmentShader: `
-    varying vec3 vWorldPos;
-    uniform float uTime;
-    uniform sampler2D uN1;
-    uniform sampler2D uN2;
-    uniform vec3 uSun;
-    uniform vec3 uSunColor;
-    uniform vec3 uSky;
-    uniform vec3 uFog;
-    uniform float uFogD;
-    uniform vec3 uCam;
-    void main() {
-      vec2 p = vWorldPos.xz;
-      vec2 uv1 = p * 0.0016 + vec2(uTime * 0.006, uTime * 0.008);
-      vec2 uv2 = p * 0.0043 + vec2(-uTime * 0.011, uTime * 0.007);
-      vec3 n1 = texture2D(uN1, uv1).rgb * 2.0 - 1.0;
-      vec3 n2 = texture2D(uN2, uv2).rgb * 2.0 - 1.0;
-      vec3 N = normalize(vec3((n1.x + n2.x) * 0.55, 1.0, (n1.y + n2.y) * 0.55));
-      vec3 V = normalize(uCam - vWorldPos);
-      vec3 L = normalize(uSun);
-      vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), 190.0);
-      float sparkle = pow(max(dot(N, H), 0.0), 1400.0) * 1.5;
-      float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
-      vec3 deep = vec3(0.010, 0.045, 0.082);
-      vec3 shallow = vec3(0.028, 0.115, 0.165);
-      vec3 base = mix(deep, shallow, clamp(max(dot(N, V), 0.0) * 0.5 + 0.18, 0.0, 1.0));
-      vec3 col = base + uSky * fres * 0.55 + uSunColor * (spec * 2.0 + sparkle);
-      float dist = length(uCam - vWorldPos);
-      float f = 1.0 - exp(-uFogD * uFogD * dist * dist);
-      col = mix(col, uFog, f);
-      gl_FragColor = vec4(col, 1.0);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-    }
-  `
-});
-const ocean = new THREE.Mesh(new THREE.PlaneGeometry(24000, 24000, 1, 1), oceanMaterial);
-ocean.rotation.x = -Math.PI / 2;
-ocean.position.y = 0;
-scene.add(ocean);
+/* -------------------------------------------------------------- GLTF load */
+const loader = new GLTFLoader();
+let model = null;
+const pivots = {};
+let firstPerson = false;
 
-/* ============================================================================
-   4. PROCEDURAL MOUNTAINOUS ISLAND (Simplex heightmap)
-   ============================================================================ */
-function createIsland(centerX, centerZ) {
-  const size = 8000;
-  const seg = 220;
-  const geo = new THREE.PlaneGeometry(size, size, seg, seg);
-  const pos = geo.attributes.position;
-  const noise = createNoise2D(4242);
-  const ridgeNoise = createNoise2D(991);
-  const half = size / 2;
-  const colors = new Float32Array(pos.count * 3);
-  const grass = new THREE.Color(0x4b6b3c);
-  const rock  = new THREE.Color(0x6d6a62);
-  const sand  = new THREE.Color(0xa89772);
-  const snow  = new THREE.Color(0xc9d2d6);
-  const tmp = new THREE.Color();
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i); // pre-rotation plane Y
-    const u = x / size, v = y / size;
-    const nx = u * 6.0, ny = v * 6.0;
-
-    // radial island falloff
-    const r = Math.sqrt(u * u + v * v) * 2.0;
-    let falloff = 1.0 - THREE.MathUtils.smoothstep(r, 0.25, 1.0);
-    falloff = Math.max(0, falloff);
-
-    // ridged multifractal for mountain spines
-    const ridge = 1.0 - Math.abs(ridgeNoise(nx * 1.7, ny * 1.7));
-    const base = fbm(noise, nx, ny, 6) * 0.5 + 0.5;
-    const peaks = Math.pow(ridge, 2.2) * 0.55 + base * 0.65;
-    let height = peaks * 1550 * falloff;
-    // beach shelf flatten near sea level
-    if (height < 90) height *= 0.35;
-    pos.setZ(i, height);
-  }
-
-  geo.computeVertexNormals();
-  const nrm = geo.attributes.normal;
-
-  for (let i = 0; i < pos.count; i++) {
-    const height = pos.getZ(i);
-    const slope = 1.0 - Math.abs(nrm.getZ(i)); // normal.z near 1 => flat after pre-rotation normal
-    if (height < 70) {
-      tmp.copy(sand).lerp(grass, THREE.MathUtils.smoothstep(height, 10, 80));
-    } else if (height < 950) {
-      tmp.copy(grass).lerp(rock, THREE.MathUtils.smoothstep(slope, 0.22, 0.55) * 0.65 +
-                                    THREE.MathUtils.smoothstep(height, 450, 950) * 0.35);
-    } else {
-      tmp.copy(rock).lerp(snow, THREE.MathUtils.smoothstep(height, 950, 1350));
-    }
-    // add subtle noise variation
-    const v = 0.86 + 0.14 * (fbm(noise, pos.getX(i) / size * 60, pos.getY(i) / size * 60, 3) * 0.5 + 0.5);
-    colors[i * 3] = tmp.r * v;
-    colors[i * 3 + 1] = tmp.g * v;
-    colors[i * 3 + 2] = tmp.b * v;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-  const mat = new THREE.MeshStandardMaterial({
-    map: makeTerrainTexture(256, 777),
-    vertexColors: true,
-    roughness: 0.96,
-    metalness: 0.0
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(centerX, 0, centerZ);
-  return mesh;
-}
-const island = createIsland(1600, -5200);
-scene.add(island);
-
-// A second smaller island for depth
-const island2 = createIsland(-4200, -9000);
-island2.scale.set(0.62, 0.75, 0.62);
-scene.add(island2);
-
-/* ============================================================================
-   5. PROCEDURAL 5TH-GEN FIGHTER (primitives grouped)
-   ============================================================================ */
-const jetMat = new THREE.MeshStandardMaterial({ color: 0x6a727d, metalness: 0.55, roughness: 0.42 });
-const jetDark = new THREE.MeshStandardMaterial({ color: 0x1c2128, metalness: 0.45, roughness: 0.55 });
-const jetEdge = new THREE.MeshStandardMaterial({ color: 0x4a525c, metalness: 0.5, roughness: 0.5 });
-const canopyMat = new THREE.MeshStandardMaterial({
-  color: 0x0d2033, metalness: 0.6, roughness: 0.12, transparent: true, opacity: 0.9
-});
-
-function makePlanform(pointsXZ, thickness, material) {
-  const shape = new THREE.Shape();
-  shape.moveTo(pointsXZ[0][0], pointsXZ[0][1]);
-  for (let i = 1; i < pointsXZ.length; i++) shape.lineTo(pointsXZ[i][0], pointsXZ[i][1]);
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 1 });
-  geo.rotateX(Math.PI / 2);
-  geo.translate(0, thickness / 2, 0);
-  return new THREE.Mesh(geo, material);
-}
-
-function makeFin(pointsZY, thickness, material, side) {
-  const shape = new THREE.Shape();
-  shape.moveTo(pointsZY[0][0], pointsZY[0][1]);
-  for (let i = 1; i < pointsZY.length; i++) shape.lineTo(pointsZY[i][0], pointsZY[i][1]);
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 1 });
-  geo.rotateY(-Math.PI / 2);
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.position.set(side * 1.5, 0.95, 0);
-  mesh.rotation.z = -side * 0.28;
-  return mesh;
-}
-
-const jet = new THREE.Group();
-
-// Fuselage
-const fusGeo = new THREE.CylinderGeometry(1.35, 0.95, 18, 12);
-fusGeo.rotateX(Math.PI / 2);
-jet.add(new THREE.Mesh(fusGeo, jetMat));
-
-// Nose cone (tip toward -Z)
-const noseGeo = new THREE.ConeGeometry(0.95, 4.6, 12);
-noseGeo.rotateX(-Math.PI / 2);
-const nose = new THREE.Mesh(noseGeo, jetMat);
-nose.position.z = -11.3;
-jet.add(nose);
-
-// Upper spine
-const spine = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.5, 11), jetEdge);
-spine.position.set(0, 1.15, 0.5);
-jet.add(spine);
-
-// Canopy
-const canopy = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), canopyMat);
-canopy.scale.set(1.05, 0.72, 3.1);
-canopy.position.set(0, 1.15, -4.2);
-jet.add(canopy);
-
-// Main wings (swept delta trapezoids)
-const wingR = makePlanform([[0.9, -2.6], [9.0, 3.0], [9.0, 5.2], [0.9, 5.6]], 0.38, jetMat);
-const wingL = makePlanform([[-0.9, -2.6], [-9.0, 3.0], [-9.0, 5.2], [-0.9, 5.6]], 0.38, jetMat);
-jet.add(wingR, wingL);
-
-// Horizontal stabilizers
-const stabR = makePlanform([[0.8, 5.8], [4.3, 8.0], [4.3, 9.3], [0.8, 9.7]], 0.26, jetEdge);
-const stabL = makePlanform([[-0.8, 5.8], [-4.3, 8.0], [-4.3, 9.3], [-0.8, 9.7]], 0.26, jetEdge);
-jet.add(stabR, stabL);
-
-// Canted twin vertical tails
-const finGeoPts = [[4.4, 0], [9.6, 0], [8.9, 4.7], [6.1, 4.7]];
-jet.add(makeFin(finGeoPts, 0.26, jetEdge, 1));
-jet.add(makeFin(finGeoPts, 0.26, jetEdge, -1));
-
-// Engine intakes (dark boxes under the wing roots)
-for (const s of [-1, 1]) {
-  const intake = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.85, 4.2), jetDark);
-  intake.position.set(s * 1.7, -0.85, -2.4);
-  jet.add(intake);
-}
-
-// Engine nozzles + exhaust flames
-const exhausts = [];
-for (const s of [-1, 1]) {
-  const nozGeo = new THREE.CylinderGeometry(0.82, 0.72, 2.0, 16);
-  nozGeo.rotateX(Math.PI / 2);
-  const nozzle = new THREE.Mesh(nozGeo, jetDark);
-  nozzle.position.set(s * 1.0, 0, 9.6);
-  jet.add(nozzle);
-
-  const flameGeo = new THREE.ConeGeometry(0.62, 1.0, 16, 1, true);
-  flameGeo.rotateX(Math.PI / 2); // tip toward +Z (rear)
-  const flameMat = new THREE.MeshBasicMaterial({
-    color: 0x4fb0ff, transparent: true, opacity: 0.85,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
-  });
-  const flame = new THREE.Mesh(flameGeo, flameMat);
-  flame.position.set(s * 1.0, 0, 10.6);
-  jet.add(flame);
-
-  const coreGeo = new THREE.ConeGeometry(0.3, 1.0, 12, 1, true);
-  coreGeo.rotateX(Math.PI / 2);
-  const core = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({
-    color: 0xbfe4ff, transparent: true, opacity: 0.95,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
-  }));
-  core.position.set(s * 1.0, 0, 10.6);
-  jet.add(core);
-
-  exhausts.push({ flame, core, x: s * 1.0 });
-}
-
-const exhaustLight = new THREE.PointLight(0xff7a2a, 0, 60, 2);
-exhaustLight.position.set(0, 0, 11);
-jet.add(exhaustLight);
-
-// Navigation lights
-for (const s of [-1, 1]) {
-  const nav = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 8, 8),
-    new THREE.MeshBasicMaterial({ color: s < 0 ? 0xff3030 : 0x30ff60 })
-  );
-  nav.position.set(s * 9.0, 0.1, 4.6);
-  jet.add(nav);
-}
-
-scene.add(jet);
-
-/* ============================================================================
-   6. WINGTIP CONTRAIL RIBBONS
-   ============================================================================ */
-class Ribbon {
-  constructor(max = 110) {
-    this.max = max;
-    this.life = 4.0;
-    this.points = [];
-    const positions = new Float32Array(max * 2 * 3);
-    const colors = new Float32Array(max * 2 * 4);
-    const indices = new Uint16Array((max - 1) * 6);
-    for (let i = 0; i < max - 1; i++) {
-      const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
-      indices[i * 6] = a; indices[i * 6 + 1] = b; indices[i * 6 + 2] = c;
-      indices[i * 6 + 3] = b; indices[i * 6 + 4] = d; indices[i * 6 + 5] = c;
-    }
-    this.geo = new THREE.BufferGeometry();
-    this.geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.geo.setAttribute('color', new THREE.BufferAttribute(colors, 4));
-    this.geo.setIndex(new THREE.BufferAttribute(indices, 1));
-    this.mat = new THREE.MeshBasicMaterial({
-      vertexColors: true, transparent: true, side: THREE.DoubleSide,
-      depthWrite: false, blending: THREE.NormalBlending
-    });
-    this.mesh = new THREE.Mesh(this.geo, this.mat);
-    this.mesh.frustumCulled = false;
-    scene.add(this.mesh);
-  }
-  emit(pos, base, now) {
-    this.points.unshift({ p: pos.clone(), born: now, base: base });
-    if (this.points.length > this.max) this.points.pop();
-  }
-  update(cameraRight, now) {
-    const pos = this.geo.attributes.position.array;
-    const col = this.geo.attributes.color.array;
-    for (let i = 0; i < this.max; i++) {
-      const item = this.points[i];
-      let px = 0, py = 0, pz = 0, strength = 0;
-      if (item) {
-        const age = now - item.born;
-        const fade = Math.max(0, 1 - age / this.life);
-        strength = item.base * fade * Math.max(0, 1 - i / this.max);
-        px = item.p.x; py = item.p.y; pz = item.p.z;
-      }
-      const halfW = 1.35 * (0.25 + 0.75 * strength) * (1 - i / this.max);
-      const ax = px + cameraRight.x * halfW, ay = py + cameraRight.y * halfW, az = pz + cameraRight.z * halfW;
-      const bx = px - cameraRight.x * halfW, by = py - cameraRight.y * halfW, bz = pz - cameraRight.z * halfW;
-      const o = i * 6;
-      pos[o] = ax; pos[o + 1] = ay; pos[o + 2] = az;
-      pos[o + 3] = bx; pos[o + 4] = by; pos[o + 5] = bz;
-      const c = i * 8;
-      col[c] = 0.92; col[c + 1] = 0.96; col[c + 2] = 1.0; col[c + 3] = strength;
-      col[c + 4] = 0.92; col[c + 5] = 0.96; col[c + 6] = 1.0; col[c + 7] = strength;
-    }
-    this.geo.attributes.position.needsUpdate = true;
-    this.geo.attributes.color.needsUpdate = true;
-  }
-}
-const ribbonL = new Ribbon();
-const ribbonR = new Ribbon();
-const WINGTIP_L = new THREE.Vector3(-9.0, 0.05, 4.4);
-const WINGTIP_R = new THREE.Vector3(9.0, 0.05, 4.4);
-
-/* ============================================================================
-   7. COMBAT SYSTEM — enemy jets, cannon, missiles, explosions
-   ============================================================================ */
-const terrainContacts = [
-  { pos: new THREE.Vector3(1600, 900, -5200), kind: 'terrain' },
-  { pos: new THREE.Vector3(-4200, 700, -9000), kind: 'terrain' }
-];
-
-const combat = {
-  ammo: 300, missiles: 6,
-  reload: 0, missileReload: 0,
-  gunCooldown: 0,
-  lockTarget: null,
-  score: 0, health: 100, dead: false, deadTimer: 0,
-  hitFlash: 0, missileWarning: 0
-};
-
-/* ---- Explosion particle pool ---- */
-const PARTICLE_MAX = 170;
-const particleGeo = new THREE.IcosahedronGeometry(1, 0);
-const particles = [];
-for (let i = 0; i < PARTICLE_MAX; i++) {
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0xffaa33, transparent: true, opacity: 1,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  });
-  const mesh = new THREE.Mesh(particleGeo, mat);
-  mesh.visible = false;
-  scene.add(mesh);
-  particles.push({ mesh, active: false, vel: new THREE.Vector3(), life: 0, maxLife: 1 });
-}
-function spawnExplosion(pos, scale = 1) {
-  let spawned = 0;
-  const count = Math.floor(20 * scale);
-  for (const p of particles) {
-    if (spawned >= count) break;
-    if (p.active) continue;
-    p.active = true;
-    p.mesh.visible = true;
-    p.mesh.position.copy(pos);
-    p.mesh.material.color.setHex(Math.random() < 0.55 ? 0xffb43a : 0xff5a1e);
-    p.mesh.material.opacity = 1;
-    const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    p.vel.copy(dir).multiplyScalar((28 + Math.random() * 70) * scale);
-    p.maxLife = p.life = 0.55 + Math.random() * 0.85;
-    p.mesh.scale.setScalar(0.7 + Math.random() * 1.6 * scale);
-    spawned++;
-  }
-}
-
-/* ---- Cannon projectile pool ---- */
-const BULLET_MAX = 140;
-const bulletGeo = new THREE.CylinderGeometry(0.075, 0.075, 2.8, 5);
-bulletGeo.rotateX(Math.PI / 2);
-const bulletMat = new THREE.MeshBasicMaterial({
-  color: 0xffe6a0, transparent: true, opacity: 0.95,
-  blending: THREE.AdditiveBlending, depthWrite: false
-});
-const bullets = [];
-for (let i = 0; i < BULLET_MAX; i++) {
-  const mesh = new THREE.Mesh(bulletGeo, bulletMat);
-  mesh.visible = false;
-  scene.add(mesh);
-  bullets.push({ mesh, active: false, vel: new THREE.Vector3(), life: 0 });
-}
-function fireCannon() {
-  if (combat.dead || combat.ammo <= 0 || combat.reload > 0 || combat.gunCooldown > 0) return;
-  combat.gunCooldown = 0.085;
-  combat.ammo--;
-  const b = bullets.find(x => !x.active);
-  if (!b) return;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(state.quaternion);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(state.quaternion);
-  const side = Math.random() < 0.5 ? -1 : 1;
-  const dir = fwd.clone()
-    .addScaledVector(right, (Math.random() - 0.5) * 0.0022 + side * 0.0008)
-    .addScaledVector(up, (Math.random() - 0.5) * 0.0016)
-    .normalize();
-  b.mesh.position.copy(state.position).addScaledVector(fwd, 12).addScaledVector(right, side * 1.0).addScaledVector(up, -0.35);
-  b.mesh.quaternion.copy(state.quaternion);
-  b.vel.copy(dir).multiplyScalar(1500).addScaledVector(state.velocity, 0.65);
-  b.life = 1.5;
-  b.active = true;
-  b.mesh.visible = true;
-  if (combat.ammo <= 0) combat.reload = 5;
-}
-
-/* ---- Missile pool (player + enemy) ---- */
-const MISSILE_MAX = 18;
-const missileBodyGeo = new THREE.CylinderGeometry(0.24, 0.24, 3.4, 8);
-missileBodyGeo.rotateX(Math.PI / 2);
-const missileBodyMat = new THREE.MeshStandardMaterial({ color: 0xdfe6ee, metalness: 0.35, roughness: 0.4 });
-const missileFlameGeo = new THREE.ConeGeometry(0.32, 1.8, 8, 1, true);
-missileFlameGeo.rotateX(Math.PI / 2);
-const missileFlameMat = new THREE.MeshBasicMaterial({
-  color: 0xffa040, transparent: true, opacity: 0.9,
-  blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
-});
-const missiles = [];
-for (let i = 0; i < MISSILE_MAX; i++) {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(missileBodyGeo, missileBodyMat));
-  const flame = new THREE.Mesh(missileFlameGeo, missileFlameMat);
-  flame.position.z = 2.4;
-  g.add(flame);
-  g.visible = false;
-  scene.add(g);
-  missiles.push({ mesh: g, active: false, vel: new THREE.Vector3(), target: null, life: 0, enemy: false });
-}
-const MISSILE_NOSE = new THREE.Vector3(0, 0, -1);
-
-function fireMissile() {
-  if (combat.dead || combat.missiles <= 0 || combat.missileReload > 0 || !combat.lockTarget) return;
-  const m = missiles.find(x => !x.active);
-  if (!m) return;
-  combat.missiles--;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(state.quaternion);
-  const side = combat.missiles % 2 === 0 ? 1 : -1;
-  m.mesh.position.copy(state.position).addScaledVector(fwd, 8).addScaledVector(right, side * 2.2);
-  m.mesh.quaternion.copy(state.quaternion);
-  m.vel.copy(fwd).multiplyScalar(230).addScaledVector(state.velocity, 0.5);
-  m.target = combat.lockTarget;
-  m.life = 9;
-  m.enemy = false;
-  m.active = true;
-  m.mesh.visible = true;
-  if (combat.missiles <= 0) combat.missileReload = 5;
-}
-
-function fireEnemyMissile(fromPos, fromQuat) {
-  const m = missiles.find(x => !x.active);
-  if (!m) return;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(fromQuat);
-  m.mesh.position.copy(fromPos).addScaledVector(fwd, 6);
-  m.mesh.quaternion.copy(fromQuat);
-  m.vel.copy(fwd).multiplyScalar(200);
-  m.target = null;
-  m.life = 7;
-  m.enemy = true;
-  m.active = true;
-  m.mesh.visible = true;
-}
-
-/* ---- Enemy fighter jets ---- */
-const enemyBodyMat = new THREE.MeshStandardMaterial({ color: 0x7a4136, metalness: 0.5, roughness: 0.5 });
-const enemyDarkMat = new THREE.MeshStandardMaterial({ color: 0x21181a, metalness: 0.45, roughness: 0.55 });
-const enemyGlowMat = new THREE.MeshBasicMaterial({
-  color: 0xff6a1e, transparent: true, opacity: 0.9,
-  blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
-});
-function createEnemyMesh() {
-  const g = new THREE.Group();
-  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 0.72, 15, 10), enemyBodyMat);
-  fuse.geometry.rotateX(Math.PI / 2);
-  g.add(fuse);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.72, 3.4, 10), enemyBodyMat);
-  nose.geometry.rotateX(-Math.PI / 2);
-  nose.position.z = -9.2;
-  g.add(nose);
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(15, 0.28, 4.0), enemyBodyMat);
-  wing.position.z = 1.2;
-  g.add(wing);
-  const stab = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.22, 2.4), enemyDarkMat);
-  stab.position.z = 6.3;
-  g.add(stab);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.0, 3.2), enemyBodyMat);
-  fin.position.set(0, 1.5, 5.9);
-  fin.rotation.x = -0.28;
-  g.add(fin);
-  const glow = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 10, 1, true), enemyGlowMat);
-  glow.geometry.rotateX(Math.PI / 2);
-  glow.position.z = 8.6;
-  g.add(glow);
-  g.scale.setScalar(0.95);
-  return g;
-}
-
-class Enemy {
-  constructor(i) {
-    this.index = i;
-    this.mesh = createEnemyMesh();
-    this.pos = new THREE.Vector3();
-    this.quat = new THREE.Quaternion();
-    this.speed = 170 + i * 20;
-    this.speed = THREE.MathUtils.clamp(this.speed, 170, 225);
-    this.alive = true;
-    this.respawnTimer = 0;
-    this.fireTimer = 3 + i * 1.6;
-    this.phase = Math.random() * Math.PI * 2;
-    this.hp = 100;
-    scene.add(this.mesh);
-    this.respawn();
-  }
-  respawn() {
-    const a = (this.index / 3) * Math.PI * 2 + Math.random() * 0.7;
-    this.pos.set(Math.sin(a) * 2700, 1150 + Math.random() * 550, Math.cos(a) * 2700 - 2300);
-    this.quat.identity();
-    this.hp = 100;
-    this.alive = true;
-    this.mesh.visible = true;
-    this.mesh.position.copy(this.pos);
-    this.mesh.quaternion.copy(this.quat);
-    this.fireTimer = 3 + Math.random() * 3;
-  }
-  damage(n) {
-    if (!this.alive) return;
-    this.hp -= n;
-    if (this.hp <= 0) {
-      this.alive = false;
-      this.mesh.visible = false;
-      this.respawnTimer = 7 + Math.random() * 4;
-      spawnExplosion(this.pos, 1.8);
-      combat.score += 100;
-      if (combat.lockTarget === this) combat.lockTarget = null;
-    }
-    combat.hitFlash = 0.16;
-  }
-  update(dt, now) {
-    if (!this.alive) {
-      this.respawnTimer -= dt;
-      if (this.respawnTimer <= 0) this.respawn();
-      return;
-    }
-    const toPlayer = state.position.clone().sub(this.pos);
-    const dist = toPlayer.length();
-    const dir = toPlayer.normalize();
-    dir.x += Math.sin(now * 0.55 + this.phase) * 0.30;
-    dir.y += Math.sin(now * 0.42 + this.phase * 1.7) * 0.14;
-    dir.normalize();
-    if (dist < 850) dir.addScaledVector(toPlayer, -0.45).normalize();
-    dir.y = THREE.MathUtils.clamp(dir.y, -0.72, 0.72);
-    const mat = new THREE.Matrix4().lookAt(new THREE.Vector3(0, 0, 0), dir, new THREE.Vector3(0, 1, 0));
-    const targetQ = new THREE.Quaternion().setFromRotationMatrix(mat);
-    this.quat.slerp(targetQ, Math.min(1, 1.3 * dt));
-    this.quat.normalize();
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quat);
-    this.pos.addScaledVector(fwd, this.speed * dt);
-    if (this.pos.y < 260) this.pos.y = 260;
-    this.mesh.position.copy(this.pos);
-    this.mesh.quaternion.copy(this.quat);
-    this.fireTimer -= dt;
-    if (this.fireTimer <= 0 && dist < 5000 && !combat.dead) {
-      this.fireTimer = 4 + Math.random() * 4;
-      fireEnemyMissile(this.pos, this.quat);
-    }
-  }
-}
-const enemies = [new Enemy(0), new Enemy(1), new Enemy(2)];
-
-function updateLock() {
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  let best = null, bestScore = Infinity;
-  for (const e of enemies) {
-    if (!e.alive) continue;
-    const to = e.pos.clone().sub(state.position);
-    const d = to.length();
-    if (d > 7500 || d < 80) continue;
-    const alignment = to.normalize().dot(fwd);
-    if (alignment < 0.94) continue; // ~20 degree seeker cone
-    const score = d + (1 - alignment) * 9000;
-    if (score < bestScore) { bestScore = score; best = e; }
-  }
-  combat.lockTarget = best;
-}
-
-function updateCombat(dt, now) {
-  combat.gunCooldown = Math.max(0, combat.gunCooldown - dt);
-  combat.hitFlash = Math.max(0, combat.hitFlash - dt);
-  combat.missileWarning = Math.max(0, combat.missileWarning - dt);
-  if (combat.reload > 0) { combat.reload -= dt; if (combat.reload <= 0) combat.ammo = 300; }
-  if (combat.missileReload > 0) { combat.missileReload -= dt; if (combat.missileReload <= 0) combat.missiles = 6; }
-
-  if (combat.dead) {
-    combat.deadTimer -= dt;
-    if (combat.deadTimer <= 0) resetAircraft();
-    return;
-  }
-
-  for (const e of enemies) e.update(dt, now);
-  updateLock();
-  if (keys.fire) fireCannon();
-
-  // Cannon rounds
-  for (const b of bullets) {
-    if (!b.active) continue;
-    b.mesh.position.addScaledVector(b.vel, dt);
-    b.life -= dt;
-    if (b.life <= 0) { b.active = false; b.mesh.visible = false; continue; }
-    for (const e of enemies) {
-      if (!e.alive) continue;
-      if (b.mesh.position.distanceToSquared(e.pos) < 26 * 26) {
-        e.damage(11);
-        spawnExplosion(b.mesh.position, 0.22);
-        b.active = false;
-        b.mesh.visible = false;
-        break;
-      }
-    }
-  }
-
-  // Missiles
-  for (const m of missiles) {
-    if (!m.active) continue;
-    if (m.enemy) {
-      const speed = m.vel.length();
-      const desired = state.position.clone().sub(m.mesh.position).normalize();
-      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 2.2 * dt)).normalize();
-      m.vel.copy(current).multiplyScalar(Math.min(520, speed + 260 * dt));
-      if (m.mesh.position.distanceToSquared(state.position) < 4200) combat.missileWarning = 1.6;
-    } else if (m.target && m.target.alive) {
-      const speed = m.vel.length();
-      const desired = m.target.pos.clone().sub(m.mesh.position).normalize();
-      const current = m.vel.clone().normalize().lerp(desired, Math.min(1, 3.6 * dt)).normalize();
-      m.vel.copy(current).multiplyScalar(Math.min(920, speed + 520 * dt));
-    }
-    m.mesh.position.addScaledVector(m.vel, dt);
-    m.mesh.quaternion.setFromUnitVectors(MISSILE_NOSE, m.vel.clone().normalize());
-    m.life -= dt;
-
-    let hit = false;
-    if (m.enemy) {
-      if (m.mesh.position.distanceToSquared(state.position) < 50 * 50) {
-        spawnExplosion(m.mesh.position, 0.9);
-        combat.health -= 24;
-        combat.hitFlash = 0.3;
-        if (combat.health <= 0) {
-          combat.health = 0;
-          combat.dead = true;
-          combat.deadTimer = 4;
-          spawnExplosion(state.position, 2.6);
+function prepare(gltf){
+  model = gltf.scene;
+  model.traverse(o => {
+    // Console proof of every loaded node name.
+    console.log('[ANGELS_ZERO NODE]', o.name || '(unnamed)');
+    if (o.isMesh) {
+      o.frustumCulled = false;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m) continue;
+        if (/Glass|HUD/i.test(o.name)) {
+          m.transparent = true; m.depthWrite = false; m.side = THREE.DoubleSide;
         }
-        hit = true;
+        if (m.isMeshStandardMaterial) m.envMapIntensity = 0.22;
       }
-    } else if (m.target && m.target.alive && m.mesh.position.distanceToSquared(m.target.pos) < 55 * 55) {
-      m.target.damage(100);
-      spawnExplosion(m.mesh.position, 0.7);
-      hit = true;
     }
-    if (hit || m.life <= 0) {
-      if (!hit && m.life <= 0) spawnExplosion(m.mesh.position, 0.5);
-      m.active = false;
-      m.mesh.visible = false;
-    }
-  }
-
-  // Explosion particles
-  for (const p of particles) {
-    if (!p.active) continue;
-    p.mesh.position.addScaledVector(p.vel, dt);
-    p.vel.multiplyScalar(1 - 1.2 * dt);
-    p.life -= dt;
-    if (p.life <= 0) {
-      p.active = false;
-      p.mesh.visible = false;
-      continue;
-    }
-    p.mesh.material.opacity = Math.min(1, p.life / p.maxLife);
-    p.mesh.rotation.x += dt * 2;
-    p.mesh.rotation.y += dt * 3;
-  }
-}
-
-/* ============================================================================
-   8. FLIGHT STATE, INPUT, AND 6-DOF PHYSICS
-   ============================================================================ */
-const MASS = 15000;          // kg
-const WING_AREA = 78;        // m^2
-const GRAVITY = 9.81;        // m/s^2
-const CL_ALPHA = 5.2;        // per radian
-const CL0 = 0.13;
-const CD0 = 0.018;
-const K_INDUCED = 0.09;
-const STALL_AOA = 0.28;      // rad (~16 deg)
-const THRUST_DRY = 135000;   // N
-const THRUST_AB = 155000;    // N
-
-const state = {
-  position: new THREE.Vector3(0, 1400, 0),
-  velocity: new THREE.Vector3(0, 0, -190),
-  quaternion: new THREE.Quaternion(),
-  throttle: 0.62,
-  pitchRate: 0,
-  rollRate: 0,
-  yawRate: 0,
-  gLoad: 1,
-  alpha: 0,
-  speed: 190,
-  afterburner: 0,
-  heading: 0,
-  pitch: 0,
-  bank: 0
-};
-
-function resetAircraft() {
-  state.position.set(0, 1400, 0);
-  state.velocity.set(0, 0, -190);
-  state.quaternion.identity();
-  state.throttle = 0.62;
-  state.pitchRate = state.rollRate = state.yawRate = 0;
-  state.gLoad = 1;
-  camera.position.set(0, 1405, 20);
-  camVelocity.set(0, 0, 0);
-  prevPlanePos.copy(state.position);
-  combat.ammo = 300;
-  combat.missiles = 6;
-  combat.reload = 0;
-  combat.missileReload = 0;
-  combat.gunCooldown = 0;
-  combat.lockTarget = null;
-  combat.health = 100;
-  combat.dead = false;
-  combat.deadTimer = 0;
-  combat.hitFlash = 0;
-  combat.missileWarning = 0;
-  for (const b of bullets) { b.active = false; b.mesh.visible = false; }
-  for (const m of missiles) { m.active = false; m.mesh.visible = false; }
-}
-
-const mouse = { nx: 0, ny: 0 };
-const keys = { w: false, s: false, a: false, d: false, shift: false, fire: false };
-let uiModal = false;
-
-window.addEventListener('mousemove', (e) => {
-  if (uiModal) return;
-  mouse.nx = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.ny = -((e.clientY / window.innerHeight) * 2 - 1);
-});
-window.addEventListener('keydown', (e) => {
-  const k = e.key.toLowerCase();
-  if (k === 'w') keys.w = true;
-  if (k === 's') keys.s = true;
-  if (k === 'a') keys.a = true;
-  if (k === 'd') keys.d = true;
-  if (k === 'shift') keys.shift = true;
-  if (k === ' ') { keys.fire = true; fireCannon(); }
-  if (k === 'm') fireMissile();
-  if (k === 'r') resetAircraft();
-});
-window.addEventListener('keyup', (e) => {
-  const k = e.key.toLowerCase();
-  if (k === 'w') keys.w = false;
-  if (k === 's') keys.s = false;
-  if (k === 'a') keys.a = false;
-  if (k === 'd') keys.d = false;
-  if (k === 'shift') keys.shift = false;
-  if (k === ' ') keys.fire = false;
-});
-window.addEventListener('mousedown', (e) => {
-  if (uiModal) return;
-  if (e.button === 0) { keys.fire = true; fireCannon(); }
-  if (e.button === 2) fireMissile();
-});
-window.addEventListener('mouseup', (e) => {
-  if (e.button === 0) keys.fire = false;
-});
-window.addEventListener('contextmenu', (e) => e.preventDefault());
-
-// Fade the intro on first interaction
-const intro = document.getElementById('intro');
-let introFaded = false;
-function fadeIntro() {
-  if (!introFaded) { introFaded = true; intro.style.opacity = '0'; setTimeout(() => intro.remove(), 900); }
-}
-window.addEventListener('mousemove', fadeIntro, { once: true });
-window.addEventListener('keydown', fadeIntro, { once: true });
-
-// Patch notes tab
-const patchButton = document.getElementById('patchButton');
-const patchPanel = document.getElementById('patchPanel');
-const patchClose = document.getElementById('patchClose');
-function setPatchOpen(open) {
-  patchPanel.classList.toggle('open', open);
-  uiModal = open;
-  if (open) keys.fire = false;
-}
-patchButton.addEventListener('mousedown', (e) => e.stopPropagation());
-patchButton.addEventListener('click', (e) => { e.stopPropagation(); setPatchOpen(!patchPanel.classList.contains('open')); });
-patchPanel.addEventListener('mousedown', (e) => e.stopPropagation());
-patchPanel.addEventListener('click', (e) => e.stopPropagation());
-patchClose.addEventListener('click', (e) => { e.stopPropagation(); setPatchOpen(false); });
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') setPatchOpen(false); });
-
-const AX_X = new THREE.Vector3(1, 0, 0);
-const AX_Y = new THREE.Vector3(0, 1, 0);
-const AX_Z = new THREE.Vector3(0, 0, 1);
-const _dq = new THREE.Quaternion();
-const _fwd = new THREE.Vector3();
-const _up = new THREE.Vector3();
-const _right = new THREE.Vector3();
-const _vdir = new THREE.Vector3();
-const _force = new THREE.Vector3();
-const _lift = new THREE.Vector3();
-
-function applyAxisAngle(axis, angle) {
-  _dq.setFromAxisAngle(axis, angle);
-  state.quaternion.multiply(_dq);
-}
-
-function deadzone(v, d = 0.05) {
-  if (Math.abs(v) <= d) return 0;
-  return Math.sign(v) * (Math.abs(v) - d) / (1 - d);
-}
-
-function updatePhysics(dt) {
-  const q = state.quaternion;
-
-  // --- Body axes ---
-  _fwd.set(0, 0, -1).applyQuaternion(q);
-  _up.set(0, 1, 0).applyQuaternion(q);
-  _right.set(1, 0, 0).applyQuaternion(q);
-
-  const bank = Math.atan2(_right.y, _up.y);
-  state.bank = bank;
-
-  // --- Control inputs ---
-  const pitchIn = deadzone(mouse.ny);               // up = +1
-  const rollIn = deadzone(mouse.nx);                // right = +1
-  const rudderIn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0); // A = yaw left (+)
-
-  const MAX_PITCH_RATE = 1.25;
-  const MAX_ROLL_RATE = 2.3;
-  const MAX_BANK = 0.91; // ~52 degrees commanded bank (matches reference tuning)
-
-  // Mouse X commands a target bank angle (self-levelling toward wings level),
-  // which is intuitive with a mouse while remaining an attitude-based model.
-  const targetBank = -rollIn * MAX_BANK;
-  let bankErr = targetBank - bank;
-  bankErr = Math.atan2(Math.sin(bankErr), Math.cos(bankErr)); // shortest way round
-  const targetRoll = THREE.MathUtils.clamp(bankErr * 2.4, -MAX_ROLL_RATE, MAX_ROLL_RATE);
-
-  // Realistic nose-drop: banking reduces vertical lift and creates a pitching
-  // moment. It is strongest with no back-pressure on the stick.
-  const bankMag = Math.abs(bank);
-  const noseDrop = -Math.sin(bankMag) * 0.5 * (1 - Math.max(0, pitchIn));
-
-  let targetPitch = pitchIn * MAX_PITCH_RATE + noseDrop;
-  let targetYaw = Math.sin(bank) * 0.08 + rudderIn * 0.35;
-
-  const resp = Math.min(1, 6.0 * dt);
-  state.pitchRate += (targetPitch - state.pitchRate) * resp;
-  state.rollRate += (targetRoll - state.rollRate) * resp;
-  state.yawRate += (targetYaw - state.yawRate) * resp;
-
-  applyAxisAngle(AX_X, state.pitchRate * dt);
-  applyAxisAngle(AX_Z, state.rollRate * dt);
-  applyAxisAngle(AX_Y, state.yawRate * dt);
-  q.normalize();
-
-  // --- Throttle / afterburner ---
-  const throttleRate = 0.55;
-  if (keys.w) state.throttle += throttleRate * dt;
-  if (keys.s) state.throttle -= throttleRate * dt;
-  state.throttle = THREE.MathUtils.clamp(state.throttle, 0, 1);
-  const abTarget = keys.shift ? 1 : 0;
-  state.afterburner += (abTarget - state.afterburner) * Math.min(1, 4 * dt);
-
-  // --- Aerodynamics ---
-  _fwd.set(0, 0, -1).applyQuaternion(q);
-  _up.set(0, 1, 0).applyQuaternion(q);
-  _right.set(1, 0, 0).applyQuaternion(q);
-
-  const speed = state.velocity.length();
-  state.speed = speed;
-  _vdir.copy(state.velocity).normalize();
-
-  const rho = 1.225 * Math.exp(-state.position.y / 8500);
-  const qBar = 0.5 * rho * speed * speed;
-
-  // Angle of attack: positive when the nose is above the velocity vector.
-  const sinA = -_vdir.dot(_up);
-  const cosA = _vdir.dot(_fwd);
-  const alpha = Math.atan2(sinA, cosA);
-  state.alpha = alpha;
-
-  let CL = CL0 + CL_ALPHA * alpha;
-  if (alpha > STALL_AOA) {
-    CL = CL0 + CL_ALPHA * STALL_AOA - (alpha - STALL_AOA) * 12.0;
-  }
-  CL = THREE.MathUtils.clamp(CL, -1.4, 1.7);
-
-  const mach = speed / 340.0;
-  let CD = CD0 + K_INDUCED * CL * CL;
-  if (mach > 0.82) CD += (mach - 0.82) * (mach - 0.82) * 0.32;
-
-  // Flight-control G limiter (~9 G structural envelope of a modern fighter)
-  let liftMag = qBar * WING_AREA * CL;
-  const MAX_G = 9.0;
-  const liftLimit = MAX_G * MASS * GRAVITY;
-  liftMag = THREE.MathUtils.clamp(liftMag, -liftLimit * 0.4, liftLimit);
-
-  const dragMag = qBar * WING_AREA * CD;
-  state.gLoad = liftMag / (MASS * GRAVITY);
-
-  // Lift acts perpendicular to the relative wind, in the body symmetry plane.
-  _lift.crossVectors(_right, _vdir).normalize().multiplyScalar(liftMag);
-
-  const thrustMag = (THRUST_DRY + THRUST_AB * state.afterburner) * state.throttle;
-  _force.set(0, 0, 0);
-  _force.add(_lift);
-  _force.addScaledVector(_vdir, -dragMag);
-  _force.addScaledVector(_fwd, thrustMag);
-  _force.y -= MASS * GRAVITY;
-
-  // Integrate translational motion
-  state.velocity.addScaledVector(_force, dt / MASS);
-  state.position.addScaledVector(state.velocity, dt);
-
-  // Ocean surface (soft splash / guard)
-  if (state.position.y < 12) {
-    state.position.y = 12;
-    if (state.velocity.y < 0) state.velocity.y *= -0.25;
-    state.velocity.multiplyScalar(0.985);
-  }
-
-  // Derived attitude readouts for HUD
-  state.pitch = Math.asin(THREE.MathUtils.clamp(_fwd.y, -1, 1));
-  _fwd.set(0, 0, -1).applyQuaternion(q);
-  state.heading = (Math.atan2(_fwd.x, -_fwd.z) * 180 / Math.PI + 360) % 360;
-
-  return speed;
-}
-
-/* ============================================================================
-   9. CAMERA SPRING-DAMPER RIG + ENGINE / CONTRAIL VISUALS
-   ============================================================================ */
-const camVelocity = new THREE.Vector3();
-const prevPlanePos = new THREE.Vector3(0, 1400, 0);
-const CAM_OFFSET = new THREE.Vector3(0, 4.6, 19.5);
-const LOOK_OFFSET = new THREE.Vector3(0, 1.4, -12);
-
-function updateCameraAndVisuals(dt, now) {
-  const q = state.quaternion;
-
-  // Set aircraft transform
-  jet.position.copy(state.position);
-  jet.quaternion.copy(q);
-  jet.updateMatrixWorld();
-
-  // --- Dynamic spring-damper follow camera ---
-  // Translation is tracked rigidly so straight-line speed produces no drift.
-  // The spring acts on the offset direction, so only hard turns make it lag.
-  camera.position.add(state.position.clone().sub(prevPlanePos));
-  prevPlanePos.copy(state.position);
-
-  const desired = CAM_OFFSET.clone().applyQuaternion(q).add(state.position);
-  const toDesired = desired.sub(camera.position);
-  const lagDist = toDesired.length();
-  if (lagDist > 22) {
-    camera.position.addScaledVector(toDesired, (lagDist - 22) / lagDist);
-    camVelocity.multiplyScalar(0.5);
-  }
-  camVelocity.addScaledVector(toDesired, 60 * dt);    // spring
-  camVelocity.addScaledVector(camVelocity, -12 * dt); // damper (slight under-damping => lag)
-  camera.position.addScaledVector(camVelocity, dt);
-  // Never allow the camera to intersect the airframe.
-  const fromPlane = camera.position.clone().sub(state.position);
-  const fdist = fromPlane.length();
-  if (fdist < 11) camera.position.copy(state.position).add(fromPlane.multiplyScalar(11 / Math.max(fdist, 0.001)));
-
-  // Afterburner camera shake
-  if (state.afterburner > 0.02) {
-    const s = state.afterburner * 0.13;
-    camera.position.x += (Math.random() - 0.5) * s;
-    camera.position.y += (Math.random() - 0.5) * s;
-    camera.position.z += (Math.random() - 0.5) * s;
-  }
-
-  const lookAt = LOOK_OFFSET.clone().applyQuaternion(q).add(state.position);
-  camera.lookAt(lookAt);
-  sky.position.copy(camera.position);
-  oceanUniforms.uCam.value.copy(camera.position);
-
-  // --- Engine exhaust ---
-  const t = state.throttle;
-  const ab = state.afterburner;
-  const flameLen = 1.4 + t * 3.0 + ab * 7.0;
-  const coreLen = flameLen * 0.62;
-  const flameCol = new THREE.Color(0x3fa9ff).lerp(new THREE.Color(0xff8419), Math.min(1, ab * 1.1));
-  for (const ex of exhausts) {
-    ex.flame.scale.set(0.5 + 0.5 * t + ab * 0.25, 0.5 + 0.5 * t + ab * 0.25, flameLen);
-    ex.flame.position.z = 10.6 + flameLen * 0.5;
-    ex.flame.material.color.copy(flameCol);
-    ex.flame.material.opacity = 0.12 + 0.35 * t + 0.45 * ab;
-
-    ex.core.scale.set(0.5 + 0.5 * t, 0.5 + 0.5 * t, coreLen);
-    ex.core.position.z = 10.6 + coreLen * 0.5;
-    ex.core.material.color.setHex(ab > 0.25 ? 0xfff0cf : 0x6fa8d8);
-    ex.core.material.opacity = 0.12 + 0.83 * ab;
-  }
-  exhaustLight.intensity = 1.0 + ab * 8.0 + t * 2.0;
-  exhaustLight.color.copy(flameCol);
-
-  // --- Contrails on high-G ---
-  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
-  const load = state.gLoad;
-  const highG = THREE.MathUtils.smoothstep(load, 1.9, 3.6) *
-                THREE.MathUtils.smoothstep(state.speed, 110, 200);
-  if (highG > 0.01) {
-    const wpL = WINGTIP_L.clone().applyQuaternion(q).add(state.position);
-    const wpR = WINGTIP_R.clone().applyQuaternion(q).add(state.position);
-    ribbonL.emit(wpL, highG, now);
-    ribbonR.emit(wpR, highG, now);
-  }
-  ribbonL.update(camRight, now);
-  ribbonR.update(camRight, now);
-}
-
-/* ============================================================================
-   10. 2D VECTOR HUD (crisp absolute-positioned canvas)
-   ============================================================================ */
-const hudCanvas = document.getElementById('hud');
-const hctx = hudCanvas.getContext('2d');
-let HW = 0, HH = 0, DPR = 1;
-
-function sizeHUD() {
-  DPR = Math.min(window.devicePixelRatio, 2);
-  HW = window.innerWidth;
-  HH = window.innerHeight;
-  hudCanvas.width = Math.floor(HW * DPR);
-  hudCanvas.height = Math.floor(HH * DPR);
-  hctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-}
-
-const HUD_GREEN = 'rgba(126, 255, 168, 0.92)';
-const HUD_GREEN_DIM = 'rgba(126, 255, 168, 0.45)';
-const HUD_GREEN_BRIGHT = 'rgba(190, 255, 214, 1)';
-
-function drawPitchLadder(ctx) {
-  const cx = HW / 2, cy = HH / 2;
-  const pxPerDeg = Math.min(HW, HH) * 0.0118;
-  const pitchDeg = state.pitch * 180 / Math.PI;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(state.bank); // pitch ladder counter-rotates with aircraft bank
-
-  ctx.lineWidth = 2;
-  ctx.font = '12px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  for (let m = -90; m <= 90; m += 5) {
-    const y = (pitchDeg - m) * pxPerDeg;
-    if (y < -HH || y > HH) continue;
-    const isHorizon = (m === 0);
-    const isMajor = (m % 10 === 0);
-    const w = isHorizon ? 150 : (isMajor ? 92 : 52);
-    const halfGap = isHorizon ? 16 : 10;
-
-    ctx.strokeStyle = isHorizon ? HUD_GREEN_BRIGHT : HUD_GREEN;
-    ctx.lineWidth = isHorizon ? 2.4 : 1.6;
-    if (m < 0) ctx.setLineDash([5, 4]);
-    ctx.beginPath();
-    ctx.moveTo(-w, y);
-    ctx.lineTo(-halfGap, y);
-    ctx.moveTo(halfGap, y);
-    ctx.lineTo(w, y);
-    // end ticks
-    ctx.moveTo(-w, y - 5); ctx.lineTo(-w, y + 5);
-    ctx.moveTo(w, y - 5); ctx.lineTo(w, y + 5);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    if (isMajor) {
-      ctx.fillStyle = HUD_GREEN;
-      ctx.fillText((m > 0 ? '+' : '') + m, -w - 22, y);
-      ctx.fillText((m > 0 ? '+' : '') + m, w + 22, y);
-    }
-  }
-  ctx.restore();
-}
-
-function drawBoresight(ctx) {
-  const cx = HW / 2, cy = HH / 2;
-  ctx.save();
-  ctx.strokeStyle = HUD_GREEN_BRIGHT;
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-  ctx.moveTo(cx - 34, cy); ctx.lineTo(cx - 9, cy);
-  ctx.moveTo(cx + 9, cy); ctx.lineTo(cx + 34, cy);
-  ctx.moveTo(cx, cy - 9); ctx.lineTo(cx, cy - 16);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTape(ctx, opts) {
-  const { x, value, unit, pxPerUnit, majorStep, side, label } = opts;
-  const top = HH * 0.20, bottom = HH * 0.80, cy = (top + bottom) / 2;
-  const halfH = (bottom - top) / 2;
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x - 40, top, 80, bottom - top);
-  ctx.clip();
-
-  ctx.font = '13px "Courier New", monospace';
-  ctx.textBaseline = 'middle';
-  ctx.strokeStyle = HUD_GREEN;
-  ctx.fillStyle = HUD_GREEN;
-  ctx.lineWidth = 1.4;
-
-  const first = Math.floor((value - halfH / pxPerUnit) / majorStep) * majorStep - majorStep;
-  const last = value + halfH / pxPerUnit + majorStep;
-  for (let v = first; v <= last; v += majorStep) {
-    const y = cy - (v - value) * pxPerUnit;
-    const tickLen = (v % (majorStep * 2) === 0) ? 16 : 9;
-    if (side === 'left') {
-      ctx.beginPath(); ctx.moveTo(x + 14, y); ctx.lineTo(x + 14 + tickLen, y); ctx.stroke();
-      ctx.textAlign = 'right';
-      ctx.fillText(v.toString(), x + 10, y);
-    } else {
-      ctx.beginPath(); ctx.moveTo(x - 14, y); ctx.lineTo(x - 14 - tickLen, y); ctx.stroke();
-      ctx.textAlign = 'left';
-      ctx.fillText(v.toString(), x - 10, y);
-    }
-  }
-  ctx.restore();
-
-  // Fixed pointer and readout box
-  ctx.save();
-  ctx.strokeStyle = HUD_GREEN_BRIGHT;
-  ctx.fillStyle = HUD_GREEN_BRIGHT;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  if (side === 'left') {
-    ctx.moveTo(x - 42, cy); ctx.lineTo(x - 26, cy - 9); ctx.lineTo(x - 26, cy + 9); ctx.closePath();
-  } else {
-    ctx.moveTo(x + 42, cy); ctx.lineTo(x + 26, cy - 9); ctx.lineTo(x + 26, cy + 9); ctx.closePath();
-  }
-  ctx.fill();
-  ctx.strokeRect(x - 34, cy - 16, 68, 32);
-  ctx.font = 'bold 16px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(Math.round(value).toString(), x, cy);
-  ctx.font = '10px "Courier New", monospace';
-  ctx.fillStyle = HUD_GREEN;
-  ctx.fillText(label, x, cy - 28);
-  ctx.fillText(unit, x, cy + 28);
-  ctx.restore();
-}
-
-function drawVelocityVector(ctx) {
-  const ahead = state.position.clone().addScaledVector(state.velocity.clone().normalize(), 1500);
-  const p = ahead.project(camera);
-  if (p.z > 1 || p.z < -1) return;
-  const x = (p.x * 0.5 + 0.5) * HW;
-  const y = (-p.y * 0.5 + 0.5) * HH;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.strokeStyle = HUD_GREEN_BRIGHT;
-  ctx.fillStyle = HUD_GREEN_BRIGHT;
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-26, 0); ctx.lineTo(-11, 0);
-  ctx.moveTo(26, 0); ctx.lineTo(11, 0);
-  ctx.moveTo(0, -11); ctx.lineTo(0, -20);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawHeading(ctx) {
-  const cx = HW / 2;
-  const y = 34;
-  const headings = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360];
-  const pxPerDeg = 2.0;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(cx - 220, y - 18, 440, 36); ctx.clip();
-  ctx.font = '13px "Courier New", monospace';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.strokeStyle = HUD_GREEN; ctx.fillStyle = HUD_GREEN;
-  for (const h of headings) {
-    let diff = h - state.heading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    const x = cx + diff * pxPerDeg;
-    ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6); ctx.stroke();
-    const label = h === 0 ? 'N' : h === 90 ? 'E' : h === 180 ? 'S' : h === 270 ? 'W' : (h / 10).toString();
-    ctx.fillText(label, x, y - 14);
-  }
-  ctx.restore();
-  ctx.fillStyle = HUD_GREEN_BRIGHT;
-  ctx.beginPath();
-  ctx.moveTo(cx, y + 9); ctx.lineTo(cx - 6, y + 18); ctx.lineTo(cx + 6, y + 18); ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = HUD_GREEN_BRIGHT;
-  ctx.font = 'bold 13px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(Math.round(state.heading).toString().padStart(3, '0') + '°', cx, y + 34);
-}
-
-function drawRadar(ctx) {
-  const R = Math.min(115, HH * 0.16);
-  const cx = R + 34;
-  const cy = HH - R - 36;
-  const maxRange = 9000;
-  const now = performance.now() / 1000;
-  const sweep = (now * 0.9) % (Math.PI * 2);
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  // scope background
-  ctx.fillStyle = 'rgba(2, 14, 9, 0.55)';
-  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
-
-  ctx.strokeStyle = HUD_GREEN_DIM;
-  ctx.lineWidth = 1;
-  for (const f of [0.33, 0.66, 1.0]) {
-    ctx.beginPath(); ctx.arc(0, 0, R * f, 0, Math.PI * 2); ctx.stroke();
-  }
-  ctx.beginPath(); ctx.moveTo(-R, 0); ctx.lineTo(R, 0); ctx.moveTo(0, -R); ctx.lineTo(0, R); ctx.stroke();
-
-  // sweep gradient
-  ctx.save();
-  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
-  ctx.rotate(sweep);
-  const lg = ctx.createLinearGradient(0, 0, R, 0);
-  lg.addColorStop(0, 'rgba(126,255,168,0.0)');
-  lg.addColorStop(1, 'rgba(126,255,168,0.28)');
-  ctx.fillStyle = lg;
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, -0.5, 0); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = HUD_GREEN;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
-  ctx.restore();
-
-  // terrain + live bandits
-  const invQuat = state.quaternion.clone().invert();
-  const drawBlip = (pos, isTerrain, bright) => {
-    const rel = pos.clone().sub(state.position).applyQuaternion(invQuat);
-    const dist = rel.length();
-    if (dist > maxRange) return;
-    const rr = (dist / maxRange) * R;
-    const bearing = Math.atan2(rel.x, -rel.z);
-    const bx = Math.sin(bearing) * rr;
-    const by = -Math.cos(bearing) * rr;
-    if (isTerrain) {
-      ctx.fillStyle = `rgba(200, 190, 130, ${bright * 0.7})`;
-      ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2); ctx.fill();
-    } else {
-      ctx.fillStyle = `rgba(255, 110, 90, ${bright})`;
-      ctx.beginPath();
-      ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 4, by + 4); ctx.lineTo(bx - 4, by + 4); ctx.closePath();
-      ctx.fill();
-    }
-  };
-  for (const c of terrainContacts) {
-    const rel = c.pos.clone().sub(state.position);
-    const bearing = Math.atan2(rel.x, -rel.z);
-    let diff = bearing - sweep;
-    diff = ((diff % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    if (diff > Math.PI) diff -= Math.PI * 2;
-    drawBlip(c.pos, true, Math.max(0.25, 1 - Math.abs(diff) / 1.2));
-  }
-  for (const e of enemies) {
-    if (!e.alive) continue;
-    const rel = e.pos.clone().sub(state.position);
-    const bearing = Math.atan2(rel.x, -rel.z);
-    let diff = bearing - sweep;
-    diff = ((diff % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    if (diff > Math.PI) diff -= Math.PI * 2;
-    drawBlip(e.pos, false, Math.max(0.35, 1 - Math.abs(diff) / 1.2));
-  }
-
-  // ownship
-  ctx.fillStyle = HUD_GREEN_BRIGHT;
-  ctx.beginPath();
-  ctx.moveTo(0, -8); ctx.lineTo(6, 7); ctx.lineTo(0, 3); ctx.lineTo(-6, 7); ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-
-  ctx.fillStyle = HUD_GREEN;
-  ctx.font = '10px "Courier New", monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('RDR  ' + (maxRange / 1000).toFixed(0) + 'KM', cx - R, cy - R - 8);
-}
-
-function drawStatus(ctx) {
-  const x = HW - 34, y = HH - 40;
-  ctx.save();
-  ctx.textAlign = 'right';
-  ctx.font = '13px "Courier New", monospace';
-  ctx.fillStyle = HUD_GREEN;
-  ctx.fillText('THR ' + Math.round(state.throttle * 100).toString().padStart(3, '0') + '%', x, y - 20);
-  ctx.fillText('G   ' + state.gLoad.toFixed(1), x, y);
-  ctx.fillStyle = state.afterburner > 0.3 ? 'rgba(255,150,80,0.95)' : HUD_GREEN_DIM;
-  ctx.fillText(state.afterburner > 0.3 ? 'BOOST ON' : 'BOOST OFF', x, y + 20);
-  ctx.fillStyle = HUD_GREEN_DIM;
-  ctx.font = '11px "Courier New", monospace';
-  ctx.fillText('AOA ' + (state.alpha * 180 / Math.PI).toFixed(1) + '°', x, y + 40);
-  if (state.alpha > STALL_AOA) {
-    ctx.fillStyle = 'rgba(255,90,70,0.95)';
-    ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('STALL', x, y + 62);
-  }
-  ctx.restore();
-}
-
-function drawTargetBoxes(ctx) {
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  for (const e of enemies) {
-    if (!e.alive) continue;
-    const to = e.pos.clone().sub(state.position);
-    const range = to.length();
-    if (to.dot(fwd) <= 0) continue;
-    const p = e.pos.clone().project(camera);
-    if (p.z < -1 || p.z > 1 || Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) continue;
-    const x = (p.x * 0.5 + 0.5) * HW;
-    const y = (-p.y * 0.5 + 0.5) * HH;
-    const locked = combat.lockTarget === e;
-    const col = locked ? 'rgba(255,130,90,0.98)' : 'rgba(126,255,168,0.5)';
-    const s = THREE.MathUtils.clamp(7000 / Math.max(range, 400) * 2.2, 14, 62);
-    ctx.save();
-    ctx.strokeStyle = col;
-    ctx.lineWidth = locked ? 2 : 1.3;
-    const seg = s * 0.38;
-    ctx.beginPath();
-    ctx.moveTo(x - s, y - s + seg); ctx.lineTo(x - s, y - s); ctx.lineTo(x - s + seg, y - s);
-    ctx.moveTo(x + s - seg, y - s); ctx.lineTo(x + s, y - s); ctx.lineTo(x + s, y - s + seg);
-    ctx.moveTo(x - s, y + s - seg); ctx.lineTo(x - s, y + s); ctx.lineTo(x - s + seg, y + s);
-    ctx.moveTo(x + s - seg, y + s); ctx.lineTo(x + s, y + s); ctx.lineTo(x + s, y + s - seg);
-    ctx.stroke();
-    ctx.fillStyle = col;
-    ctx.font = '11px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    if (locked) {
-      ctx.fillText('LOCK  ' + Math.round(range) + 'M', x, y - s - 8);
-      ctx.setLineDash([3, 4]);
-      ctx.strokeStyle = 'rgba(255,130,90,0.35)';
-      ctx.beginPath(); ctx.arc(x, y, s * 0.55, 0, Math.PI * 2); ctx.stroke();
-    } else {
-      ctx.fillText('BANDIT', x, y - s - 7);
-    }
-    ctx.restore();
-  }
-}
-
-function drawWeapons(ctx) {
-  const cx = HW / 2, y = HH - 26;
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.font = '13px "Courier New", monospace';
-  ctx.fillStyle = HUD_GREEN;
-  let pip = '';
-  for (let i = 0; i < 6; i++) pip += i < combat.missiles ? '▮' : '▯';
-  const rl = combat.reload > 0 ? '  GUN RL ' + combat.reload.toFixed(1)
-           : (combat.missileReload > 0 ? '  MSL RL ' + combat.missileReload.toFixed(1) : '');
-  ctx.fillText('AMMO ' + String(combat.ammo).padStart(3, '0') + '   MSL ' + pip + rl + '   KILLS ' + (combat.score / 100), cx, y);
-
-  const bx = 26, by = HH - 48;
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(bx, by, 150, 7);
-  ctx.fillStyle = combat.health > 40 ? HUD_GREEN : 'rgba(255,90,70,0.95)';
-  ctx.fillRect(bx, by, 150 * combat.health / 100, 7);
-  ctx.strokeStyle = HUD_GREEN_DIM;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx, by, 150, 7);
-  ctx.fillStyle = HUD_GREEN;
-  ctx.font = '10px "Courier New", monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('HULL', bx, by - 6);
-
-  if (combat.hitFlash > 0) {
-    ctx.strokeStyle = 'rgba(255,220,120,0.95)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - 9, HH / 2 - 9); ctx.lineTo(cx - 2, HH / 2 - 2);
-    ctx.moveTo(cx + 9, HH / 2 - 9); ctx.lineTo(cx + 2, HH / 2 - 2);
-    ctx.moveTo(cx - 9, HH / 2 + 9); ctx.lineTo(cx - 2, HH / 2 + 2);
-    ctx.moveTo(cx + 9, HH / 2 + 9); ctx.lineTo(cx + 2, HH / 2 + 2);
-    ctx.stroke();
-  }
-  if (combat.missileWarning > 0 && Math.floor(combat.missileWarning * 6) % 2 === 0) {
-    ctx.fillStyle = 'rgba(255,90,70,0.95)';
-    ctx.font = 'bold 20px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('MISSILE', cx, HH * 0.24);
-  }
-  if (combat.dead) {
-    ctx.fillStyle = 'rgba(255,90,70,0.95)';
-    ctx.font = 'bold 28px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('AIRCRAFT DESTROYED', cx, HH * 0.42);
-    ctx.font = '14px "Courier New", monospace';
-    ctx.fillText('RESPAWNING...', cx, HH * 0.42 + 26);
-  }
-  ctx.restore();
-}
-
-function drawBrand(ctx) {
-  ctx.save();
-  ctx.fillStyle = 'rgba(126, 255, 168, 0.55)';
-  ctx.font = '11px "Courier New", monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('ANGELS ZERO // COMBAT FLIGHT SIMULATOR', 18, 18);
-  ctx.restore();
-}
-
-function drawHUD() {
-  hctx.clearRect(0, 0, HW, HH);
-  drawBrand(hctx);
-  drawPitchLadder(hctx);
-  drawBoresight(hctx);
-  drawVelocityVector(hctx);
-  drawTargetBoxes(hctx);
-  drawTape(hctx, {
-    x: HW * 0.16, value: state.speed * 1.94384, unit: 'KTS', pxPerUnit: 0.55,
-    majorStep: 20, side: 'left', label: 'IAS'
   });
-  drawTape(hctx, {
-    x: HW * 0.84, value: state.position.y * 3.28084, unit: 'FT', pxPerUnit: 0.12,
-    majorStep: 200, side: 'right', label: 'ALT'
-  });
-  drawHeading(hctx);
-  drawRadar(hctx);
-  drawStatus(hctx);
-  drawWeapons(hctx);
+
+  const wanted = ['Left_Elevon','Right_Elevon','Left_Aileron','Right_Aileron',
+                  'Left_Rudder','Right_Rudder','Nozzle_L','Nozzle_R',
+                  'Canopy_Glass','HUD_Glass','MFD_Left','MFD_Center','MFD_Right'];
+  for (const name of wanted) {
+    pivots[name] = model.getObjectByName(name);
+    if (!pivots[name]) console.error('[ANGELS_ZERO] MISSING NODE:', name);
+  }
+
+  // Print the full scene graph as required, and mirror it into the panel.
+  const names = [];
+  model.traverse(o => names.push(o.name || '(unnamed)'));
+  console.log('[ANGELS_ZERO SCENE GRAPH]', JSON.stringify(names));
+  const panel = document.getElementById('nodes');
+  panel.innerHTML = '<h3>GLTF SCENE GRAPH (' + names.length + ')</h3>' +
+    names.map(n => '<div>' + n + '</div>').join('');
+
+  const missing = wanted.filter(n => !pivots[n]);
+  document.getElementById('status').textContent =
+    missing.length ? 'MISSING NODES: ' + missing.join(', ')
+                   : 'ASSET LOADED // ' + names.length + ' NODES // QA OK';
+  document.getElementById('status').style.color = missing.length ? '#ff8a7a' : '#8dffc0';
+  scene.add(model);
 }
 
-/* ============================================================================
-   11. MAIN LOOP
-   ============================================================================ */
-let lastTime = performance.now();
-let simTime = 0;
+loader.load('assets/angels_zero_jet.glb', prepare, undefined, err => {
+  console.error('[ANGELS_ZERO] GLTF load failed', err);
+  document.getElementById('status').textContent = 'ASSET LOAD FAILED — see console';
+});
 
-function animate() {
-  requestAnimationFrame(animate);
-  const now = performance.now();
-  let dt = (now - lastTime) / 1000;
-  lastTime = now;
-  dt = Math.min(dt, 0.05);
-  simTime += dt;
+/* ----------------------------------------------------------- interaction */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(CHASE_LOOK);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 7;
+controls.maxDistance = 45;
+controls.enabled = true;
 
-  updatePhysics(dt);
-  updateCombat(dt, simTime);
-  updateCameraAndVisuals(dt, simTime);
-
-  oceanUniforms.uTime.value = simTime;
-
-  renderer.render(scene, camera);
-  drawHUD();
-}
-
-window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
+const mouse = { x:0, y:0 };
+addEventListener('mousemove', e => {
+  mouse.x = (e.clientX/innerWidth)*2 - 1;
+  mouse.y = -((e.clientY/innerHeight)*2 - 1);
+});
+addEventListener('keydown', e => {
+  if (e.code !== 'Space') return;
+  e.preventDefault();
+  firstPerson = !firstPerson;
+  document.getElementById('viewtag').textContent = firstPerson ? 'VIEW: PILOT EYE' : 'VIEW: CHASE';
+  controls.enabled = !firstPerson;
+});
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  sizeHUD();
 });
 
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__az = { state, combat, enemies, bullets, missiles, particles, camera, ribbonL, ribbonR, jet };
+  window.__azv = { scene, camera, get model(){ return model; }, pivots };
 }
 
-sizeHUD();
+/* ------------------------------------------------------------------- loop */
+const clamp = THREE.MathUtils.clamp;
+function animate(){
+  requestAnimationFrame(animate);
+
+  if (model) {
+    // Mouse -> control surface deflection around each part's local hinge axis.
+    const pitch = clamp(mouse.y, -1, 1) * 0.42;
+    const roll  = clamp(mouse.x, -1, 1) * 0.36;
+    const yaw   = clamp(mouse.x, -1, 1) * 0.22;
+    if (pivots.Left_Elevon)  pivots.Left_Elevon.rotation.x  =  pitch;
+    if (pivots.Right_Elevon) pivots.Right_Elevon.rotation.x =  pitch;
+    if (pivots.Left_Aileron) pivots.Left_Aileron.rotation.x =  roll;
+    if (pivots.Right_Aileron)pivots.Right_Aileron.rotation.x = -roll;
+    if (pivots.Left_Rudder)  pivots.Left_Rudder.rotation.y  =  yaw;
+    if (pivots.Right_Rudder) pivots.Right_Rudder.rotation.y =  yaw;
+    if (pivots.Nozzle_L)     pivots.Nozzle_L.rotation.x      = -pitch*0.18;
+    if (pivots.Nozzle_R)     pivots.Nozzle_R.rotation.x      = -pitch*0.18;
+  }
+
+  if (firstPerson) {
+    camera.position.copy(PILOT_EYE);
+    camera.lookAt(PILOT_LOOK);
+  } else {
+    controls.update();
+  }
+
+  sky.position.copy(camera.position);
+  renderer.render(scene, camera);
+}
 animate();
 </script>
 </body>

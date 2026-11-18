@@ -9,6 +9,5 @@ __pycache__/
 *.pyc
 *.blend1
 *.rar
-assets/
 screenshot*.png
 Thumbs.db
