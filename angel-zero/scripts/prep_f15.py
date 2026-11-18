@@ -398,6 +398,10 @@ for s, sfx in ((-1, "L"), (1, "R")):
     _ctrl("Ctrl_Aileron_" + sfx, X(4.00, 5.85), (-0.85, -0.25), (4.30, 6.10), (s * 4.92, None, 4.33), (1, 0, 0), "aileron")
     _ctrl("Ctrl_Stabilator_" + sfx, X(1.80, 4.60), (-1.25, -0.75), (6.20, 9.85), (s * 1.80, -1.00, 8.00), (1, 0, 0), "stabilator")
     _ctrl("Ctrl_Rudder_" + sfx, X(1.60, 1.95), (-0.31, 1.19), (7.49, 8.70), (s * 1.76, 0.44, 7.49), (0, 1, 0), "rudder")
+    # Variable-geometry intake: the upper forward cowl / ramp of each rectangular
+    # intake, hinged along its top-aft edge, nods down at supersonic speed.
+    # (the cowl top slopes from y -0.43 at the lip to -0.20 aft; ramp = lip .. z -3.0)
+    _ctrl("Intake_Ramp_" + sfx, X(0.66, 1.58), (-0.46, -0.18), (-4.55, -3.00), (s * 1.12, -0.26, -3.00), (1, 0, 0), "intake", normal_y=0.6)
 # Dorsal speedbrake: the flat spine strip between the intake-ramp edges, aft of the canopy vent.
 _ctrl("Ctrl_Speedbrake", (-0.29, 0.29), (-0.15, 0.45), (-1.78, 0.40), (0.0, None, -1.78), (1, 0, 0), "speedbrake", normal_y=0.35)
 
@@ -421,7 +425,7 @@ def extract_surface(c):
     lo = Vector((c["x"][0] - pad, c["y"][0] - pad, c["z"][0] - pad)); hi = Vector((c["x"][1] + pad, c["y"][1] + pad, c["z"][1] + pad))
     pieces, seam_count, hinge_ys = [], 0, []
     for ob in list(meshes):
-        if ob.name.startswith(("Pylon_", "Ctrl_")) or ob.name == "Canopy_Glass":
+        if ob.name.startswith(("Pylon_", "Ctrl_", "Intake_")) or ob.name == "Canopy_Glass":
             continue
         mats = " ".join(m.name.lower() for m in ob.data.materials)
         if any(k in mats for k in SKIP_CTRL_MATS):
@@ -524,7 +528,7 @@ for ob in meshes:
     mod = ob.modifiers.new("WebDecimate", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
     # Stores are seen up close when they separate, so they keep more detail.
-    mod.ratio = 0.4 if ob.name.startswith(("Pylon_", "Ctrl_")) else 0.18
+    mod.ratio = 0.4 if ob.name.startswith(("Pylon_", "Ctrl_", "Intake_")) else 0.18
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
     ob.data.update()
@@ -574,7 +578,7 @@ for c in CTRL:
     lo = (c["x"][0] + 0.06, c["y"][0] + 0.02, c["z"][0] + 0.06)
     hi = (c["x"][1] - 0.06, c["y"][1] - 0.02, c["z"][1] - 0.06)
     for ob in meshes:
-        if ob.name.startswith(("Ctrl_", "Pylon_", "Nozzle_")) or ob.name in ("F15_ControlFairings", "Canopy_Glass"):
+        if ob.name.startswith(("Ctrl_", "Pylon_", "Nozzle_", "Intake_")) or ob.name in ("F15_ControlFairings", "Canopy_Glass"):
             continue
         mats = " ".join(m.name.lower() for m in ob.data.materials)
         if any(k in mats for k in SKIP_CTRL_MATS):

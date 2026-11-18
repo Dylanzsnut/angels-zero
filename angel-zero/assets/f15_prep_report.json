@@ -156,8 +156,8 @@
     ]
   ],
   "scale": 1.036066,
-  "faces_before": 235886,
-  "faces_after": 46275,
+  "faces_before": 236181,
+  "faces_after": 46428,
   "dimensions_m": [
     13.417,
     5.463,
@@ -534,6 +534,26 @@
       "faces": 117
     },
     {
+      "name": "Intake_Ramp_L",
+      "hinge": [
+        -1.12,
+        -0.26,
+        -3.0
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "kind": "intake",
+      "size": [
+        0.878,
+        0.176,
+        1.501
+      ],
+      "faces": 27
+    },
+    {
       "name": "Ctrl_Flap_R",
       "hinge": [
         3.06,
@@ -614,6 +634,26 @@
       "faces": 116
     },
     {
+      "name": "Intake_Ramp_R",
+      "hinge": [
+        1.12,
+        -0.26,
+        -3.0
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "kind": "intake",
+      "size": [
+        0.873,
+        0.176,
+        1.501
+      ],
+      "faces": 26
+    },
+    {
       "name": "Ctrl_Speedbrake",
       "hinge": [
         0.0,
@@ -654,5 +694,5 @@
       "faces": 2608
     }
   ],
-  "glb_bytes": 11631812
+  "glb_bytes": 11642344
 }

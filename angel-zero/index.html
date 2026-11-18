@@ -286,17 +286,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s20a';
-import { createHUD } from './src/hud.js?v=s20a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s20a';
-import { createCombat } from './src/combat.js?v=s20a';
-import { createEjection } from './src/eject.js?v=s20a';
-import { createAudio } from './src/audio.js?v=s20a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s20a';
-import { createCanopyFX } from './src/canopy.js?v=s20a';
-import { createNVG } from './src/nvg.js?v=s20a';
-import { createWorld, WORLD } from './src/world.js?v=s20a';
-import { createSurfaces } from './src/surfaces.js?v=s20a';
+import { createVFX } from './src/vfx.js?v=s21a';
+import { createHUD } from './src/hud.js?v=s21a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s21a';
+import { createCombat } from './src/combat.js?v=s21a';
+import { createEjection } from './src/eject.js?v=s21a';
+import { createAudio } from './src/audio.js?v=s21a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s21a';
+import { createCanopyFX } from './src/canopy.js?v=s21a';
+import { createNVG } from './src/nvg.js?v=s21a';
+import { createWorld, WORLD } from './src/world.js?v=s21a';
+import { createSurfaces } from './src/surfaces.js?v=s21a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1046,7 +1046,7 @@ function updateCameraAndVisuals(dt, now) {
   updateNavLights(simTime);
   world.update(dt, simTime, Math.max(0.1, navLevel), renderer, camera);
   if (surfaces) surfaces.update(dt, { pitch: state.ctl.pitch, roll: state.ctl.roll, yaw: state.ctl.yaw, airbrake: state.ctl.airbrake,
-    kts: state.speed * 1.94384, alpha: state.alpha, throttle: state.throttle, afterburner: state.afterburner,
+    kts: state.speed * 1.94384, mach: state.mach, alpha: state.alpha, throttle: state.throttle, afterburner: state.afterburner,
     active: flightMode === 'FLY' || appMode === 'MENU' });
   if (DEBUG_OVERVIEW) {                                // test hook: ?overview[=height] top-down map camera
     camera.position.set(WORLD.CX, DEBUG_OVERVIEW, WORLD.CZ + 1); camera.up.set(0, 0, -1);
@@ -1120,7 +1120,10 @@ const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, gr
   fx: { explosion: combatSys.explosion, splash: combatSys.splash, emitFire: combatSys.emitFire, emitSmoke: combatSys.emitSmoke } });
 /* ---- time of day: presets, randomised every sortie, briefing selector ---- */
 const airframeMats = new Set();                        // F-15 materials: env-map strength follows the preset
-// Navigation lights: red port / green starboard wingtips, white tail strobe (dusk / night).
+// Navigation lights: steady red port / green starboard wingtips, white 1.2 Hz
+// double-flash anti-collision strobes (wingtips, both fin tips, belly) and a
+// pulsing red beacon on the dorsal spine + belly. Steady lights scale with the
+// preset's nav level (DAWN / DUSK / NIGHT); strobes stay faintly visible by day.
 const navTex = (() => {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
   const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -1130,23 +1133,38 @@ const navTex = (() => {
 })();
 const navLights = [];
 let navLevel = 0;
-function addNavLight(pos, color, strobe) {
+// mode: 'steady' | 'strobe' (1.2 Hz double flash) | 'beacon' (pulsing red)
+function addNavLight(pos, color, mode = 'steady', size = 1.9, phase = 0) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: navTex, color, blending: THREE.AdditiveBlending, transparent: true,
     depthWrite: false, toneMapped: false, fog: false }));
-  sp.position.copy(pos); sp.visible = false; jet.add(sp);
-  navLights.push({ sp, strobe });
+  sp.position.copy(pos); sp.visible = false; sp.renderOrder = 7; jet.add(sp);
+  navLights.push({ sp, mode, size, phase, k: 0 });
 }
+const navStat = { strobe: 0, beacon: 0 };
 function updateNavLights(t) {
+  const night = Math.min(1, navLevel);
+  navStat.strobe = navStat.beacon = 0;
   for (const n of navLights) {
-    const on = n.strobe ? (t % 1.25) < 0.09 : true;
-    n.sp.visible = navLevel > 0.02 && on && jet.visible;
-    n.sp.material.opacity = Math.min(1, navLevel);
-    n.sp.scale.setScalar(n.strobe ? 3.2 : 1.9);
+    let k;
+    if (n.mode === 'strobe') {
+      const ph = (t * 1.2 + n.phase) % 1;                       // 1.2 Hz cycle, two 45 ms flashes
+      k = (ph < 0.055 || (ph > 0.17 && ph < 0.225)) ? 1 : 0;
+      k *= 0.35 + 0.65 * night;                                 // faint but present in daylight
+      navStat.strobe = Math.max(navStat.strobe, k);
+    } else if (n.mode === 'beacon') {
+      const ph = (t * 1.0 + n.phase) % 1;                       // ~60 rpm rotating-beacon pulse
+      k = Math.pow(Math.max(0, Math.sin(ph * Math.PI * 2)), 6) * (0.25 + 0.75 * night);
+      navStat.beacon = Math.max(navStat.beacon, k);
+    } else k = night;
+    n.k = k;
+    n.sp.visible = k > 0.02 && jet.visible;
+    n.sp.material.opacity = Math.min(1, k);
+    n.sp.scale.setScalar(n.size * (n.mode === 'steady' ? 1 : 0.6 + 0.4 * k));
   }
 }
 atmosphere.bind({
   sunLight, hemiLight, ambLight, renderer, ocean: oceanUniforms,
-  setCloudColors: (top, belly) => vfx.setCloudColors(top, belly),
+  setCloudColors: (top, belly) => { vfx.setCloudColors(top, belly); vfx.setVaporTint(new THREE.Color(1, 1, 1).lerp(top, 0.65)); },
   setEnv: k => { for (const m of airframeMats) m.envMapIntensity = k; },
   setNavLights: k => { navLevel = k; },
   setNvgGain: k => nvg.setGain(k),
@@ -1241,9 +1259,15 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   });
   if (tip) { WINGTIP_R.copy(tip); WINGTIP_L.set(-tip.x, tip.y, tip.z); vfx.setWingtips(WINGTIP_L, WINGTIP_R); }
   if (tip) {
-    addNavLight(WINGTIP_L.clone().add(new THREE.Vector3(-0.1, 0, 0)), 0xff2a2a, false);   // port red
-    addNavLight(WINGTIP_R.clone().add(new THREE.Vector3(0.1, 0, 0)), 0x2aff5a, false);    // starboard green
-    addNavLight(new THREE.Vector3(0, 0.1, 9.55), 0xffffff, true);                          // tail strobe
+    addNavLight(WINGTIP_L.clone().add(new THREE.Vector3(-0.1, 0, 0)), 0xff2233);          // port red
+    addNavLight(WINGTIP_R.clone().add(new THREE.Vector3(0.1, 0, 0)), 0x22ff66);           // starboard green
+    addNavLight(WINGTIP_L.clone().add(new THREE.Vector3(-0.12, 0.02, 0.25)), 0xffffff, 'strobe', 3.4);
+    addNavLight(WINGTIP_R.clone().add(new THREE.Vector3(0.12, 0.02, 0.25)), 0xffffff, 'strobe', 3.4);
+    addNavLight(new THREE.Vector3(-1.78, 2.78, 8.55), 0xffffff, 'strobe', 3.0, 0.5);       // fin tips
+    addNavLight(new THREE.Vector3(1.78, 2.78, 8.55), 0xffffff, 'strobe', 3.0, 0.5);
+    addNavLight(new THREE.Vector3(0, -1.78, 2.2), 0xffffff, 'strobe', 2.8, 0.25);         // belly strobe
+    addNavLight(new THREE.Vector3(0, 0.26, 1.0), 0xff1a1a, 'beacon', 2.4);                // dorsal beacon
+    addNavLight(new THREE.Vector3(0, -1.76, 0.6), 0xff1a1a, 'beacon', 2.4, 0.5);          // belly beacon
   }
 
   for (const n of ['Nozzle_L', 'Nozzle_R']) {
@@ -1343,7 +1367,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead,
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
       'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head),
-      'ctl', JSON.stringify(surfaces ? Object.fromEntries(Object.entries(surfaces.angles).map(([k, v]) => [k.replace('Ctrl_', ''), typeof v === 'number' ? +v.toFixed(1) : v])) : null));
+      'ctl', JSON.stringify(surfaces ? Object.fromEntries(Object.entries(surfaces.angles).map(([k, v]) => [k.replace('Ctrl_', ''), typeof v === 'number' ? +v.toFixed(1) : v])) : null),
+      'nav', JSON.stringify({ level: +navLevel.toFixed(2), lights: navLights.length, strobe: +navStat.strobe.toFixed(2), beacon: +navStat.beacon.toFixed(2),
+        lit: navLights.filter(n => n.sp.visible).length }));
   }
   if (DEBUG && Q.has('pause')) pauseSim();
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));

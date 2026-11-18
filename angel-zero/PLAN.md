@@ -40,6 +40,18 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     hinge lines, `hinge_axis` / `hinge_kind` glTF extras, dark hinge fairings
     and a speedbrake well so deflected surfaces show no see-through slits;
     GLB 11.6 MB. Verified headless (pitch / roll / yaw / brake / afterburner).
+  - [x] **Variable intake ramps + supersonic aileron lockout:** `Intake_Ramp_L/R`
+    cut from the upper intake cowls (hinged on their top-aft edge) schedule
+    0 deg below M0.7 -> -11 deg by M2.0; across M0.95 -> M1.05 the ailerons fair
+    flush and the stabilator roll differential grows +/-9 -> +/-20 deg (100 %
+    supersonic roll authority). Verified headless: M1.30 -> ramps -4.9 deg,
+    ailerons 0, stabilators +/-9.8; M0.63 -> ailerons +/-9.8, ramps 0.
+  - [x] **Over-wing G-vapor + nav lighting:** condensation sheets stream aft over
+    the wing roots / strakes above 5.2 G below 12,000 ft (opacity and drift scale
+    with G and air density, tinted from the time-of-day cloud colour); steady
+    red `#ff2233` / green `#22ff66` wingtips, white 1.2 Hz double-flash strobes
+    (wingtips, fin tips, belly), pulsing red dorsal + belly beacons (faint by
+    day, full at DAWN / DUSK / NIGHT and through NVG).
   - **Gap:** flight model and chase camera live in `index.html`
     (`updatePhysics`, `updateCameraAndVisuals`) — no `flight.js` / `camera.js`.
   - **Gap:** no chase-camera FOV *speed* kick (only the High-G tighten).
@@ -114,7 +126,7 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 | Backspace | Reset aircraft |
 | M (in menus) | Mute |
 
-## Baseline verification (2026-11-18, build `s19b`)
+## Baseline verification (2026-11-18, build `s19b`; re-run on `s21a`)
 Headless Edge (SwiftShader) runs with zero page console errors / warnings:
 briefing menu, chase daylight, cockpit dusk, High-G pull, guns + C-lock +
 missile, UGB + CCIP impact, flares + bandit shot + cloud cover, night NVG

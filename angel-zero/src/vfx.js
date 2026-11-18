@@ -191,21 +191,32 @@ export function createVFX(THREE, env) {
   const tipL = new THREE.Vector3(-6.6, -0.6, 4.0), tipR = new THREE.Vector3(6.6, -0.6, 4.0);
 
   /* ------------------------------------------------ over-wing vapor clouds */
+  // High-AoA condensation: wispy sheets over the inner wing roots and the
+  // fuselage strakes (LERX-like blend ahead of the root). Each puff streams aft
+  // along its lane (turbulent drift) and recycles at the lane's front, so the
+  // sheet appears anchored to the airframe while flowing backward.
   const vapor = [];
+  const vaporTint = new THREE.Color(1, 1, 1);
   function buildVapor() {
     for (const v of vapor) jet.remove(v.sp);
     vapor.length = 0;
+    const rv = rng(4711);
     for (const sgn of [-1, 1]) {
-      for (let i = 0; i < 7; i++) {
-        const u = (i + 0.5) / 7;
-        const mat = new THREE.SpriteMaterial({ map: vaporTex, color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, fog: true, rotation: rand() * 6.28 });
-        const sp = new THREE.Sprite(mat);
-        const x = sgn * THREE.MathUtils.lerp(1.9, Math.abs(tipR.x) - 0.9, u);
-        const z = THREE.MathUtils.lerp(0.4, tipR.z - 1.2, u) + (rand() - 0.5) * 0.8;
-        sp.position.set(x, THREE.MathUtils.lerp(0.05, tipR.y + 0.35, u), z);
-        sp.renderOrder = 4;
-        jet.add(sp);
-        vapor.push({ sp, base: 2.8 + rand() * 1.8, phase: rand() * 6.28, span: Math.sin(u * Math.PI) * 0.5 + 0.5 });
+      const lanes = [
+        // [x0, x1, zFront, zAft, yTop]   — strake / wing-root lanes (model metres)
+        [1.35, 1.75, -2.6, 0.8, -0.18],
+        [1.8, 2.6, -0.6, 3.6, -0.24],
+        [2.6, 3.6, 0.6, 4.2, -0.34]
+      ];
+      for (const [x0, x1, zf, za, yt] of lanes) {
+        for (let i = 0; i < 7; i++) {
+          const mat = new THREE.SpriteMaterial({ map: vaporTex, color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, fog: true, rotation: rv() * 6.28 });
+          const sp = new THREE.Sprite(mat);
+          sp.renderOrder = 4;
+          jet.add(sp);
+          vapor.push({ sp, x: sgn * THREE.MathUtils.lerp(x0, x1, rv()), y: yt + 0.12 + rv() * 0.18, zf, za,
+            u: rv(), speed: 0.5 + rv() * 0.6, base: 1.6 + rv() * 1.6, phase: rv() * 6.28, wob: rv() * 6.28 });
+        }
       }
     }
   }
@@ -539,13 +550,25 @@ export function createVFX(THREE, env) {
     trailL.update(camera.position, now);
     trailR.update(camera.position, now);
 
-    // Over-wing condensation in hard, high-G turns.
-    const vTarget = force.vapor ? 1 : opts.visible ? Math.max(smooth(s.gLoad, 4.2, 7.2), s.highG ? 0.9 : 0) * smooth(s.speed, 120, 200) : 0;
-    vaporLevel += (vTarget - vaporLevel) * Math.min(1, dt * (vTarget > vaporLevel ? 6 : 2.5));
+    // Over-wing condensation: above 5.2 G, below 12,000 ft, denser in thick air.
+    const altFt = s.position.y / FT;
+    const rhoRatio = Math.exp(-s.position.y / 8500);
+    const gTrig = smooth(s.gLoad, 5.2, 8.0) + (s.highG && s.gLoad > 5.2 ? 0.25 : 0);
+    const vTarget = force.vapor ? 1 : opts.visible
+      ? Math.min(1, gTrig) * (1 - smooth(altFt, 10000, 12000)) * (0.55 + 0.45 * rhoRatio) * smooth(s.speed, 110, 190) : 0;
+    vaporLevel += (vTarget - vaporLevel) * Math.min(1, dt * (vTarget > vaporLevel ? 6 : 2.2));
+    const drift = 0.9 + 1.6 * vaporLevel;                       // stronger pull -> faster aft streaming
     for (const v of vapor) {
-      const flick = 0.72 + 0.28 * Math.sin(now * 13 + v.phase) * Math.sin(now * 5.3 + v.phase * 2);
-      v.sp.material.opacity = vaporLevel * flick * v.span * 0.8;
-      v.sp.scale.setScalar(v.base * (0.85 + 0.3 * vaporLevel + 0.08 * Math.sin(now * 9 + v.phase)));
+      v.u += dt * v.speed * drift * 0.55;
+      if (v.u > 1) v.u -= 1;
+      const z = THREE.MathUtils.lerp(v.zf, v.za, v.u);
+      const turb = 0.06 + 0.12 * vaporLevel;
+      v.sp.position.set(v.x + Math.sin(now * 7 + v.wob) * turb, v.y + Math.sin(now * 11 + v.phase) * turb * 0.6 + v.u * 0.25, z);
+      const life = Math.sin(Math.PI * v.u);                     // fade in at the lane front, out aft
+      const flick = 0.75 + 0.25 * Math.sin(now * 13 + v.phase) * Math.sin(now * 5.3 + v.phase * 2);
+      v.sp.material.opacity = vaporLevel * flick * life * 0.75;
+      v.sp.material.color.copy(vaporTint);
+      v.sp.scale.setScalar(v.base * (0.7 + 0.5 * v.u) * (0.85 + 0.35 * vaporLevel));
       v.sp.visible = v.sp.material.opacity > 0.003;
     }
 
@@ -577,6 +600,8 @@ export function createVFX(THREE, env) {
     },
     get trailPoints() { return trailL.points.filter(p => p.base > 0.01).length; },
     get vaporLevel() { return vaporLevel; },
+    // Time-of-day tint for condensation (white at noon, rose at dawn, dim blue-grey at night).
+    setVaporTint(c) { vaporTint.copy(c); },
     get coneOpacity() { return coneMat.uniforms.uOp.value; },
     get sprayCount() { return sprayP.filter(q => q.on).length; },
     clouds

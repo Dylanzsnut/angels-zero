@@ -9,6 +9,10 @@
 //   flaps        auto droop 0 -> 26 deg below ~260 kt / at high AoA
 //   rudders      yaw (manual A/D + turn coordination), +/-22 deg
 //   speedbrake   dorsal panel 0 -> 46 deg up while braking (S) or overspeed
+//   intake ramps Intake_Ramp_L/R: flush below M0.7, nodding down to -11 deg by M2.0
+// Supersonic aileron lockout: across M0.95 -> M1.05 the ailerons fair flush to
+// 0 deg and the stabilator roll differential grows from +/-9 to +/-20 deg so the
+// tails carry 100 % of the roll authority (as on the real F-15).
 // Sign conventions (model axes: x right, y up, z aft): a positive rotation
 // about +X moves an aft trailing edge DOWN; about +Y moves it to the RIGHT.
 // Nozzle_L / Nozzle_R scale radially (x / y about the nozzle centre): relaxed
@@ -55,17 +59,21 @@ export function createSurfaces(THREE, model) {
   const _q = new THREE.Quaternion();
   const out = {};
   // c: { pitch, roll, yaw } normalised rate commands (-1..1, pitch +nose up,
-  //      roll +left, yaw +nose left), kts, alpha (rad), throttle, afterburner,
-  //      airbrake (0..1), active (bool)
+  //      roll +left, yaw +nose left), kts, mach, alpha (rad), throttle,
+  //      afterburner, airbrake (0..1), active (bool)
   function update(dt, c) {
     const k = Math.min(1, dt * 12);
     const rollRight = -c.roll;
     const stabPitch = -c.pitch * 20;                          // nose-up -> trailing edges up
+    const lock = smooth(c.mach || 0, 0.95, 1.05);             // supersonic aileron lockout
+    const diff = 9 + 11 * lock;                               // stabilator roll differential takes over
+    const ramp = -11 * smooth(c.mach || 0, 0.7, 2.0);         // variable intake ramps
     const t = {
-      Ctrl_Stabilator_L: clamp(stabPitch + rollRight * 9, -24, 24),
-      Ctrl_Stabilator_R: clamp(stabPitch - rollRight * 9, -24, 24),
-      Ctrl_Aileron_L: clamp(rollRight * 20, -20, 20),
-      Ctrl_Aileron_R: clamp(-rollRight * 20, -20, 20),
+      Ctrl_Stabilator_L: clamp(stabPitch + rollRight * diff, -24, 24),
+      Ctrl_Stabilator_R: clamp(stabPitch - rollRight * diff, -24, 24),
+      Ctrl_Aileron_L: clamp(rollRight * 20 * (1 - lock), -20, 20),
+      Ctrl_Aileron_R: clamp(-rollRight * 20 * (1 - lock), -20, 20),
+      Intake_Ramp_L: ramp, Intake_Ramp_R: ramp,
       Ctrl_Rudder_L: clamp(-c.yaw * 22, -22, 22),
       Ctrl_Rudder_R: clamp(-c.yaw * 22, -22, 22),
       Ctrl_Speedbrake: -46 * clamp(c.airbrake, 0, 1)
@@ -92,6 +100,7 @@ export function createSurfaces(THREE, model) {
       n.ring.material.color.setRGB(1.0, 0.55 + 0.25 * ab, 0.18 + 0.3 * ab);
       n.core.material.opacity = 0.65 * glow * (0.4 + 0.6 * ab);
     }
+    out.aileronLock = +lock.toFixed(2);
     out.nozzle = nozzles.length ? +nozzles[0].radius.toFixed(3) : null;
     out.glow = +glow.toFixed(2);
     return out;
