@@ -1,9 +1,11 @@
 # AGENTS.md — ANGELS ZERO
 
 ## Project
-Browser-based modern military flight simulator. This repository is being rebuilt in
-milestones. Step 1A establishes a real, exported 3D stealth-fighter asset and a
-hangar inspection scene; HUD/combat are intentionally out of scope for Step 1A.
+Browser-based modern military flight simulator. This folder is the self-contained
+ANGELS ZERO subproject inside the repository. Run all build commands from
+`angel-zero/`; the Cloudflare Pages workflow deploys this folder as the site root.
+Step 1A establishes a real, exported 3D stealth-fighter asset and a hangar
+inspection scene; HUD/combat are intentionally out of scope for Step 1A.
 
 ## Toolchain (verified 2026-11-18)
 - Blender 5.3.0: `C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe`
