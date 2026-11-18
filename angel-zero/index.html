@@ -920,7 +920,8 @@ function updateCameraAndVisuals(dt, now) {
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
-const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat });
+const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
+  missiles, STALL_AOA, getEnemies: () => enemies });
 const hud = createHUD(THREE, {
   canvas: document.getElementById('hud'), state, combat, camera, missiles, mouse, EYE, STALL_AOA,
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',

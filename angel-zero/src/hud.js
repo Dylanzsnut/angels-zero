@@ -437,6 +437,7 @@ export function createHUD(THREE, A) {
   /* ------------------- cockpit view: combiner HUD + screen-space clusters */
   let alertState = 'NORMAL', alertOverride = null;
   const HG = '#5cff9d';
+  const HUDG = '#4dff91', HLW = 1.25;              // collimated combiner symbology
   const alertOn = () => alertState === 'MISSILE_ALERT';
   const flashRed = () => alertOn() && Math.floor(performance.now() / 170) % 2 === 0;
   let spdPrev = null, spdAcc = 0;
@@ -464,7 +465,7 @@ export function createHUD(THREE, A) {
     // Conformal: each bar is projected from its true direction, so head-turn offsets keep it on the real horizon.
     const h = S.heading * D2R, eye = cam.position, bank = camBank(), fl = focal();
     const dir = new THREE.Vector3();
-    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(12); ctx.textBaseline = 'middle';
+    glow(ctx, col, 2); ctx.lineWidth = HLW; ctx.font = f(12); ctx.textBaseline = 'middle';
     for (let m = -85; m <= 85; m += 5) {
       const e = m * D2R;
       dir.set(Math.sin(h) * Math.cos(e), Math.sin(e), -Math.cos(h) * Math.cos(e));
@@ -498,15 +499,15 @@ export function createHUD(THREE, A) {
   }
 
   function drawCombinerCompass(ctx, g, col) {
-    const cx = g.cx, y = g.minY + 22, w = g.boxW * 0.56, ppd = w / 60;
-    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const cx = g.cx, y = g.minY + 22, w = g.boxW * 0.56, ppd = w / 72;
+    glow(ctx, col, 2); ctx.lineWidth = 1; ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.save(); ctx.beginPath(); ctx.rect(cx - w / 2, y - 18, w, 30); ctx.clip();
-    const NAMES = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    const NAMES = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };     // "33 | N | 03" style
     for (let hd = Math.floor((S.heading - 34) / 5) * 5; hd <= S.heading + 34; hd += 5) {
       const x = cx + (hd - S.heading) * ppd, n = ((hd % 360) + 360) % 360;
-      const named = NAMES[n] !== undefined;
-      ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y + (n % 15 === 0 || named ? 0 : 4)); ctx.stroke();
-      if (named) ctx.fillText(NAMES[n], x, y - 8);
+      const major = n % 10 === 0;
+      ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y + (major ? 0 : 4)); ctx.stroke();
+      if (NAMES[n] !== undefined) ctx.fillText(NAMES[n], x, y - 8);
       else if (n % 30 === 0) ctx.fillText(String(n / 10).padStart(2, '0'), x, y - 8);
     }
     ctx.restore();
@@ -521,7 +522,7 @@ export function createHUD(THREE, A) {
     const cy = (top + bot) / 2, half = (bot - top) / 2, dir = side === 'left' ? 1 : -1;
     ctx.save();
     ctx.beginPath(); ctx.rect(x - 44, top, 88, bot - top); ctx.clip();
-    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(11); ctx.textBaseline = 'middle';
+    glow(ctx, col, 2); ctx.lineWidth = 1; ctx.font = f(11); ctx.textBaseline = 'middle';   // fine 1 px ticks
     ctx.beginPath(); ctx.moveTo(x + dir * 8, top); ctx.lineTo(x + dir * 8, bot); ctx.stroke();
     const first = Math.floor((value - half / pxPerUnit) / step) * step - step;
     for (let v = first; v <= value + half / pxPerUnit + step; v += step) {
@@ -535,7 +536,7 @@ export function createHUD(THREE, A) {
     }
     ctx.restore();
     backing(ctx, x - 34, cy - 13, 68, 26, BACK_BOX);
-    glow(ctx, HG); ctx.lineWidth = LW; ctx.strokeRect(x - 34, cy - 13, 68, 26);
+    glow(ctx, col, 3); ctx.lineWidth = HLW; ctx.strokeRect(x - 34, cy - 13, 68, 26);
     ctx.font = f(16); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(Math.round(value)), x, cy + 1);
     glow(ctx, col); ctx.font = f(11);
@@ -544,7 +545,7 @@ export function createHUD(THREE, A) {
   }
 
   function drawCombiner(ctx, g, dt) {
-    const col = flashRed() ? WARN : G;
+    const col = flashRed() ? WARN : HUDG;
     // Speed trend for the NEXT caret (5 s look-ahead).
     if (spdPrev !== null && dt > 0) spdAcc += (((S.speed - spdPrev) / dt) - spdAcc) * Math.min(1, dt * 2.5);
     spdPrev = S.speed;
@@ -557,15 +558,25 @@ export function createHUD(THREE, A) {
     drawFPV(ctx, { cx: g.cx, cy: g.cy, boxW: g.boxW - 120, boxH: g.boxH - 60 }, dt);
     drawCombinerCompass(ctx, g, col);
     const kts = S.speed * 1.94384;
-    drawCombinerTape(ctx, { x: g.minX + 50, top: g.minY + 62, bot: g.maxY - 30, value: kts, pxPerUnit: 1.3, step: 10, side: 'left',
+    drawCombinerTape(ctx, { x: g.minX + 50, top: g.minY + 78, bot: g.maxY - 30, value: kts, pxPerUnit: 1.3, step: 10, side: 'left',
       label: 'SPEED', next: kts + spdAcc * 1.94384 * 5 }, col);
-    drawCombinerTape(ctx, { x: g.maxX - 50, top: g.minY + 62, bot: g.maxY - 30, value: S.position.y * 3.28084, pxPerUnit: 0.13, step: 100, side: 'right',
+    drawCombinerTape(ctx, { x: g.maxX - 50, top: g.minY + 78, bot: g.maxY - 30, value: S.position.y * 3.28084, pxPerUnit: 0.13, step: 100, side: 'right',
       label: 'ALT' }, col);
-    if (S.afterburner > 0.3) {
-      backing(ctx, g.minX + 16, g.minY + 12, 40, 18, BACK_BOX);
-      glow(ctx, AMBER); ctx.lineWidth = LW; ctx.strokeRect(g.minX + 16, g.minY + 12, 40, 18);
-      ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('A/B', g.minX + 36, g.minY + 22);
-    }
+    // Mode tags: [A/B] while the afterburner is lit, ARM while weapons are available.
+    const tag = (txt, y, colr) => {
+      backing(ctx, g.minX + 16, y, 44, 18, BACK_BOX);
+      glow(ctx, colr, 3); ctx.lineWidth = HLW; ctx.strokeRect(g.minX + 16, y, 44, 18);
+      ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, g.minX + 38, y + 10);
+    };
+    if (S.afterburner > 0.3) tag('A/B', g.minY + 12, AMBER);
+    if (!C.dead && (C.missiles > 0 || C.ammo > 0)) tag('ARM', g.minY + 34, col);
+    // AOA + G readout, lower left of the glass.
+    glow(ctx, col, 2); ctx.font = f(13); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const aoa = S.alpha * R2D;
+    if (aoa > A.STALL_AOA * R2D * 0.85) glow(ctx, WARN, 4);
+    ctx.fillText('AOA ' + aoa.toFixed(1), g.minX + 96, g.maxY - 34);
+    glow(ctx, S.gLoad > 7.5 ? WARN : col, 2);
+    ctx.fillText('G   ' + S.gLoad.toFixed(1), g.minX + 96, g.maxY - 17);
     drawTargets(ctx);
     ctx.restore();
   }

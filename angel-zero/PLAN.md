@@ -140,6 +140,29 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - [x] Verified: Space toggles cockpit both ways, alert flashes and clears,
       zero page console errors headless; cockpit frame ~7 ms on RTX 4060.
 
+## F-15C cockpit realism pass (2026-11-18)
+- [x] Procedural 2048^2 crinkle-coat set (`map` / `normalMap` / `roughnessMap`):
+      stipple grain, panel seams, countersunk rivets, brushed edge wear.
+      Stencil placards (MASTER ARM, HUD BRT, CANOPY LOCK, ILS / TCN, CAUTION).
+- [x] Enclosed forward tub (double-sided walls/floor) — verified no sky at the
+      bottom corners by pixel sampling.
+- [x] Beveled canopy bow with rubber gasket, 16 hex bolts + washers, twin
+      yellow/black lock hooks, grab handles, rails with brushed wear strips;
+      ribbed glare-shield padding; side consoles with toggles, guarded master
+      arm, knobs, air vents; backlit annunciator (MASTER CAUTION, FIRE L/R,
+      LOW FUEL, A/P, IFF, RWR, HYD) driven by live state, MASTER CAUTION
+      push-light flashes on damage / alerts. LOW FUEL and A/P stay dark (no
+      fuel model / autopilot yet).
+- [x] UFC housing with LED readout and 12-key keypad; three recessed MFDs
+      (TEWS threat scope, ADI + heading, stores + engine) with 60 bezel OSBs and
+      glass sheen; panel faces the eye line.
+- [x] Cast chamfered combiner arms with bolts, collimator lens housing, clear
+      MeshPhysical combiner (opacity 0.09, roughness 0.04) with #38ffb3 rim.
+- [x] Head inertia limited to 14 px equivalent; HUD symbology #4dff91 with
+      1.25 px lines / 1 px tape ticks, compass `33 | N | 03`, [A/B] + ARM tags,
+      AOA + G readout; ladder and horizon conformal through head motion.
+- [x] Cockpit frame ~8 ms warm on RTX 4060 (1024 shadow map).
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
