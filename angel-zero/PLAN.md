@@ -163,12 +163,42 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       AOA + G readout; ladder and horizon conformal through head motion.
 - [x] Cockpit frame ~8 ms warm on RTX 4060 (1024 shadow map).
 
+## Step 4 — Bogey AI, weapons, lock-on, ejection (2026-11-18)
+- [x] `src/combat.js`: 6-ship aggressor wave (F-15 GLB merged per material into
+      instanced meshes, crimson/charcoal tint, afterburner glow) patrolling at
+      1,800-6,500 ft; PATROL / PURSUE (< 4 NM, lead pursuit, gun bursts with
+      red tracers when aligned, lock warning, occasional missile) / EVADE
+      (9 G break turn when an AIM-9 is guiding on them). Waves respawn after
+      all six are splashed.
+- [x] M61: hold L-click / F, 100 rds/s instanced tracers from the right
+      wing-root port with spread, convergence, muzzle flash + light; GUN 940.
+- [x] AIM-9: R-click / M, alternating wing rails, motor ignition after drop,
+      proportional navigation (N=4, 35 G) on the LOCK target, smoke trail,
+      proximity fuse; 0.6 s between shots, 6 s reload when empty.
+- [x] Lock: nearest bogey within 15 deg of the nose and < 3.5 NM. HUD: green
+      TGT diamonds, pulsing red LOCK box with tag + NM, off-screen caret to the
+      nearest bogey, gun lead pipper (SHOOT inside 1,300 m); directional blips
+      on both radars; MISSILE ALERT when a bogey locks, fires or launches.
+- [x] Kills: layered fireball + sparks + smoke, tumbling burning wreck that
+      splashes (ocean) or explodes (land); SCORE +1500, KILLS +1, radio calls.
+- [x] `src/eject.js`: E key, 100 % DMG, or terrain/ocean contact. Seat arc,
+      orange/white canopy at 0.7 s with sin(t*2.5)*0.14 sway, mouse orbit,
+      A/D steering, abandoned jet spirals in and explodes (~4.5 s), comms
+      "EJECT! EJECT!" -> "RESCUE CHOPPER INBOUND — STAND BY FOR RE-ENTRY",
+      fresh F-15 at 4,500 ft after 5 s.
+- [x] Barrel roll: double-tap A/D or Q (scripted 360 deg in 1.15 s, ends level).
+- [x] Chase camera blends to an overhead pursuit view below -65 deg pitch.
+- [x] Verified (pane + headless): guns kill, AIM-9 kill on an evading bogey,
+      wave 2 spawn, eject -> chute -> impact 4.5 s -> respawn at 4,500 ft,
+      zero page console errors; chase frame ~2.8 ms / 94 draw calls.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
 (fast-forwards the sim before the first frame); `?alt=metres`; `?spd=m/s`;
 `?force=cone,vapor,mist` (holds transient VFX on for stills); `?alert` (forces
-MISSILE_ALERT). Flags other than
+MISSILE_ALERT); `?bogey=metres` (bogey 1 dead ahead); `?fire` (hold trigger);
+`?msl` (launch at load); `?eject` (bail out at load). Flags other than
 `nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
 ## Next (future)

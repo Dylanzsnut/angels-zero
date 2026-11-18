@@ -47,10 +47,10 @@
     <div class="row">
       <div><span class="key">MOUSE</span> &nbsp; PITCH / ROLL RATE (OFFSET FROM CENTRE)</div>
       <div><span class="key">W / S</span> &nbsp; THROTTLE &nbsp; <span class="key">SHIFT</span> &nbsp; AFTERBURNER</div>
-      <div><span class="key">A / D</span> &nbsp; RUDDER</div>
+      <div><span class="key">A / D</span> &nbsp; RUDDER &nbsp; <span class="key">DOUBLE-TAP A / D, Q</span> &nbsp; BARREL ROLL</div>
       <div><span class="key">SPACE</span> &nbsp; COCKPIT / CHASE VIEW</div>
-      <div><span class="key">L-CLICK / F</span> &nbsp; CANNON &nbsp; <span class="key">R-CLICK / M</span> &nbsp; MISSILE (LOCK)</div>
-      <div><span class="key">R</span> &nbsp; RESET AIRCRAFT</div>
+      <div><span class="key">HOLD L-CLICK / F</span> &nbsp; M61 CANNON &nbsp; <span class="key">R-CLICK / M</span> &nbsp; AIM-9</div>
+      <div><span class="key">E</span> &nbsp; EJECT &nbsp; <span class="key">R</span> &nbsp; RESET AIRCRAFT</div>
     </div>
     <div class="go">MOVE MOUSE TO FLY</div>
   </div>
@@ -58,7 +58,7 @@
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
-    <h3>v1.2.0 — EAGLE UPDATE</h3>
+    <h3>v1.2.0 â€” EAGLE UPDATE</h3>
     <ul>
       <li>Flyable F-15 Eagle asset with gear struts stripped and a sealed skin.</li>
       <li>Cyan-to-orange mach-diamond afterburners and high-G wingtip vortices.</li>
@@ -66,11 +66,11 @@
       <li>Cockpit view with canopy frame and live radar, ADI and status MFDs.</li>
       <li>Ocean archipelago, clouds and rate-command 6-DOF flight model.</li>
     </ul>
-    <h3>v1.1.0 — DOGFIGHT UPDATE</h3>
+    <h3>v1.1.0 â€” DOGFIGHT UPDATE</h3>
     <ul>
       <li>Cannon, homing missiles and three respawning bandits.</li>
     </ul>
-    <h3>v1.0.0 — INITIAL FLIGHT MODEL</h3>
+    <h3>v1.0.0 â€” INITIAL FLIGHT MODEL</h3>
     <ul>
       <li>6-DOF physics with lift, drag, stall and a 9G limiter.</li>
     </ul>
@@ -81,9 +81,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=0e0599b';
-import { createHUD } from './src/hud.js?v=0e0599b';
-import { createCockpit3D } from './src/cockpit3d.js?v=0e0599b';
+import { createVFX } from './src/vfx.js?v=s4b';
+import { createHUD } from './src/hud.js?v=s4b';
+import { createCockpit3D } from './src/cockpit3d.js?v=s4b';
+import { createCombat } from './src/combat.js?v=s4b';
+import { createEjection } from './src/eject.js?v=s4b';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -424,258 +426,13 @@ const PLACEHOLDER_MAT = /^(hud_disp|screens|GC_LOD|GF_LOD|poly_31|cock2\.(9|10))
 const INTERIOR_MAT = /^(cock|seats|poly_27)/i;
 
 /* ============================================================================
-   6. COMBAT — enemies, cannon, missiles, explosions
+   6. COMBAT STATE (systems live in src/combat.js; ejection in src/eject.js)
    ============================================================================ */
+// Shared telemetry read by the HUD, cockpit screens and the combat module.
 const combat = {
-  ammo: 510, missiles: 6, reload: 0, missileReload: 0, gunCooldown: 0,
-  lockTarget: null, kills: 0, health: 100, dead: false, deadTimer: 0,
-  hitFlash: 0, missileWarning: 0
+  ammo: 940, missiles: 6, reload: 0, missileReload: 0, lockTarget: null, kills: 0, score: 0, deaths: 0,
+  health: 100, dead: false, hitFlash: 0, missileWarning: 0, comms: [], wave: 0
 };
-const GUN_MAX = 510, MSL_MAX = 6;
-
-const PARTICLE_MAX = 170;
-const particleGeo = new THREE.IcosahedronGeometry(1, 0);
-const particles = [];
-for (let i = 0; i < PARTICLE_MAX; i++) {
-  const mesh = new THREE.Mesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-  mesh.visible = false; scene.add(mesh);
-  particles.push({ mesh, active: false, vel: new THREE.Vector3(), life: 0, maxLife: 1 });
-}
-function spawnExplosion(pos, scale = 1) {
-  let spawned = 0; const count = Math.floor(20 * scale);
-  for (const p of particles) {
-    if (spawned >= count) break;
-    if (p.active) continue;
-    p.active = true; p.mesh.visible = true; p.mesh.position.copy(pos);
-    p.mesh.material.color.setHex(Math.random() < 0.55 ? 0xffb43a : 0xff5a1e);
-    p.mesh.material.opacity = 1;
-    p.vel.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar((28 + Math.random() * 70) * scale);
-    p.maxLife = p.life = 0.55 + Math.random() * 0.85;
-    p.mesh.scale.setScalar(0.7 + Math.random() * 1.6 * scale);
-    spawned++;
-  }
-}
-
-const bulletGeo = new THREE.CylinderGeometry(0.075, 0.075, 2.8, 5); bulletGeo.rotateX(Math.PI / 2);
-const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe6a0, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
-const bullets = [];
-for (let i = 0; i < 140; i++) {
-  const mesh = new THREE.Mesh(bulletGeo, bulletMat); mesh.visible = false; scene.add(mesh);
-  bullets.push({ mesh, active: false, vel: new THREE.Vector3(), life: 0 });
-}
-const missileBodyGeo = new THREE.CylinderGeometry(0.2, 0.2, 3.6, 8); missileBodyGeo.rotateX(Math.PI / 2);
-const missileBodyMat = new THREE.MeshStandardMaterial({ color: 0xdfe6ee, metalness: 0.35, roughness: 0.4 });
-const missileFlameGeo = new THREE.ConeGeometry(0.3, 1.8, 8, 1, true); missileFlameGeo.rotateX(Math.PI / 2);
-const missileFlameMat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-const missiles = [];
-for (let i = 0; i < 18; i++) {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(missileBodyGeo, missileBodyMat));
-  const flame = new THREE.Mesh(missileFlameGeo, missileFlameMat); flame.position.z = 2.5; g.add(flame);
-  g.visible = false; scene.add(g);
-  missiles.push({ mesh: g, active: false, vel: new THREE.Vector3(), target: null, life: 0, enemy: false });
-}
-const MISSILE_NOSE = new THREE.Vector3(0, 0, -1);
-
-function fireCannon() {
-  if (!modelReady || combat.dead || combat.ammo <= 0 || combat.reload > 0 || combat.gunCooldown > 0) return;
-  combat.gunCooldown = 0.07; combat.ammo--;
-  const b = bullets.find(x => !x.active); if (!b) return;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(state.quaternion);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(state.quaternion);
-  const dir = fwd.clone().addScaledVector(right, (Math.random() - 0.5) * 0.002).addScaledVector(up, (Math.random() - 0.5) * 0.0016).normalize();
-  b.mesh.position.copy(state.position).addScaledVector(fwd, 10).addScaledVector(right, 1.6).addScaledVector(up, 0.2);
-  b.mesh.quaternion.copy(state.quaternion);
-  b.vel.copy(dir).multiplyScalar(1050).add(state.velocity);
-  b.life = 1.6; b.active = true; b.mesh.visible = true;
-  if (combat.ammo <= 0) combat.reload = 5;
-}
-function fireMissile() {
-  if (!modelReady || combat.dead || combat.missiles <= 0 || combat.missileReload > 0 || !combat.lockTarget) return;
-  const m = missiles.find(x => !x.active); if (!m) return;
-  combat.missiles--;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(state.quaternion);
-  const down = new THREE.Vector3(0, -1, 0).applyQuaternion(state.quaternion);
-  const side = combat.missiles % 2 === 0 ? 1 : -1;
-  m.mesh.position.copy(state.position).addScaledVector(right, side * 3.0).addScaledVector(down, 1.4);
-  m.mesh.quaternion.copy(state.quaternion);
-  m.vel.copy(fwd).multiplyScalar(60).add(state.velocity);
-  m.target = combat.lockTarget; m.life = 10; m.enemy = false; m.active = true; m.mesh.visible = true;
-  if (combat.missiles <= 0) combat.missileReload = 6;
-}
-function fireEnemyMissile(fromPos, fromQuat) {
-  const m = missiles.find(x => !x.active); if (!m) return;
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(fromQuat);
-  m.mesh.position.copy(fromPos).addScaledVector(fwd, 8);
-  m.mesh.quaternion.copy(fromQuat);
-  m.vel.copy(fwd).multiplyScalar(220);
-  m.target = null; m.life = 8; m.enemy = true; m.active = true; m.mesh.visible = true;
-}
-
-const enemyGlowMat = new THREE.MeshBasicMaterial({ color: 0xff6a1e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-function createEnemyMesh() {
-  const g = new THREE.Group();
-  const body = model.clone(true);
-  const tint = new THREE.Color(0.78, 0.52, 0.46);
-  const tinted = new Map();
-  body.traverse(o => {
-    if (!o.isMesh) return;
-    if (!tinted.has(o.material)) { const m = o.material.clone(); if (m.color) m.color.multiply(tint); tinted.set(o.material, m); }
-    o.material = tinted.get(o.material);
-  });
-  g.add(body);
-  for (const nz of nozzleLocal) {
-    const glow = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3.0, 10, 1, true), enemyGlowMat);
-    glow.geometry.rotateX(-Math.PI / 2);
-    glow.position.copy(nz).add(new THREE.Vector3(0, 0, 1.8));
-    g.add(glow);
-  }
-  return g;
-}
-class Enemy {
-  constructor(i) {
-    this.index = i; this.mesh = createEnemyMesh();
-    this.pos = new THREE.Vector3(); this.quat = new THREE.Quaternion();
-    this.speed = 180 + i * 18; this.alive = true; this.respawnTimer = 0;
-    this.fireTimer = 4 + i * 1.6; this.phase = Math.random() * Math.PI * 2; this.hp = 100;
-    scene.add(this.mesh); this.respawn();
-  }
-  respawn() {
-    const a = (this.index / 3) * Math.PI * 2 + Math.random() * 0.8;
-    const d = 5500 + Math.random() * 3500;
-    this.pos.set(state.position.x + Math.sin(a) * d, THREE.MathUtils.clamp(state.position.y + (Math.random() - 0.4) * 500, 900, 3200), state.position.z - Math.cos(a) * d);
-    const toP = state.position.clone().sub(this.pos).normalize();
-    this.quat.setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), toP, new THREE.Vector3(0, 1, 0)));
-    this.hp = 100; this.alive = true; this.mesh.visible = true;
-    this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat);
-    this.fireTimer = 4 + Math.random() * 3;
-  }
-  damage(n) {
-    if (!this.alive) return;
-    this.hp -= n;
-    if (this.hp <= 0) {
-      this.alive = false; this.mesh.visible = false;
-      this.respawnTimer = 7 + Math.random() * 4;
-      spawnExplosion(this.pos, 1.8);
-      combat.kills++;
-      if (combat.lockTarget === this) combat.lockTarget = null;
-    }
-    combat.hitFlash = 0.16;
-  }
-  update(dt, now) {
-    if (!this.alive) { this.respawnTimer -= dt; if (this.respawnTimer <= 0) this.respawn(); return; }
-    const toPlayer = state.position.clone().sub(this.pos);
-    const dist = toPlayer.length();
-    const dir = toPlayer.clone().normalize();
-    dir.x += Math.sin(now * 0.55 + this.phase) * 0.30;
-    dir.y += Math.sin(now * 0.42 + this.phase * 1.7) * 0.14;
-    dir.normalize();
-    if (dist < 900) dir.addScaledVector(toPlayer.normalize(), -0.9).normalize();
-    dir.y = THREE.MathUtils.clamp(dir.y, -0.6, 0.6);
-    const targetQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, new THREE.Vector3(0, 1, 0)));
-    // Bank into the turn so the F-15 silhouettes read as fighters.
-    const turn = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quat).cross(dir).y;
-    targetQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.clamp(turn * 4, -1.1, 1.1)));
-    this.quat.slerp(targetQ, Math.min(1, 1.2 * dt)).normalize();
-    this.pos.addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(this.quat), this.speed * dt);
-    this.pos.y = Math.max(this.pos.y, groundLevel(this.pos.x, this.pos.z) + 300);
-    this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat);
-    this.fireTimer -= dt;
-    if (this.fireTimer <= 0 && dist < 6000 && !combat.dead) { this.fireTimer = 5 + Math.random() * 4; fireEnemyMissile(this.pos, this.quat); }
-  }
-}
-let enemies = [];
-
-function updateLock() {
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
-  let best = null, bestScore = Infinity;
-  for (const e of enemies) {
-    if (!e.alive) continue;
-    const to = e.pos.clone().sub(state.position);
-    const d = to.length();
-    if (d > 9000 || d < 80) continue;
-    const al = to.normalize().dot(fwd);
-    if (al < 0.94) continue;
-    const s = d + (1 - al) * 9000;
-    if (s < bestScore) { bestScore = s; best = e; }
-  }
-  combat.lockTarget = best;
-}
-
-function killPlayer() {
-  combat.health = 0; combat.dead = true; combat.deadTimer = 4;
-  combat.deaths = (combat.deaths || 0) + 1;
-  spawnExplosion(state.position, 2.6);
-  jet.visible = false;
-}
-
-function updateCombat(dt, now) {
-  combat.gunCooldown = Math.max(0, combat.gunCooldown - dt);
-  combat.hitFlash = Math.max(0, combat.hitFlash - dt);
-  combat.missileWarning = Math.max(0, combat.missileWarning - dt);
-  if (combat.reload > 0) { combat.reload -= dt; if (combat.reload <= 0) combat.ammo = GUN_MAX; }
-  if (combat.missileReload > 0) { combat.missileReload -= dt; if (combat.missileReload <= 0) combat.missiles = MSL_MAX; }
-
-  for (const p of particles) {
-    if (!p.active) continue;
-    p.mesh.position.addScaledVector(p.vel, dt);
-    p.vel.multiplyScalar(1 - 1.2 * dt);
-    p.life -= dt;
-    if (p.life <= 0) { p.active = false; p.mesh.visible = false; continue; }
-    p.mesh.material.opacity = Math.min(1, p.life / p.maxLife);
-    p.mesh.rotation.x += dt * 2; p.mesh.rotation.y += dt * 3;
-  }
-  if (combat.dead) { combat.deadTimer -= dt; if (combat.deadTimer <= 0) resetAircraft(); return; }
-
-  for (const e of enemies) e.update(dt, now);
-  updateLock();
-  if (keys.fire) fireCannon();
-
-  for (const b of bullets) {
-    if (!b.active) continue;
-    b.mesh.position.addScaledVector(b.vel, dt);
-    b.life -= dt;
-    if (b.life <= 0) { b.active = false; b.mesh.visible = false; continue; }
-    for (const e of enemies) {
-      if (e.alive && b.mesh.position.distanceToSquared(e.pos) < 24 * 24) {
-        e.damage(11); spawnExplosion(b.mesh.position, 0.22);
-        b.active = false; b.mesh.visible = false; break;
-      }
-    }
-  }
-  for (const m of missiles) {
-    if (!m.active) continue;
-    const speed = m.vel.length();
-    if (m.enemy) {
-      const desired = state.position.clone().sub(m.mesh.position).normalize();
-      m.vel.copy(m.vel.clone().normalize().lerp(desired, Math.min(1, 2.0 * dt)).normalize()).multiplyScalar(Math.min(540, speed + 260 * dt));
-      if (m.mesh.position.distanceToSquared(state.position) < 2500 * 2500) combat.missileWarning = 1.2;
-    } else if (m.target && m.target.alive) {
-      const desired = m.target.pos.clone().sub(m.mesh.position).normalize();
-      m.vel.copy(m.vel.clone().normalize().lerp(desired, Math.min(1, 3.6 * dt)).normalize()).multiplyScalar(Math.min(950, speed + 520 * dt));
-    }
-    m.mesh.position.addScaledVector(m.vel, dt);
-    m.mesh.quaternion.setFromUnitVectors(MISSILE_NOSE, m.vel.clone().normalize());
-    m.life -= dt;
-    let hit = false;
-    if (m.enemy) {
-      if (m.mesh.position.distanceToSquared(state.position) < 45 * 45) {
-        spawnExplosion(m.mesh.position, 0.9);
-        combat.health -= 24; combat.hitFlash = 0.3; hit = true;
-        if (combat.health <= 0) killPlayer();
-      }
-    } else if (m.target && m.target.alive && m.mesh.position.distanceToSquared(m.target.pos) < 50 * 50) {
-      m.target.damage(100); spawnExplosion(m.mesh.position, 0.7); hit = true;
-    }
-    if (m.mesh.position.y < groundLevel(m.mesh.position.x, m.mesh.position.z)) { hit = true; spawnExplosion(m.mesh.position, 0.5); }
-    if (hit || m.life <= 0) {
-      if (!hit) spawnExplosion(m.mesh.position, 0.5);
-      m.active = false; m.mesh.visible = false;
-    }
-  }
-}
 
 /* ============================================================================
    7. FLIGHT STATE, INPUT, 6-DOF PHYSICS
@@ -685,7 +442,7 @@ const CL_ALPHA = 5.0, CL0 = 0.12, CD0 = 0.019, K_INDUCED = 0.10, STALL_AOA = 0.3
 const THRUST_DRY = 130000, THRUST_AB = 105000;     // twin F100s: dry / additional AB (N)
 const MAX_PITCH_RATE = 1.15, MAX_ROLL_RATE = 3.0, MAX_YAW_RATE = 0.35;
 
-const SPAWN = new THREE.Vector3(0, 1500, 7600);
+const SPAWN = new THREE.Vector3(0, 4500 * 0.3048, 7600);     // fresh jets enter at 4,500 ft
 const state = {
   position: SPAWN.clone(), velocity: new THREE.Vector3(0, 0, -200), quaternion: new THREE.Quaternion(),
   throttle: 0.65, afterburner: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
@@ -721,15 +478,42 @@ function resetAircraft() {
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
   applyPose();
-  Object.assign(combat, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, gunCooldown: 0, lockTarget: null, health: 100, dead: false, deadTimer: 0, hitFlash: 0, missileWarning: 0 });
-  for (const b of bullets) { b.active = false; b.mesh.visible = false; }
-  for (const m of missiles) { m.active = false; m.mesh.visible = false; }
+  combatSys.resetPlayer();
+  roll.left = 0;
   vfx.clearTrails(); hud.resetMaxG();
   jet.visible = true;
   camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position);
   camVelocity.set(0, 0, 0);
   prevPlanePos.copy(state.position);
 }
+
+// Flight mode: FLY (normal) or EJECT (pilot under canopy, jet abandoned).
+let flightMode = 'FLY', viewBeforeEject = false;
+function triggerEject(reason) {
+  if (flightMode !== 'FLY' || !modelReady) return;
+  flightMode = 'EJECT';
+  combat.dead = true; combat.deaths++; combat.lockTarget = null;
+  keys.fire = false;
+  state.throttle = 0; state.afterburner = 0;
+  viewBeforeEject = firstPerson;
+  const eye = EYE.clone().applyQuaternion(state.quaternion).add(state.position);
+  if (firstPerson) setView(false);
+  eject.start({ eye, quat: state.quaternion.clone(), vel: state.velocity.clone(), crashed: reason === 'crash' });
+  if (DEBUG) console.log('[ANGELS_ZERO] eject:', reason);
+}
+function finishEject() {
+  eject.stop();
+  flightMode = 'FLY';
+  resetAircraft();
+  if (viewBeforeEject) setView(true);
+  combatSys.say('ALPHA 1 BACK IN THE FIGHT', 2);
+}
+
+// Evasive 360-degree barrel roll (double-tap A / D, or Q).
+const roll = { left: 0, dir: 1 };
+const ROLL_RATE = 2 * Math.PI / 1.15;
+const lastTap = { a: 0, d: 0 };
+function startRoll(dir) { if (flightMode === 'FLY' && roll.left <= 0) { roll.left = 2 * Math.PI; roll.dir = dir; } }
 
 function setView(fp) {
   firstPerson = fp;
@@ -749,14 +533,21 @@ addEventListener('mousemove', e => {
 addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setView(!firstPerson); return; }
   const k = e.key.toLowerCase();
+  if ((k === 'a' || k === 'd') && !e.repeat) {
+    const t = performance.now();
+    if (t - lastTap[k] < 300) startRoll(k === 'a' ? -1 : 1);
+    lastTap[k] = t;
+  }
   if (k === 'w') keys.w = true;
   if (k === 's') keys.s = true;
   if (k === 'a') keys.a = true;
   if (k === 'd') keys.d = true;
   if (k === 'shift') keys.shift = true;
-  if (k === 'f') { keys.fire = true; fireCannon(); }
-  if (k === 'm') fireMissile();
-  if (k === 'r') resetAircraft();
+  if (k === 'f') keys.fire = true;
+  if (k === 'm' && !e.repeat) combatSys.fireMissile();
+  if (k === 'q' && !e.repeat) startRoll(-1);
+  if (k === 'e' && !e.repeat) triggerEject('manual');
+  if (k === 'r' && flightMode === 'FLY') resetAircraft();
   if (k === 'escape') setPatchOpen(false);
 });
 addEventListener('keyup', e => {
@@ -770,8 +561,8 @@ addEventListener('keyup', e => {
 });
 addEventListener('mousedown', e => {
   if (uiModal) return;
-  if (e.button === 0) { keys.fire = true; fireCannon(); }
-  if (e.button === 2) fireMissile();
+  if (e.button === 0) keys.fire = true;
+  if (e.button === 2) combatSys.fireMissile();
 });
 addEventListener('mouseup', e => { if (e.button === 0) keys.fire = false; });
 addEventListener('contextmenu', e => e.preventDefault());
@@ -818,7 +609,8 @@ function updatePhysics(dt) {
   const aLim = STALL_AOA * 0.85;
   if (targetPitch > 0) targetPitch *= THREE.MathUtils.clamp((aLim - state.alpha) / (aLim * 0.35), 0, 1);
   else targetPitch *= THREE.MathUtils.clamp((state.alpha + 0.17) / 0.07, 0, 1);
-  const targetRoll = -rollIn * MAX_ROLL_RATE;
+  if (roll.left > 0) targetPitch = Math.max(targetPitch, 0.32);   // slight pull keeps the roll on a barrel arc
+  const targetRoll = roll.left > 0 ? 0 : -rollIn * MAX_ROLL_RATE;
   const targetYaw = coupledYaw + rudderIn * MAX_YAW_RATE;
   const authority = THREE.MathUtils.smoothstep(state.speed, 45, 120);
   const resp = Math.min(1, 6.0 * dt);
@@ -826,7 +618,12 @@ function updatePhysics(dt) {
   state.rollRate += (targetRoll * authority - state.rollRate) * resp;
   state.yawRate += (targetYaw - state.yawRate) * resp;
   rotateBody(AX_X, state.pitchRate * dt);
-  rotateBody(AX_Z, state.rollRate * dt);
+  if (roll.left > 0) {                                           // scripted 360 deg evasive roll
+    const step = Math.min(roll.left, ROLL_RATE * dt);
+    roll.left -= step;
+    rotateBody(AX_Z, -roll.dir * step);
+    state.rollRate = roll.left > 0 ? -roll.dir * ROLL_RATE : 0;   // stop dead at 360 deg
+  } else rotateBody(AX_Z, state.rollRate * dt);
   rotateBody(AX_Y, state.yawRate * dt);
   q.normalize();
 
@@ -865,7 +662,7 @@ function updatePhysics(dt) {
 
   const ground = groundLevel(state.position.x, state.position.z);
   state.radalt = state.position.y - ground;
-  if (state.radalt < 2.5 && !combat.dead) killPlayer();
+  if (state.radalt <= 0.5 && flightMode === 'FLY') triggerEject('crash');
 
   state.pitch = Math.asin(THREE.MathUtils.clamp(_fwd.y, -1, 1));
   state.heading = (Math.atan2(_fwd.x, -_fwd.z) * 180 / Math.PI + 360) % 360;
@@ -873,11 +670,17 @@ function updatePhysics(dt) {
 
 function updateCameraAndVisuals(dt, now) {
   const q = state.quaternion;
-  jet.position.copy(state.position);
-  jet.quaternion.copy(q);
-  jet.updateMatrixWorld();
+  if (flightMode === 'EJECT') {
+    // eject.update() already flew the abandoned jet and placed the camera.
+  } else {
+    jet.position.copy(state.position);
+    jet.quaternion.copy(q);
+    jet.updateMatrixWorld();
+  }
 
-  if (firstPerson) {
+  if (flightMode === 'EJECT') {
+    // camera owned by the ejection sequence
+  } else if (firstPerson) {
     updateCockpitClip();
     // 3D cockpit rig at the eye point; it owns the camera (head-turn lag, G slump, vibration).
     cockpit.update(dt, now, EYE.clone().applyQuaternion(q).add(state.position), q);
@@ -885,7 +688,14 @@ function updateCameraAndVisuals(dt, now) {
     // Spring-damped chase camera: translation tracked rigidly, offset lags in turns.
     camera.position.add(state.position.clone().sub(prevPlanePos));
     prevPlanePos.copy(state.position);
-    const desired = CAM_OFFSET.clone().applyQuaternion(q).add(state.position);
+    // Steep dives (pitch < -65 deg) blend toward an overhead top-down pursuit view.
+    const dive = THREE.MathUtils.smoothstep(-state.pitch * 180 / Math.PI, 55, 70);
+    const velDir = state.velocity.clone().normalize();
+    const horiz = velDir.clone().setY(0);
+    if (horiz.lengthSq() < 1e-4) horiz.set(0, 0, -1).applyQuaternion(q).setY(0);
+    horiz.normalize();
+    const desired = CAM_OFFSET.clone().applyQuaternion(q).add(state.position)
+      .lerp(state.position.clone().add(new THREE.Vector3(0, 42, 0)).addScaledVector(horiz, -9), dive);
     const toDesired = desired.sub(camera.position);
     const lag = toDesired.length();
     if (lag > 24) { camera.position.addScaledVector(toDesired, (lag - 24) / lag); camVelocity.multiplyScalar(0.5); }
@@ -901,14 +711,14 @@ function updateCameraAndVisuals(dt, now) {
       const s = state.afterburner * 0.10;
       camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s; camera.position.z += (Math.random() - 0.5) * s;
     }
-    camera.up.copy(AX_Y).applyQuaternion(q);
-    camera.lookAt(LOOK_OFFSET.clone().applyQuaternion(q).add(state.position));
+    camera.up.copy(AX_Y).applyQuaternion(q).lerp(horiz, dive).normalize();
+    camera.lookAt(LOOK_OFFSET.clone().applyQuaternion(q).add(state.position).lerp(state.position.clone().addScaledVector(velDir, 45), dive));
   }
   camera.updateMatrixWorld();
   sky.position.copy(camera.position);
   oceanUniforms.uCam.value.copy(camera.position);
 
-  vfx.update(dt, now, state, { visible: jet.visible && modelReady, firstPerson });
+  vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson });
   // Cloud fly-through thickens the local haze around the camera.
   const fogD = FOG_DENSITY * (1 + vfx.mist * 28);
   scene.fog.density = fogD;
@@ -921,13 +731,20 @@ function updateCameraAndVisuals(dt, now) {
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
+const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight,
+  terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y },
+  isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason) });
+const missiles = combatSys.missiles;
+const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
+  fx: { explosion: combatSys.explosion, splash: combatSys.splash, emitFire: combatSys.emitFire, emitSmoke: combatSys.emitSmoke } });
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
-  missiles, STALL_AOA, getEnemies: () => enemies });
+  missiles, STALL_AOA, getEnemies: () => combatSys.enemies });
 const hud = createHUD(THREE, {
   canvas: document.getElementById('hud'), state, combat, camera, missiles, mouse, EYE, STALL_AOA,
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE },
-  getEnemies: () => enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
+  getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
+  getMode: () => flightMode,
   isReady: () => modelReady, getMist: () => vfx.mist,
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
@@ -987,7 +804,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     vfx.attachPlume(p);
   }
   jet.add(model);
-  enemies = [0, 1, 2].map(i => new Enemy(i));      // enemies clone materials before clipping is attached
+  combatSys.init(model, nozzleLocal);               // aggressor fleet clones materials before clipping is attached
   const clipped = new Set();
   model.traverse(o => {
     if (!o.isMesh || clipped.has(o.material)) return;
@@ -998,14 +815,19 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   modelReady = true;
   setView(firstPerson);
   statusEl.remove();
+  if (DEBUG && Q.has('bogey')) combatSys.placeAhead(0, Number(Q.get('bogey')) || 1500);
+  if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
+  if (DEBUG && Q.has('eject')) triggerEject('manual');
   if (DEBUG && Q.has('warp')) {                       // headless test hook: fast-forward the sim
     const h = 1 / 60;
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
       simTime += h;
-      if (!combat.dead) updatePhysics(h);
-      updateCombat(h, simTime);
+      stepSim(h);
       updateCameraAndVisuals(h, simTime);
     }
+    console.log('[ANGELS_ZERO] combat', JSON.stringify(combatSys.stats()), 'lock', combat.lockTarget ? combat.lockTarget.label : '-',
+      'score', combat.score, 'kills', combat.kills, 'gun', combat.ammo, 'msl', combat.missiles, 'hp', combat.health, 'mode', flightMode,
+      'eject', JSON.stringify(eject.info));
     console.log('[ANGELS_ZERO] warp', Q.get('warp'), 's: speed', state.speed.toFixed(1), 'alt', state.position.y.toFixed(0),
       'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2),
       'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead);
@@ -1021,16 +843,19 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
    ============================================================================ */
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
+const DEBUG_FIRE = DEBUG && Q.has('fire');            // headless test hook: hold the trigger
+function stepSim(dt) {
+  if (flightMode === 'FLY') updatePhysics(dt);
+  combatSys.update(dt, simTime, { playerActive: flightMode === 'FLY', firing: keys.fire || DEBUG_FIRE });
+  if (flightMode === 'EJECT' && eject.update(dt)) finishEject();
+}
 function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
   simTime += dt;
-  if (modelReady && !FREEZE) {
-    if (!combat.dead) updatePhysics(dt);
-    updateCombat(dt, simTime);
-  }
+  if (modelReady && !FREEZE) stepSim(dt);
   updateCameraAndVisuals(dt, simTime);
   oceanUniforms.uTime.value = simTime;
   renderer.render(scene, camera);
@@ -1046,8 +871,9 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
-    get enemies() { return enemies; }, get model() { return model; }, get ready() { return modelReady; } };
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
+    triggerEject, startRoll, stepSim,
+    get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
 resetAircraft();
 hud.resize();

@@ -32,6 +32,9 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/cockpit3d.js` — `createCockpit3D`: 3D cockpit rig (owns the cockpit
   camera pose), combiner glass outline, live CanvasTexture panel screens, sun
   shadows in cockpit view.
+- `src/combat.js` — `createCombat`: bogey wave AI, cannon, AIM-9 PN guidance,
+  explosions / wrecks / smoke, lock-on, scoring, radio comms (`combat.comms`).
+- `src/eject.js` — `createEjection`: seat, parachute, burning jet, rescue respawn.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
 
 ## Conventions

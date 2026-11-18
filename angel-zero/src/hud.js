@@ -245,26 +245,87 @@ export function createHUD(THREE, A) {
     ctx.restore();
   }
 
+  // Target symbology: green TGT diamonds, pulsing red LOCK box, off-screen caret
+  // toward the nearest bogey, and the gun lead pipper on the locked target.
   function drawTargets(ctx) {
+    const now = performance.now();
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    let nearest = null, nd = Infinity, nearestOn = false;
+    ctx.save(); ctx.textAlign = 'center';
     for (const e of A.getEnemies()) {
       if (!e.alive) continue;
-      if (e.pos.clone().sub(cam.position).dot(fwd) <= 0) continue;
+      const range = e.pos.distanceTo(S.position);
+      const inFront = e.pos.clone().sub(cam.position).dot(fwd) > 0;
       const p = toScreen(e.pos);
-      if (!p.ok || p.x < -40 || p.x > HW + 40 || p.y < -40 || p.y > HH + 40) continue;
-      const range = e.pos.distanceTo(S.position), locked = C.lockTarget === e;
-      const s = clamp(15000 / Math.max(range, 300), 12, 56), seg = s * 0.38;
-      ctx.save(); glow(ctx, locked ? WARN : G); ctx.lineWidth = LW;
-      ctx.beginPath();
-      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        ctx.moveTo(p.x + sx * s, p.y + sy * (s - seg)); ctx.lineTo(p.x + sx * s, p.y + sy * s); ctx.lineTo(p.x + sx * (s - seg), p.y + sy * s);
+      const onScreen = inFront && p.ok && p.x > 0 && p.x < HW && p.y > 0 && p.y < HH;
+      if (range < nd) { nd = range; nearest = e; nearestOn = onScreen; }
+      if (!onScreen) continue;
+      const nm = (range / 1852).toFixed(1) + 'NM';
+      if (C.lockTarget === e) {
+        const s = clamp(18000 / Math.max(range, 300), 16, 46) * (1 + 0.12 * Math.sin(now / 85));
+        glow(ctx, WARN, 8); ctx.lineWidth = 2;
+        ctx.strokeRect(p.x - s, p.y - s, s * 2, s * 2);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(p.x - s - 7, p.y); ctx.lineTo(p.x - s, p.y); ctx.moveTo(p.x + s, p.y); ctx.lineTo(p.x + s + 7, p.y);
+        ctx.moveTo(p.x, p.y - s - 7); ctx.lineTo(p.x, p.y - s); ctx.moveTo(p.x, p.y + s); ctx.lineTo(p.x, p.y + s + 7); ctx.stroke();
+        ctx.font = f(14); ctx.textBaseline = 'bottom'; ctx.fillText('LOCK', p.x, p.y - s - 9);
+        ctx.font = f(12); ctx.textBaseline = 'top'; ctx.fillText(e.label + '  ' + nm, p.x, p.y + s + 9);
+      } else {
+        const s = clamp(11000 / Math.max(range, 300), 9, 26);
+        glow(ctx, G, 4); ctx.lineWidth = LW;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x + s, p.y); ctx.lineTo(p.x, p.y + s); ctx.lineTo(p.x - s, p.y); ctx.closePath(); ctx.stroke();
+        ctx.font = f(11); ctx.textBaseline = 'bottom'; ctx.fillText('TGT ' + nm, p.x, p.y - s - 4);
       }
-      ctx.stroke();
-      ctx.font = f(12); ctx.textAlign = 'center';
-      ctx.fillText((locked ? 'LOCK ' : 'BANDIT ') + (range / 1852).toFixed(1) + 'NM', p.x, p.y - s - 8);
-      if (locked) { ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.55, 0, Math.PI * 2); ctx.stroke(); }
-      ctx.restore();
     }
+    if (nearest && !nearestOn) {
+      // Edge caret: direction of the nearest bogey in camera space.
+      const v = nearest.pos.clone().applyMatrix4(cam.matrixWorldInverse);
+      let ang = Math.atan2(-v.y, v.x);
+      if (v.z > 0 && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) ang = Math.PI / 2;          // dead astern
+      const mx = HW / 2 - 56, my = HH / 2 - 56;
+      const k = Math.min(mx / Math.max(Math.abs(Math.cos(ang)), 1e-3), my / Math.max(Math.abs(Math.sin(ang)), 1e-3));
+      const px = HW / 2 + Math.cos(ang) * k, py = HH / 2 + Math.sin(ang) * k;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+      glow(ctx, AMBER, 6); ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-6, -10); ctx.lineTo(-2, 0); ctx.lineTo(-6, 10); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      glow(ctx, AMBER, 3); ctx.font = f(12); ctx.textBaseline = 'middle';
+      ctx.fillText((nd / 1852).toFixed(1) + 'NM', px - Math.cos(ang) * 30, py - Math.sin(ang) * 22);
+    }
+    const t = C.lockTarget;
+    if (t && t.alive) {
+      const range = t.pos.distanceTo(S.position);
+      if (range < 2600) {
+        // Lead pipper: where to put the boresight so the 20 mm rounds meet the target.
+        const los = t.pos.clone().sub(S.position).normalize();
+        const tof = range / ((C.bulletSpeed || 1030) + Math.max(0, S.velocity.dot(los)));
+        const aim = t.pos.clone().addScaledVector(t.vel, tof);
+        aim.y += 0.5 * 9.81 * tof * tof;
+        const p = toScreen(aim);
+        if (p.ok) {
+          const r = 22, frac = clamp(range / 2600, 0, 1);
+          glow(ctx, WARN, 6); ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+          ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac)); ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2); ctx.fill();
+          ctx.font = f(11); ctx.textBaseline = 'top'; ctx.fillText(range < 1300 ? 'SHOOT' : 'GUN', p.x, p.y + r + 8);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  // Tactical radio subtitles (EJECT!, SPLASH ONE, FOX TWO, rescue calls).
+  function drawComms(ctx, y) {
+    const list = (C.comms || []).filter(c => c.until > performance.now());
+    if (!list.length) return;
+    ctx.save(); ctx.font = f(17); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    list.slice(-2).forEach((c, i, arr) => {
+      const yy = y - (arr.length - 1 - i) * 30;
+      const w = ctx.measureText(c.text).width + 40;
+      backing(ctx, HW / 2 - w / 2, yy - 14, w, 28, 'rgba(0,12,6,0.6)');
+      glow(ctx, c.color || HG, 6); ctx.fillText(c.text, HW / 2, yy + 1);
+    });
+    ctx.restore();
   }
 
   function drawWarnings(ctx, L) {
@@ -403,7 +464,7 @@ export function createHUD(THREE, A) {
     glow(ctx, G, 1); ctx.font = f(fs); ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
     for (const [nm, fr] of rings) ctx.fillText(String(nm), cx + R * fr * 0.71 + 2, cy - R * fr * 0.71);
     // Contacts (heading-up), brightness decays after the beam passes.
-    const blip = (pos, kind) => {
+    const blip = (pos, kind, hdg) => {
       const rx = pos.x - S.position.x, rz = pos.z - S.position.z;
       const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
       const d = Math.hypot(sx, sy); if (d > MAX_M) return;
@@ -413,10 +474,12 @@ export function createHUD(THREE, A) {
       const bx = cx + sx * k, by = cy + sy * k;
       if (kind === 'msl') { glow(ctx, `rgba(255,77,61,${fade})`, 3); ctx.fillRect(bx - 1.5, by - 1.5, 3, 3); return; }
       glow(ctx, kind === 'lock' ? `rgba(255,77,61,${fade})` : `rgba(255,191,63,${fade})`, 4); ctx.lineWidth = LW;
-      ctx.beginPath(); ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 4.5, by + 4); ctx.lineTo(bx - 4.5, by + 4); ctx.closePath(); ctx.fill();
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(((hdg || 0) - S.heading) * D2R);
+      ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.5, 4.5); ctx.lineTo(0, 2); ctx.lineTo(-4.5, 4.5); ctx.closePath(); ctx.fill();
+      ctx.restore();
       if (kind === 'lock') ctx.strokeRect(bx - 8, by - 8, 16, 16);
     };
-    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey');
+    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey', e.heading);
     for (const m of A.missiles) if (m.active && m.enemy) blip(m.mesh.position, 'msl');
     glow(ctx, GB, 3);
     ctx.beginPath(); ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 5, cy + 6); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 5, cy + 6); ctx.closePath(); ctx.fill();
@@ -577,7 +640,6 @@ export function createHUD(THREE, A) {
     ctx.fillText('AOA ' + aoa.toFixed(1), g.minX + 96, g.maxY - 34);
     glow(ctx, S.gLoad > 7.5 ? WARN : col, 2);
     ctx.fillText('G   ' + S.gLoad.toFixed(1), g.minX + 96, g.maxY - 17);
-    drawTargets(ctx);
     ctx.restore();
   }
 
@@ -588,13 +650,13 @@ export function createHUD(THREE, A) {
     clusterBox(ctx, x, y, w, 118);
     ctx.save(); glow(ctx, HG); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.font = f(16); ctx.fillText('TIME  ' + A.missionClock(), x + 10, y + 8);
-    const score = C.kills * 1000;
+    const score = C.score ?? C.kills * 1000;
     ctx.fillText('SCORE ' + String(score).padStart(6, '0'), x + 10, y + 30);
     const alive = A.getEnemies().filter(e => e.alive).length;
     const tgt = C.lockTarget ? 'LOCK ' + (C.lockTarget.pos.distanceTo(S.position) / 1852).toFixed(1) + 'NM' : alive + ' BANDIT' + (alive === 1 ? '' : 'S');
     ctx.fillText('TARGET ' + tgt, x + 10, y + 52);
     // Team bars: ALPHA = our score, BRAVO = what the bandits have scored on us.
-    const alpha = score, bravo = (C.deaths || 0) * 1000 + Math.round((100 - C.health) * 10);
+    const alpha = score, bravo = (C.deaths || 0) * 1500 + Math.round((100 - C.health) * 15);
     const top = Math.max(2000, alpha, bravo);
     const bw = w - 92;
     for (const [i, lab, val, colr] of [[0, 'ALPHA', alpha, '#3fa9ff'], [1, 'BRAVO', bravo, '#ff4d4d']]) {
@@ -630,17 +692,20 @@ export function createHUD(THREE, A) {
       const a = (deg - S.heading) * D2R, r = half * 0.80;
       ctx.save(); ctx.translate(cx + Math.sin(a) * r, cy - Math.cos(a) * r); ctx.rotate(a); ctx.fillText(lab, 0, 0); ctx.restore();
     }
-    const blip = (pos, kind) => {
+    const blip = (pos, kind, hdg) => {
       const rx = pos.x - S.position.x, rz = pos.z - S.position.z;
       const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
       if (Math.hypot(sx, sy) > MAX_M * 1.1) return;
       const bx = cx + sx * k, by = cy + sy * k;
       if (kind === 'msl') { glow(ctx, WARN, 4); ctx.fillRect(bx - 2, by - 2, 4, 4); return; }
       glow(ctx, kind === 'lock' ? WARN : AMBER, 4);
-      ctx.beginPath(); ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 4.5, by + 4); ctx.lineTo(bx - 4.5, by + 4); ctx.closePath(); ctx.fill();
-      if (kind === 'lock') { ctx.lineWidth = LW; ctx.strokeRect(bx - 8, by - 8, 16, 16); }
+      // Directional blip: arrow points along the bogey's own heading, relative to ours.
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(((hdg || 0) - S.heading) * D2R);
+      ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2.5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      if (kind === 'lock') { ctx.lineWidth = LW; ctx.strokeRect(bx - 9, by - 9, 18, 18); }
     };
-    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey');
+    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey', e.heading);
     for (const m of A.missiles) if (m.active && m.enemy) blip(m.mesh.position, 'msl');
     glow(ctx, HG, 6);
     ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 6, cy + 7); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 6, cy + 7); ctx.closePath(); ctx.fill();
@@ -719,10 +784,12 @@ export function createHUD(THREE, A) {
   function drawCockpitHUD(dt) {
     const g = combinerPath();
     if (g && !C.dead) drawCombiner(hctx, g, dt);
+    if (!C.dead) drawTargets(hctx);
     drawTopLeft(hctx);
     drawSquareRadar(hctx);
     drawBottomRight(hctx);
     drawCockpitAlerts(hctx, g);
+    drawComms(hctx, HH * 0.615);
   }
 
   function drawMiniRadar(ctx) {
@@ -757,6 +824,11 @@ export function createHUD(THREE, A) {
         hctx.fillStyle = r; hctx.fillRect(0, 0, HW, HH);
       }
     }
+    if (A.getMode && A.getMode() === 'EJECT') {        // under the canopy: scoreboard + radio only
+      drawTopLeft(hctx);
+      drawComms(hctx, HH * 0.80);
+      return;
+    }
     if (fp) { drawCockpitHUD(dt); if (!A.isModal()) drawStickCue(hctx); return; }
     drawMiniRadar(hctx);
     const sh = shake();
@@ -783,6 +855,7 @@ export function createHUD(THREE, A) {
     drawStatusBlock(hctx, L);
     drawWarnings(hctx, L);
     hctx.restore();
+    drawComms(hctx, HH * 0.80);
     if (!A.isModal()) drawStickCue(hctx);
   }
 
