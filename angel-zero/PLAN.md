@@ -215,6 +215,27 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
 - [x] Fixed: index.html em dashes had been mojibaked by a PowerShell rewrite
       in Step 4; restored (edit files as UTF-8 only).
 
+## M61A1 Vulcan & ballistic gun sight overhaul (2026-11-18)
+- [x] Gun port at the starboard wing-root fairing (+1.45, +0.35, -1.8 m), bore
+      line harmonised to cross the boresight at 1,500 ft; 1,050 m/s muzzle
+      velocity + aircraft velocity, uniform 8 mrad dispersion cone, gravity drop.
+      Headless sample: rounds leave the port and at ~460 m sit 0.29 m off the
+      boresight line laterally, 0.68 m low (drop), 8.2 mrad cone.
+- [x] Tracers: thin gold-to-amber line streaks along each round's velocity
+      (one draw call); muzzle flash sprite + 18-32 intensity point light on the
+      starboard wing / canopy frame; cordite gas puffs streaming aft.
+- [x] 20 mm strikes: orange-white sparks, flash, dark debris smoke, white HUD
+      hit ticks on the reticle, metallic impact rattle.
+- [x] HUD gun funnel (wingspan-width trajectory lines with drop and own-rate
+      bending, range bars at 1,500 / 3,000 ft) while firing or within 1.2 NM of
+      a lock — on the combiner in cockpit view, on the HUD in chase.
+- [x] LCOS lead reticle within 1.0 NM: intercept from target velocity + turn
+      acceleration, time of flight and drop; range arc, dashed tracking line to
+      the LOCK box, SHOOT when the boresight is inside the reticle < 0.6 NM.
+- [x] +/-1.5 px HUD tremor and camera micro-vibration while firing.
+- [x] Audio: 0.08 s hydraulic spin-up, 100 Hz-gated 95 Hz punch + 1.8 kHz
+      propellant crackle, spin-down whine, rate-limited impact rattle.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`

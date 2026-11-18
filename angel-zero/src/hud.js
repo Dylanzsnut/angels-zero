@@ -291,25 +291,117 @@ export function createHUD(THREE, A) {
       glow(ctx, AMBER, 3); ctx.font = f(12); ctx.textBaseline = 'middle';
       ctx.fillText((nd / 1852).toFixed(1) + 'NM', px - Math.cos(ang) * 30, py - Math.sin(ang) * 22);
     }
+    ctx.restore();
+    drawLeadReticle(ctx);
+  }
+
+  /* ----------------------------------------- M61 gun sight: funnel + LCOS */
+  const GUN_RANGE = 1852, SHOOT_RANGE = 0.6 * 1852, FUNNEL_RANGE = 1.2 * 1852, WINGSPAN = 13.0;
+  const _gq = new THREE.Quaternion(), _inv = new THREE.Quaternion(), _w = new THREE.Vector3();
+  function gunGeom() {
+    const port = (C.gunPort || new THREE.Vector3(1.45, 0.35, -1.8)).clone();
+    const boreL = new THREE.Vector3(0, 0, -(C.convergeM || 457)).sub(port).normalize();      // body-frame bore line
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    return { port, boreL, fwd, vb: C.bulletSpeed || 1050 };
+  }
+  // Where a round fired t seconds ago would appear now, in the jet's current frame:
+  // bore line + gravity drop, rotated back by the jet's body rates (the funnel bends in turns).
+  function roundRel(g, R, lateral) {
+    const t = R / g.vb;
+    _inv.copy(S.quaternion).invert();
+    const drop = new THREE.Vector3(0, -0.5 * 9.81 * t * t, 0).applyQuaternion(_inv);
+    const local = g.port.clone().addScaledVector(g.boreL, R).add(drop);
+    local.x += lateral;
+    const w = new THREE.Vector3(S.pitchRate, S.yawRate, S.rollRate);
+    const ang = w.length() * t;
+    if (ang > 1e-5) local.applyQuaternion(_gq.setFromAxisAngle(w.normalize(), -ang));
+    return local.applyQuaternion(S.quaternion).add(S.position);
+  }
+  function gunSightActive() {
     const t = C.lockTarget;
-    if (t && t.alive) {
-      const range = t.pos.distanceTo(S.position);
-      if (range < 2600) {
-        // Lead pipper: where to put the boresight so the 20 mm rounds meet the target.
-        const los = t.pos.clone().sub(S.position).normalize();
-        const tof = range / ((C.bulletSpeed || 1030) + Math.max(0, S.velocity.dot(los)));
-        const aim = t.pos.clone().addScaledVector(t.vel, tof);
-        aim.y += 0.5 * 9.81 * tof * tof;
-        const p = toScreen(aim);
-        if (p.ok) {
-          const r = 22, frac = clamp(range / 2600, 0, 1);
-          glow(ctx, WARN, 6); ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
-          ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac)); ctx.stroke();
-          ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2); ctx.fill();
-          ctx.font = f(11); ctx.textBaseline = 'top'; ctx.fillText(range < 1300 ? 'SHOOT' : 'GUN', p.x, p.y + r + 8);
-        }
-      }
+    return C.gunFiring || (t && t.alive && t.pos.distanceTo(S.position) < FUNNEL_RANGE);
+  }
+  function drawGunFunnel(ctx, col) {
+    if (!gunSightActive() || C.dead) return;
+    const g = gunGeom();
+    const L = [], Rr = [], ticks = [];
+    for (let R = 120; R <= 1650; R += 55) {
+      const a = toScreen(roundRel(g, R, -WINGSPAN / 2)), b = toScreen(roundRel(g, R, WINGSPAN / 2));
+      if (!a.ok || !b.ok) break;
+      L.push(a); Rr.push(b);
+      if (Math.abs(R - 450) < 28 || Math.abs(R - 900) < 28) ticks.push([a, b]);
+    }
+    if (L.length < 2) return;
+    ctx.save();
+    glow(ctx, col, 3); ctx.globalAlpha = 0.75; ctx.lineWidth = 1.4;
+    for (const line of [L, Rr]) {
+      ctx.beginPath();
+      line.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+    for (const [a, b] of ticks) {                    // range bars at 1,500 ft and 3,000 ft
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + (b.x - a.x) * 0.2, a.y + (b.y - a.y) * 0.2);
+      ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - (b.x - a.x) * 0.2, b.y - (b.y - a.y) * 0.2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // LCOS lead: intercept using target velocity + turn acceleration, time of flight and drop.
+  function leadSolution(t) {
+    const g = gunGeom();
+    const port = g.port.clone().applyQuaternion(S.quaternion).add(S.position);
+    const acc = t.acc || new THREE.Vector3();
+    let tof = t.pos.distanceTo(port) / g.vb, need = new THREE.Vector3();
+    for (let i = 0; i < 4; i++) {
+      const pred = t.pos.clone().addScaledVector(t.vel, tof).addScaledVector(acc, 0.5 * tof * tof);
+      // Round: port + (V_jet + dir * vb) t - 1/2 g t^2  ==  pred   ->  solve dir * vb * t
+      need.copy(pred).sub(port).addScaledVector(S.velocity, -tof).add(_w.set(0, 0.5 * 9.81 * tof * tof, 0));
+      tof = need.length() / g.vb;
+    }
+    const dirAim = need.normalize();
+    // Rotate from bore line to the nose: the pilot flies the boresight W onto the reticle.
+    const boreW = g.boreL.clone().applyQuaternion(S.quaternion);
+    const off = new THREE.Quaternion().setFromUnitVectors(boreW, g.fwd);
+    return { reticleDir: dirAim.applyQuaternion(off), tof };
+  }
+  function drawLeadReticle(ctx) {
+    const t = C.lockTarget, now = performance.now();
+    const hitTick = now - (C.hitMarker || 0) < 170;
+    if (!t || !t.alive || C.dead) return;
+    const range = t.pos.distanceTo(S.position);
+    if (range > GUN_RANGE) return;
+    const origin = A.isFirstPerson() ? cam.position : S.position;
+    const sol = leadSolution(t);
+    const p = toScreen(origin.clone().addScaledVector(sol.reticleDir, 3000));
+    const tp = toScreen(t.pos);
+    if (!p.ok) return;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const bore = toScreen(origin.clone().addScaledVector(fwd, 5000));
+    const r = 24, frac = clamp(range / GUN_RANGE, 0, 1);
+    ctx.save();
+    if (tp.ok) {                                     // thin dashed tracking line to the target box
+      glow(ctx, G, 2); ctx.globalAlpha = 0.7; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(tp.x, tp.y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    glow(ctx, HG, 5); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 3;                               // range arc unwinds as the target closes
+    ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * (r + 2), p.y + Math.sin(a) * (r + 2)); ctx.lineTo(p.x + Math.cos(a) * (r + 8), p.y + Math.sin(a) * (r + 8)); if (k % 3 === 0) ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2); ctx.fill();
+    if (hitTick) {                                   // 20 mm hit confirmation ticks
+      glow(ctx, '#ffffff', 6); ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.moveTo(p.x + sx * (r + 10), p.y + sy * (r + 10)); ctx.lineTo(p.x + sx * (r + 20), p.y + sy * (r + 20)); }
+      ctx.stroke();
+    }
+    const onTarget = bore.ok && Math.hypot(bore.x - p.x, bore.y - p.y) < r;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    if (onTarget && range < SHOOT_RANGE) {
+      glow(ctx, HG, 10); ctx.font = f(16); ctx.fillText('SHOOT', p.x, p.y + r + 12);
+    } else {
+      glow(ctx, G, 2); ctx.font = f(11); ctx.fillText((range / 1852).toFixed(2) + 'NM', p.x, p.y + r + 12);
     }
     ctx.restore();
   }
@@ -619,6 +711,7 @@ export function createHUD(THREE, A) {
     const bore = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
     if (bore.ok) drawBoresight(ctx, bore);
     drawFPV(ctx, { cx: g.cx, cy: g.cy, boxW: g.boxW - 120, boxH: g.boxH - 60 }, dt);
+    drawGunFunnel(ctx, col);
     drawCombinerCompass(ctx, g, col);
     const kts = S.speed * 1.94384;
     drawCombinerTape(ctx, { x: g.minX + 50, top: g.minY + 78, bot: g.maxY - 30, value: kts, pxPerUnit: 1.3, step: 10, side: 'left',
@@ -811,6 +904,7 @@ export function createHUD(THREE, A) {
     hctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     hctx.clearRect(0, 0, HW, HH);
     if (!A.isReady() || (A.isHidden && A.isHidden())) return;     // title screen: no HUD
+    if (C.gunFiring) hctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);   // +/-1.5 px M61 tremor
     updateDynamics(dt);
     // hudAlertState: NORMAL (green) / MISSILE_ALERT (red). Driven by inbound missiles, or forced via setAlertState().
     alertState = alertOverride || (C.missileWarning > 0 && !C.dead ? 'MISSILE_ALERT' : 'NORMAL');
@@ -844,6 +938,7 @@ export function createHUD(THREE, A) {
       drawPitchLadder(hctx, L, bore);
       drawBoresight(hctx, bore);
       drawFPV(hctx, L, dt);
+      drawGunFunnel(hctx, G);
       drawTargets(hctx);
     }
     drawTape(hctx, { x: L.tapeL, top: L.tapeTop, bot: L.tapeBot, value: S.speed * 1.94384, pxPerUnit: 1.6, step: 10, side: 'left',

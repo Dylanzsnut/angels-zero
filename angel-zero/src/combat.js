@@ -16,10 +16,11 @@ export function createCombat(THREE, env) {
   const rand = Math.random;
 
   const WAVE_SIZE = 6;
-  const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1030;
+  const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1050;   // M61A1: 6,000 rpm, 1,050 m/s
   const MSL_MAX = 6, MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
   const LOCK_RANGE = 3.5 * NM, LOCK_CONE = Math.cos(15 * D2R), PURSUE_RANGE = 4.0 * NM;
-  Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], wave: 0 });
+  Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], wave: 0,
+    gunFiring: false, hitMarker: 0 });
 
   const say = (text, secs = 2.5, color = '#4dff91') => {
     C.comms = C.comms.filter(c => c.text !== text);
@@ -129,21 +130,30 @@ export function createCombat(THREE, env) {
   }
 
   /* ============================================================== tracers */
+  // Razor-thin additive line streaks stretched along each round's velocity:
+  // hot white-gold head fading to a transparent amber tail (1 px at any range).
   class Tracers {
-    constructor(max, color, len, radius) {
-      this.max = max; this.list = [];
-      const geo = new THREE.CylinderGeometry(radius, radius * 0.6, len, 5, 1, true); geo.rotateX(Math.PI / 2);
-      this.mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), max);
-      this.mesh.frustumCulled = false; this.mesh.count = 0;
-      scene.add(this.mesh);
-      this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(1, 1, 1); this._z = new THREE.Vector3(0, 0, -1);
+    constructor(max, head, tail, len) {
+      this.max = max; this.list = []; this.len = len;
+      this.head = new THREE.Color(head); this.tail = new THREE.Color(tail);
+      const geo = new THREE.BufferGeometry();
+      this.pos = new Float32Array(max * 6); this.col = new Float32Array(max * 8);
+      geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
+      geo.setDrawRange(0, 0);
+      this.geo = geo;
+      // Normal blending (not additive) so the gold streaks stay visible against bright haze as well as the sea.
+      this.lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, toneMapped: false }));
+      this.lines.frustumCulled = false; this.lines.renderOrder = 9;
+      scene.add(this.lines);
+      this._d = new THREE.Vector3();
     }
-    add(p, v, life) { if (this.list.length >= this.max) this.list.shift(); this.list.push({ p: p.clone(), prev: p.clone(), v: v.clone(), life }); }
-    clear() { this.list.length = 0; this.mesh.count = 0; }
+    add(p, v, life) { if (this.list.length >= this.max) this.list.shift(); this.list.push({ p: p.clone(), prev: p.clone(), v: v.clone(), life, age: 0 }); }
+    clear() { this.list.length = 0; this.geo.setDrawRange(0, 0); }
     step(dt, hitTest) {
       const out = [];
       for (const b of this.list) {
-        b.prev.copy(b.p); b.p.addScaledVector(b.v, dt); b.v.y -= G0 * dt; b.life -= dt;
+        b.prev.copy(b.p); b.p.addScaledVector(b.v, dt); b.v.y -= G0 * dt; b.life -= dt; b.age += dt;
         if (b.life <= 0 || b.p.y < groundLevel(b.p.x, b.p.z)) continue;
         if (hitTest && hitTest(b)) continue;
         out.push(b);
@@ -151,20 +161,28 @@ export function createCombat(THREE, env) {
       this.list = out;
       let i = 0;
       for (const b of this.list) {
-        this._q.setFromUnitVectors(this._z, this._s.copy(b.v).normalize());
-        this._s.set(1, 1, 1);
-        this.mesh.setMatrixAt(i++, this._m.compose(b.p, this._q, this._s));
+        const L = this.len * Math.min(1, b.age * 30);                 // streak grows out of the muzzle
+        this._d.copy(b.v).normalize();
+        const o = i * 6, c = i * 8, fade = Math.min(1, b.life * 2);
+        this.pos[o] = b.p.x; this.pos[o + 1] = b.p.y; this.pos[o + 2] = b.p.z;
+        this.pos[o + 3] = b.p.x - this._d.x * L; this.pos[o + 4] = b.p.y - this._d.y * L; this.pos[o + 5] = b.p.z - this._d.z * L;
+        this.col[c] = this.head.r; this.col[c + 1] = this.head.g; this.col[c + 2] = this.head.b; this.col[c + 3] = fade;
+        this.col[c + 4] = this.tail.r; this.col[c + 5] = this.tail.g; this.col[c + 6] = this.tail.b; this.col[c + 7] = 0;
+        i++;
       }
-      this.mesh.count = i;
-      this.mesh.instanceMatrix.needsUpdate = true;
+      this.geo.setDrawRange(0, i * 2);
+      this.geo.attributes.position.needsUpdate = true;
+      this.geo.attributes.color.needsUpdate = true;
     }
   }
-  // Tracer streaks are deliberately oversized so they read at combat ranges.
-  const playerTracers = new Tracers(260, 0xffc860, 16, 0.32);
-  const enemyTracers = new Tracers(220, 0xff3b30, 14, 0.30);
+  const playerTracers = new Tracers(320, 0xffd36b, 0xff7a10, 26);   // white-gold head -> amber tail
+  const enemyTracers = new Tracers(220, 0xff5a40, 0xc0100a, 22);
 
-  // Muzzle flash at the right wing-root gun port.
-  const GUN_PORT = new THREE.Vector3(1.38, 0.32, -1.6);
+  // M61A1 in the starboard wing-root fairing; rounds converge on the boresight at 1,500 ft.
+  const GUN_PORT = new THREE.Vector3(1.45, 0.35, -1.8);
+  const CONVERGE_M = 1500 * FT;
+  const DISPERSION = 0.008;                                   // 8 mrad cone (diameter)
+  C.gunPort = GUN_PORT; C.convergeM = CONVERGE_M;
   const flashTex = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
     const g = x.createRadialGradient(64, 64, 2, 64, 64, 60); g.addColorStop(0, 'rgba(255,255,220,1)'); g.addColorStop(0.3, 'rgba(255,190,80,0.8)'); g.addColorStop(1, 'rgba(255,120,20,0)');
@@ -177,7 +195,7 @@ export function createCombat(THREE, env) {
   muzzle.position.copy(GUN_PORT).add(new THREE.Vector3(0, 0, -0.9));
   muzzle.visible = false;
   jet.add(muzzle);
-  const muzzleLight = new THREE.PointLight(0xffb050, 0, 25, 2);
+  const muzzleLight = new THREE.PointLight(0xffb050, 0, 32, 1.6);   // lights the starboard wing / canopy frame
   muzzleLight.position.copy(muzzle.position);
   jet.add(muzzleLight);
 
@@ -224,28 +242,56 @@ export function createCombat(THREE, env) {
     return true;
   }
 
-  let gunAcc = 0, gunHeat = 0;
+  let gunAcc = 0, smokeAcc = 0;
+  function gunIdle() { muzzle.visible = false; muzzleLight.intensity = 0; C.gunFiring = false; }
   function fireGun(dt) {
-    if (!env.isReady() || C.dead || C.ammo <= 0 || C.reload > 0) { muzzle.visible = false; muzzleLight.intensity = 0; return; }
+    if (!env.isReady() || C.dead || C.ammo <= 0 || C.reload > 0) { gunIdle(); return; }
     gunAcc += GUN_RATE * dt;
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(S.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
     const port = GUN_PORT.clone().applyQuaternion(S.quaternion).add(S.position);
+    // Harmonised bore line: from the port to the boresight cross 1,500 ft ahead.
+    const bore = S.position.clone().addScaledVector(fwd, CONVERGE_M).sub(port).normalize();
     let n = 0;
     while (gunAcc >= 1 && C.ammo > 0) {
       gunAcc -= 1; C.ammo--; n++;
-      const dir = fwd.clone().addScaledVector(right, (rand() - 0.5) * 0.006).addScaledVector(up, (rand() - 0.5) * 0.006).normalize();
-      // Bullets converge on the boresight line: aim from the port at a point 600 m ahead.
-      const conv = S.position.clone().addScaledVector(fwd, 600).sub(port).normalize();
-      dir.lerp(conv, 0.85).normalize();
-      playerTracers.add(port.clone().addScaledVector(dir, rand() * 12), dir.multiplyScalar(BULLET_SPEED).add(S.velocity), 2.2);
+      const r = DISPERSION * 0.5 * Math.sqrt(rand()), th = rand() * Math.PI * 2;  // uniform in the 8 mrad cone
+      const dir = bore.clone().addScaledVector(right, Math.cos(th) * r).addScaledVector(up, Math.sin(th) * r).normalize();
+      const v = dir.clone().multiplyScalar(BULLET_SPEED).add(S.velocity);       // muzzle velocity + aircraft velocity
+      playerTracers.add(port.clone().addScaledVector(v, rand() * dt), v, 3.0);   // spread rounds through the frame
     }
     if (C.ammo <= 0) { C.reload = 5; say('WINCHESTER GUN — RELOADING', 2); }
+    C.gunFiring = n > 0;
     muzzle.visible = n > 0;
     muzzle.material.rotation = rand() * Math.PI;
-    muzzle.scale.setScalar(1.6 + rand() * 1.4);
-    muzzleLight.intensity = n > 0 ? 6 + rand() * 6 : 0;
-    gunHeat = 0.06;
+    muzzle.scale.setScalar(1.4 + rand() * 1.6);
+    muzzleLight.intensity = n > 0 ? 18 + rand() * 14 : 0;
+    // Cordite gun gas streaming back over the starboard wing.
+    smokeAcc += dt * 45;
+    while (smokeAcc >= 1) {
+      smokeAcc -= 1;
+      const g = 0.55 + rand() * 0.12;
+      smoke.spawn({ x: port.x + right.x * 0.15, y: port.y + right.y * 0.15, z: port.z + right.z * 0.15,
+        vx: S.velocity.x * 0.82 + right.x * 3 + (rand() - 0.5) * 2, vy: S.velocity.y * 0.82 + right.y * 3 + (rand() - 0.5) * 2, vz: S.velocity.z * 0.82 + right.z * 3 + (rand() - 0.5) * 2,
+        life: 1.0 + rand() * 0.8, s0: 0.7, s1: 4.5 + rand() * 2, r: g, g, b: g * 1.02, a: 0.42, drag: 1.6, rise: 0.4 });
+    }
+  }
+
+  // 20 mm strike: metallic sparks, debris smoke, HUD hit tick, impact rattle.
+  function hitSparks(p, v) {
+    const back = v.clone().normalize().multiplyScalar(-1);
+    for (let i = 0; i < 10; i++) {
+      const s = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(back, 0.6).normalize().multiplyScalar(40 + rand() * 90);
+      const w = rand();
+      fire.spawn({ x: p.x, y: p.y, z: p.z, vx: s.x, vy: s.y, vz: s.z, life: 0.22 + rand() * 0.3, s0: 1.4 + w, s1: 0.4, r: 1, g: 0.75 + 0.25 * w, b: 0.45 + 0.5 * w, a: 1, drag: 1.2 });
+    }
+    fire.spawn({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, life: 0.12, s0: 6, s1: 9, r: 1, g: 0.95, b: 0.8, a: 1 });
+    for (let i = 0; i < 2; i++) {
+      const g = 0.12 + rand() * 0.06;
+      smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: (rand() - 0.5) * 8, vy: rand() * 4, vz: (rand() - 0.5) * 8, life: 1.2 + rand(), s0: 2, s1: 8, r: g, g, b: g, a: 0.6, drag: 1.0, rise: 1 });
+    }
+    C.hitMarker = performance.now();
+    if (env.onSfx) env.onSfx('hit', p, 1);
   }
 
   /* ========================================================= enemy fleet */
@@ -294,7 +340,7 @@ export function createCombat(THREE, env) {
       id: i, alive: false, mode: 'PATROL', pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
       quat: new THREE.Quaternion(), speed: 210, bank: 0, hp: 100, heading: 0, center: new THREE.Vector3(), radius: 2500, dir: 1, alt: 1000,
       burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, lockTime: 0, mslCD: 10 + rand() * 10, evadeT: 0, evadeDir: 1,
-      wreck: null, label: 'BOGEY ' + (i + 1)
+      wreck: null, label: 'BOGEY ' + (i + 1), acc: new THREE.Vector3()
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
@@ -372,7 +418,10 @@ export function createCombat(THREE, env) {
     const bankT = clamp(Math.atan(turnRate * e.speed / G0), 0, 1.45) * side;
     e.bank += (bankT - e.bank) * Math.min(1, dt * 3.5);
     e.speed += (targetSpeed - e.speed) * Math.min(1, dt * 0.4);
-    e.vel.copy(e.fwd).multiplyScalar(e.speed);
+    // Smoothed turn acceleration feeds the HUD's LCOS lead computation.
+    const nv = e.fwd.clone().multiplyScalar(e.speed);
+    if (dt > 0) e.acc.lerp(nv.clone().sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
+    e.vel.copy(nv);
     e.pos.addScaledVector(e.vel, dt);
     orient(e);
 
@@ -562,8 +611,8 @@ export function createCombat(THREE, env) {
     }
     if (playerActive) {
       updateLock();
-      if (opts.firing) fireGun(dt); else { muzzle.visible = false; muzzleLight.intensity = 0; }
-    } else { C.lockTarget = null; muzzle.visible = false; muzzleLight.intensity = 0; }
+      if (opts.firing) fireGun(dt); else gunIdle();
+    } else { C.lockTarget = null; gunIdle(); }
 
     // Projectiles and hits.
     const seg = new THREE.Vector3(), cp = new THREE.Vector3();
@@ -576,7 +625,7 @@ export function createCombat(THREE, env) {
       for (const e of enemies) {
         if (e.alive && segHit(b, e.pos, 11)) {
           e.hp -= 10; C.hitFlash = 0.12;
-          fire.spawn({ x: b.p.x, y: b.p.y, z: b.p.z, vx: 0, vy: 0, vz: 0, life: 0.25, s0: 4, s1: 7, r: 1, g: 0.8, b: 0.4, a: 1 });
+          hitSparks(b.p, b.v);
           if (e.hp <= 0) destroyEnemy(e, false);
           return true;
         }
@@ -608,7 +657,18 @@ export function createCombat(THREE, env) {
     },
     stats() {
       return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? e.mode[0] : '-').join(''),
-        tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave };
+        tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
+        gun: (() => {                                  // ballistic sample in the jet's frame (debug)
+          const inv = S.quaternion.clone().invert();
+          const loc = playerTracers.list.map(b => b.p.clone().sub(S.position).applyQuaternion(inv));
+          if (!loc.length) return null;
+          const youngest = loc[loc.length - 1], oldest = loc[0];
+          const near = loc.filter(v => v.z < -380 && v.z > -540);
+          const mx = near.reduce((s, v) => s + v.x, 0) / Math.max(1, near.length), my = near.reduce((s, v) => s + v.y, 0) / Math.max(1, near.length);
+          const spread = near.length ? Math.max(...near.map(v => Math.hypot(v.x - mx, v.y - my))) : 0;
+          const r = v => v.toArray().map(x => +x.toFixed(2));
+          return { youngest: r(youngest), oldest: r(oldest), at460m: { n: near.length, meanX: +mx.toFixed(2), meanY: +my.toFixed(2), coneMrad: +(2 * spread / 460 * 1000).toFixed(1) } };
+        })() };
     }
   };
 }

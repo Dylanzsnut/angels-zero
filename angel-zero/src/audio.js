@@ -56,15 +56,19 @@ export function createAudio() {
     N.abCrackle = loopNoise(white); N.abCrackleBP = filt('bandpass', 900, 0.8); N.abCrackleGain = gain(0);
     N.abCrackle.connect(N.abCrackleBP).connect(N.abCrackleGain).connect(cockpitLP);
 
-    // M61A1: 100 Hz pulse train gating a bandpassed noise burst, plus the saw body.
-    N.gunSaw = osc('sawtooth', 100); N.gunSq = osc('square', 100);
-    N.gunNoise = loopNoise(white); N.gunBP = filt('bandpass', 1100, 0.9);
-    N.gunGate = gain(0); N.gunLFOdepth = gain(0.5);
-    N.gunSq.connect(N.gunLFOdepth).connect(N.gunGate.gain);                 // 100 Hz amplitude chop
+    // M61A1 (6,000 rpm = 100 rounds/s): a 100 Hz square pulse train chops both a
+    // deep 95 Hz mechanical punch and 1.8 kHz bandpassed propellant crackle.
+    N.gunLFO = osc('square', 100);
+    N.gunPunch = osc('triangle', 95); N.gunPunchLP = filt('lowpass', 260, 1.2);
+    N.gunPunchGate = gain(0); N.gunPunchDepth = gain(0);
+    N.gunLFO.connect(N.gunPunchDepth).connect(N.gunPunchGate.gain);
+    N.gunPunch.connect(N.gunPunchLP).connect(N.gunPunchGate);
+    N.gunNoise = loopNoise(white); N.gunBP = filt('bandpass', 1800, 1.3);
+    N.gunGate = gain(0); N.gunLFOdepth = gain(0);
+    N.gunLFO.connect(N.gunLFOdepth).connect(N.gunGate.gain);
     N.gunNoise.connect(N.gunBP).connect(N.gunGate);
-    N.gunSawGain = gain(0); N.gunSawLP = filt('lowpass', 900, 1.5);
-    N.gunSaw.connect(N.gunSawLP).connect(N.gunSawGain);
-    N.gunBus = gain(0); N.gunGate.connect(N.gunBus); N.gunSawGain.connect(N.gunBus); N.gunBus.connect(master);
+    N.gunBus = gain(0); N.gunGate.connect(N.gunBus); N.gunPunchGate.connect(N.gunBus); N.gunBus.connect(master);
+    N.wasFiring = false;
 
     // AIM-9 seeker: low growl (FM-wobbled square) while searching, 950 Hz tone when locked.
     N.growl = osc('square', 260); N.growlLFO = osc('sine', 9); N.growlDepth = gain(60);
@@ -112,6 +116,48 @@ export function createAudio() {
     thump.connect(tg).connect(cockpitLP); thump.start(t); thump.stop(t + 0.32);
   }
 
+  // Hydraulic barrel spin-up transient (0.08 s) and a short spin-down whine.
+  function gunSpinUp() {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(30, t); o.frequency.exponentialRampToValueAtTime(115, t + 0.08);
+    const lp = filt('lowpass', 900, 2);
+    const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.32, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 0.14);
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const hp = filt('highpass', 500, 0.8); hp.frequency.setValueAtTime(500, t); hp.frequency.exponentialRampToValueAtTime(2600, t + 0.08);
+    const ng = gain(0); ng.gain.setValueAtTime(0.18, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    n.connect(hp).connect(ng).connect(master); n.start(t, Math.random()); n.stop(t + 0.11);
+  }
+  function gunSpinDown() {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.35);
+    const lp = filt('lowpass', 600, 1.5);
+    const g = gain(0); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+    o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 0.37);
+  }
+  // Metallic 20 mm impact rattle: bright resonant pings plus a short noise tick.
+  let lastHit = 0;
+  function hit(intensity = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    if (t - lastHit < 0.03) return;                  // cap the rate at ~33 Hz
+    lastHit = t;
+    const k = Math.min(1, Math.max(0.05, intensity));
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.018 + Math.random() * 0.01;
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 2100 + Math.random() * 2400;
+      const bp = filt('bandpass', o.frequency.value, 9);
+      const g = gain(0); g.gain.setValueAtTime(0.22 * k, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.07);
+      o.connect(bp).connect(g).connect(cockpitLP); o.start(at); o.stop(at + 0.08);
+    }
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const bp = filt('bandpass', 3200, 4);
+    const ng = gain(0); ng.gain.setValueAtTime(0.3 * k, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    n.connect(bp).connect(ng).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 0.07);
+  }
+
   /* ------------------------------------------------------ continuous mix */
   function update(p) {
     if (!ready) return;
@@ -130,10 +176,14 @@ export function createAudio() {
     set(cockpitLP.frequency, p.cockpit ? 2600 : 18000, 0.15);
 
     const firing = p.firing ? 1 : 0;
-    set(N.gunGate.gain, 0, 0.005);                         // base 0, LFO adds +/-0.5 when bus open
-    set(N.gunLFOdepth.gain, firing * 0.5, 0.005);
-    set(N.gunSawGain.gain, firing * 0.18, 0.005);
-    set(N.gunBus.gain, firing * 0.9, 0.008);
+    if (firing && !N.wasFiring) gunSpinUp();
+    if (!firing && N.wasFiring) gunSpinDown();
+    N.wasFiring = !!firing;
+    // Rounds start ~0.08 s after the trigger while the barrels spin up.
+    const delay = firing ? 0.03 : 0.005;
+    set(N.gunLFOdepth.gain, firing * 0.5, delay);
+    set(N.gunPunchDepth.gain, firing * 0.9, delay);
+    set(N.gunBus.gain, firing * 0.85, firing ? 0.035 : 0.01);
 
     set(N.growlGain.gain, p.seeker === 'SCAN' ? 0.045 : 0, 0.04);
     set(N.lockGain.gain, p.seeker === 'LOCK' ? 0.05 : 0, 0.02);
@@ -157,7 +207,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }
