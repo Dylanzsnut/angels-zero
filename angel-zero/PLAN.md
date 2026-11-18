@@ -119,6 +119,20 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
   ALT boxes, no ladders or tapes.
 - [x] **1st person** — conformal ladder + tapes clipped to the combiner glass.
+- [x] **Sleek chamfered HUD polish** *(build `s23a`)* — tapered F-15 combiner
+  (narrowing top, chamfered upper corners) on thin dark anodized posts, green-
+  cyan tint at 0.14 opacity with no glowing border; open 1 px pointed readouts
+  `[ 455 >` / `< 4256 ]` in both views, `▼ 347` heading without a box, 1 px
+  ladders with shorter micro-ticks, open-corner `A/B` / `ARM` tags, rounded
+  1 px radar frame, translucent glass-pill `PATCH NOTES` / `CONTROLS` buttons.
+- [x] **Animated 3D HOTAS** *(`src/cockpit3d.js`)* — center stick (ribbed boot,
+  charcoal shaft, contoured grip, thumb rest, 4-way trim hat, red pickle,
+  two-stage trigger) tilting +/-16 deg pitch / +/-18 deg roll from `state.ctl`,
+  trigger squeezes while the Vulcan fires, pickle depresses on every missile /
+  bomb release; left quadrant with split `Throttle_L` / `Throttle_R` levers
+  sweeping -22 deg idle -> +16 deg MIL -> +28 deg afterburner. Eye line lowered
+  to -12 deg so the grips frame below the MFD screens. Verified headless
+  (neutral, pull + roll, push + roll, idle, fire, pickle, NVG, chase).
 - [x] **Radar** — bottom-left 4 NM square radar with coastline / contour
   overlay, runway + bridge marks, bandit / missile blips.
 - [x] **Stores** — bottom-right GUN / MSL / UGB / FLR / DMG list, F-15C

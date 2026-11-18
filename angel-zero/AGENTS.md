@@ -30,8 +30,9 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/hud.js` — `createHUD`: chase HUD; in cockpit view the combiner-clipped
   HUD, corner clusters and `hudAlertState` / `setAlertState()`.
 - `src/cockpit3d.js` — `createCockpit3D`: 3D cockpit rig (owns the cockpit
-  camera pose), combiner glass outline, live CanvasTexture panel screens, sun
-  shadows in cockpit view.
+  camera pose), tapered combiner glass outline, animated HOTAS stick /
+  `Throttle_L` / `Throttle_R`, live CanvasTexture panel screens, sun shadows in
+  cockpit view.
 - `src/combat.js` — `createCombat`: bogey wave AI (bank-to-turn flight,
   PATROL / ENGAGE / EVADE_BREAK / BARREL_ROLL / EXTEND_CLIMB, terrain look-ahead,
   merge break-away, AI flares, airframe collision), cannon, AIM-9 PN guidance,

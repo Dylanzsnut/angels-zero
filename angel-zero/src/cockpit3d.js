@@ -2,7 +2,8 @@
 // Enclosed forward tub, beveled canopy bow (gasket, 16 hex bolts, lock hooks,
 // grab handles), ribbed glare shield, side consoles with switches, knobs, vents
 // and an annunciator block, an up-front controller with keypad, three recessed
-// MFDs with 20 bezel push-buttons each, and a cast-metal combiner assembly.
+// MFDs with 20 bezel push-buttons each, a tapered chamfered combiner on thin
+// anodized posts, and an animated HOTAS (center stick + twin throttles).
 // Surfaces use procedural 2048^2 crinkle-coat map / normalMap / roughnessMap.
 // The camera rides inside the rig with spring-loaded head inertia (<= 14 px).
 
@@ -14,7 +15,7 @@ export function createCockpit3D(THREE, env) {
   const clamp = THREE.MathUtils.clamp, smooth = THREE.MathUtils.smoothstep;
   const FONT = "'Share Tech Mono', 'Consolas', monospace";
   const STENCIL = "'Arial Narrow', 'Arial', sans-serif";
-  const PITCH_BASE = -8.5 * D2R;                     // eye line over the nose, keeps the MFD row in view
+  const PITCH_BASE = -12 * D2R;                      // eye line over the nose; frames the MFD row and the HOTAS grips
 
   const rig = new THREE.Group();
   rig.visible = false;
@@ -353,65 +354,161 @@ export function createCockpit3D(THREE, env) {
   /* =================================================================
      7. COMBINER ASSEMBLY: cast arms, bolts, collimator housing, glass
      ================================================================= */
-  const GW = 0.64, GY0 = -0.19, GY1 = 0.19, GZ = -0.775, GR = 0.085, BEND = 0.32;
+  // Tapered F-15 combiner: wide at the collimator, narrowing upward, with
+  // chamfered (angled) upper corners. Thin dark anodized posts, faint
+  // green-cyan optical tint (opacity 0.14) and no glowing border box.
+  const GW = 0.64, GTW = 0.54, GCH = 0.065, GY0 = -0.19, GY1 = 0.19, GZ = -0.775, BEND = 0.32;
   const bendZ = x => GZ + BEND * x * x;
   const gShape = new THREE.Shape();
-  gShape.moveTo(-GW / 2, GY0); gShape.lineTo(GW / 2, GY0); gShape.lineTo(GW / 2, GY1 - GR);
-  gShape.quadraticCurveTo(GW / 2, GY1, GW / 2 - GR, GY1); gShape.lineTo(-GW / 2 + GR, GY1);
-  gShape.quadraticCurveTo(-GW / 2, GY1, -GW / 2, GY1 - GR); gShape.closePath();
+  gShape.moveTo(-GW / 2, GY0); gShape.lineTo(GW / 2, GY0);
+  gShape.lineTo(GTW / 2, GY1 - GCH); gShape.lineTo(GTW / 2 - GCH, GY1);
+  gShape.lineTo(-GTW / 2 + GCH, GY1); gShape.lineTo(-GTW / 2, GY1 - GCH);
+  gShape.closePath();
   const glassGeo = new THREE.ShapeGeometry(gShape, 16);
-  { const p = glassGeo.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, bendZ(p.getX(i))); glassGeo.computeVertexNormals(); }
+  {
+    const p = glassGeo.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, bendZ(p.getX(i))); glassGeo.computeVertexNormals();
+  }
   const glass = new THREE.Mesh(glassGeo, new THREE.MeshPhysicalMaterial({
-    color: 0xeefff6, transparent: true, opacity: 0.09, roughness: 0.04, metalness: 0, clearcoat: 0.4, clearcoatRoughness: 0.04,
-    envMap: envTex, envMapIntensity: 0.22, side: THREE.DoubleSide, depthWrite: false
+    color: 0x9fffe4, transparent: true, opacity: 0.14, roughness: 0.04, metalness: 0, clearcoat: 0.4, clearcoatRoughness: 0.04,
+    envMap: envTex, envMapIntensity: 0.18, side: THREE.DoubleSide, depthWrite: false
   }));
   glass.renderOrder = 6; rig.add(glass);
+  // Faint view-angle Fresnel sheen only (no edge glow).
   const rim = new THREE.Mesh(glassGeo, new THREE.ShaderMaterial({
-    uniforms: { uCol: { value: new THREE.Color(0x38ffb3) }, uB: { value: new THREE.Vector4(-GW / 2, GW / 2, GY0, GY1) } },
+    uniforms: { uCol: { value: new THREE.Color(0x5affd0) } },
     vertexShader: `
       #include <common>
       #include <logdepthbuf_pars_vertex>
-      varying vec2 vP; varying vec3 vN; varying vec3 vV;
-      void main() { vP = position.xy; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz;
+      varying vec3 vN; varying vec3 vV;
+      void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz;
         gl_Position = projectionMatrix * mv;
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: `
       #include <logdepthbuf_pars_fragment>
-      uniform vec3 uCol; uniform vec4 uB; varying vec2 vP; varying vec3 vN; varying vec3 vV;
+      uniform vec3 uCol; varying vec3 vN; varying vec3 vV;
       void main() {
         #include <logdepthbuf_fragment>
-        float e = min(min(vP.x - uB.x, uB.y - vP.x), min(vP.y - uB.z, uB.w - vP.y));
-        float edge = smoothstep(0.009, 0.0, e);
         float fres = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 4.0);
-        gl_FragColor = vec4(uCol, clamp(edge * 0.55 + fres * 0.18, 0.0, 1.0));
+        gl_FragColor = vec4(uCol, clamp(fres * 0.10, 0.0, 1.0));
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
   }));
   rim.renderOrder = 7; rig.add(rim);
   const glassOutline = gShape.getSpacedPoints(72).map(p => new THREE.Vector3(p.x, p.y, bendZ(p.x)));
+  const anodizedMat = new THREE.MeshStandardMaterial({ color: 0x14171b, roughness: 0.32, metalness: 0.7, envMap: envTex, envMapIntensity: 0.6 });
   {
-    // Angled, chamfered cast arms (side profile extruded across X).
-    const zB = bendZ(GW / 2);
-    const prof = new THREE.Shape();
-    prof.moveTo(zB - 0.05, -0.236); prof.lineTo(zB + 0.012, -0.236); prof.lineTo(zB + 0.006, GY1 - 0.02);
-    prof.lineTo(zB - 0.006, GY1 + 0.004); prof.lineTo(zB - 0.018, GY1 - 0.02); prof.lineTo(zB - 0.03, -0.14); prof.closePath();
-    const armGeo = new THREE.ExtrudeGeometry(prof, { depth: 0.016, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.003, bevelSegments: 2 });
-    armGeo.rotateY(-Math.PI / 2);                    // shape x -> world z, extrusion -> world -x
-    const armBolts = [];
+    // Thin anodized posts hugging each tapered side edge, from the housing to the chamfer.
+    const postBolts = [];
     for (const sx of [-1, 1]) {
-      const arm = add(new THREE.Mesh(armGeo, castMat));
-      arm.position.x = sx * (GW / 2 + 0.006) + (sx > 0 ? 0.016 : 0);
-      for (const by of [-0.2, -0.07]) armBolts.push(new THREE.CylinderGeometry(0.006, 0.006, 0.006, 6).rotateZ(Math.PI / 2).translate(sx * (GW / 2 + 0.026), by, zB - 0.012));
+      const a = new THREE.Vector3(sx * (GW / 2 + 0.008), -0.232, bendZ(GW / 2) + 0.004);
+      const b = new THREE.Vector3(sx * (GTW / 2 + 0.008), GY1 - GCH, bendZ(GTW / 2) + 0.004);
+      const len = a.distanceTo(b);
+      const post = add(new THREE.Mesh(new THREE.BoxGeometry(0.009, len, 0.011), anodizedMat));
+      post.position.copy(a).add(b).multiplyScalar(0.5);
+      post.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      // short angled cap following the chamfer
+      const c0 = b, c1 = new THREE.Vector3(sx * (GTW / 2 - GCH + 0.004), GY1 + 0.006, bendZ(GTW / 2 - GCH) + 0.004);
+      const cap = add(new THREE.Mesh(new THREE.BoxGeometry(0.007, c0.distanceTo(c1), 0.009), anodizedMat));
+      cap.position.copy(c0).add(c1).multiplyScalar(0.5);
+      cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), c1.clone().sub(c0).normalize());
+      postBolts.push(new THREE.CylinderGeometry(0.005, 0.005, 0.005, 6).rotateZ(Math.PI / 2).translate(sx * (GW / 2 + 0.015), -0.205, bendZ(GW / 2) + 0.004));
     }
-    add(new THREE.Mesh(mergeGeometries(armBolts), boltMat));
+    add(new THREE.Mesh(mergeGeometries(postBolts), boltMat));
     // Collimator lens housing at the base of the combiner.
+    const zB = bendZ(GW / 2);
     const hs = new THREE.Shape(); hs.moveTo(-0.15, -0.05); hs.lineTo(0.15, -0.05); hs.lineTo(0.12, 0.05); hs.lineTo(-0.12, 0.05); hs.closePath();
     const hg = new THREE.ExtrudeGeometry(hs, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2 });
     hg.rotateX(Math.PI / 2); hg.translate(0, -0.19, zB - 0.02);
     add(new THREE.Mesh(hg, castMat));
     const lens = add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.006, 40), new THREE.MeshPhysicalMaterial({ color: 0x0a1a14, roughness: 0.05, metalness: 0.2, clearcoat: 1, envMap: envTex, envMapIntensity: 1.0 })));
     lens.scale.set(1, 1, 0.45); lens.position.set(0, -0.184, zB - 0.02);
+  }
+
+  /* =================================================================
+     7b. HOTAS: center control stick + left twin-engine throttle quadrant
+     -----------------------------------------------------------------
+     Stick: ribbed rubber dust boot, charcoal shaft, contoured grip with thumb
+     rest, 4-way trim hat, red pickle button, two-stage gun trigger. The gimbal
+     tilts +/-16 deg in pitch and +/-18 deg in roll from the live stick commands;
+     the trigger squeezes while the Vulcan fires and the pickle depresses on
+     every missile / bomb release. Throttles: split levers Throttle_L / _R that
+     sweep -22 deg (idle) -> +16 deg (MIL) -> +28 deg (full afterburner).
+     ================================================================= */
+  const gripMat = new THREE.MeshStandardMaterial({ color: 0x1d2024, roughness: 0.78, metalness: 0.08 });
+  const pickleMat = new THREE.MeshStandardMaterial({ color: 0xc8141c, roughness: 0.4, metalness: 0.1, emissive: 0x300000 });
+  const stick = new THREE.Group(); stick.name = 'HOTAS_Stick';
+  stick.position.set(0, -0.667, -0.365);                    // floor gimbal between the pilot's knees
+  rig.add(stick);
+  const gimbal = new THREE.Group(); stick.add(gimbal);
+  {
+    // Ribbed dust boot (lathe zig-zag profile).
+    const pts = [];
+    for (let i = 0; i <= 12; i++) { const y = i * 0.0075; pts.push(new THREE.Vector2(0.055 - i * 0.0026 + (i % 2 ? 0.006 : 0), y)); }
+    pts.push(new THREE.Vector2(0.014, 0.095));
+    add(new THREE.Mesh(new THREE.LatheGeometry(pts, 24), rubberMat), stick);
+    const ring = add(new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.006, 8, 28).rotateX(Math.PI / 2), castMat), stick); ring.position.y = 0.002;
+  }
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.17, 14).translate(0, 0.085 + 0.02, 0), gripMat), gimbal);   // shaft
+  const grip = new THREE.Group(); grip.position.set(0, 0.215, 0); grip.rotation.x = -0.12; gimbal.add(grip);
+  {
+    const g = new THREE.CapsuleGeometry(0.021, 0.085, 6, 16); g.scale(1, 1, 1.22);
+    add(new THREE.Mesh(g, gripMat), grip);
+    // finger grooves on the front of the grip
+    for (let i = 0; i < 3; i++) { const r = add(new THREE.Mesh(new THREE.TorusGeometry(0.0205, 0.0028, 6, 18, Math.PI).rotateY(Math.PI / 2), gripMat), grip); r.position.set(0, -0.035 + i * 0.02, -0.004); r.rotation.z = Math.PI / 2; }
+    // thumb rest: angled shelf on the left side near the top
+    const tr = add(new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.007, 0.03), gripMat), grip); tr.position.set(-0.024, 0.045, 0.002); tr.rotation.z = -0.35;
+    // grip head cap
+    const head = add(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.022, 0.022, 18), gripMat), grip); head.position.y = 0.064; head.scale.z = 1.2;
+  }
+  // 4-way trim hat (castle switch) on the top-left, red pickle button on top.
+  const hat = add(new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0065, 0.008, 4), silverMat), grip); hat.position.set(-0.009, 0.079, -0.006); hat.rotation.y = Math.PI / 4;
+  { const nub = add(new THREE.Mesh(new THREE.SphereGeometry(0.0032, 8, 6), silverMat), hat); nub.position.y = 0.005; }
+  const pickle = add(new THREE.Mesh(new THREE.CylinderGeometry(0.0062, 0.0062, 0.007, 16), pickleMat), grip); pickle.position.set(0.008, 0.078, 0.008);
+  const pickleY = pickle.position.y;
+  { const g = add(new THREE.Mesh(new THREE.TorusGeometry(0.0078, 0.0016, 6, 16).rotateX(Math.PI / 2), castMat), grip); g.position.set(0.008, 0.0755, 0.008); }
+  // Two-stage gun trigger: curved blade in front of the grip, pivoting at its top.
+  const trigger = new THREE.Group(); trigger.position.set(0, 0.035, -0.026); grip.add(trigger);
+  { const blade = add(new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.0035, 6, 14, Math.PI * 0.55), castMat), trigger); blade.rotation.set(0, Math.PI / 2, Math.PI * 1.05); blade.position.set(0, -0.016, 0.004); }
+
+  // Left console throttle quadrant.
+  const quad = new THREE.Group(); quad.name = 'HOTAS_Throttle';
+  quad.position.set(-0.27, -0.45, -0.44); quad.rotation.y = 0.28;
+  rig.add(quad);
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.05, 0.19), consoleMat), quad);                        // housing
+  { const slot = add(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.004, 0.16), padMat), quad); slot.position.y = 0.0255; }
+  placard('IDLE', 0.03, 0.008, quad, [0.045, 0.0262, 0.07], [-Math.PI / 2, 0, 0], 0.9);
+  placard('AB', 0.02, 0.008, quad, [0.045, 0.0262, -0.075], [-Math.PI / 2, 0, 0], 0.9);
+  const throttles = [];
+  for (const [name, x] of [['Throttle_L', -0.019], ['Throttle_R', 0.019]]) {
+    const pivot = new THREE.Group(); pivot.name = name; pivot.position.set(x, 0.0, 0.0); quad.add(pivot);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.11, 0.014).translate(0, 0.055, 0), castMat), pivot);   // lever arm
+    const g = new THREE.Group(); g.position.set(0, 0.12, 0); pivot.add(g);
+    const gg = new THREE.BoxGeometry(0.032, 0.046, 0.05, 2, 2, 2);
+    { const p = gg.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setZ(i, p.getZ(i) * (1 - 0.25 * (y + 0.023) / 0.046)); } gg.computeVertexNormals(); }
+    add(new THREE.Mesh(gg, gripMat), g);                                                                          // textured grip
+    for (let k = 0; k < 4; k++) { const r = add(new THREE.Mesh(new THREE.BoxGeometry(0.0335, 0.0025, 0.004), rubberMat), g); r.position.set(0, -0.016 + k * 0.009, 0.0245); }
+    const lift = add(new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.006, 0.014), silverMat), g); lift.position.set(0, -0.026, -0.024);   // finger-lift
+    const sw = add(new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.006, 10).rotateZ(Math.PI / 2), keyMat), g); sw.position.set(x < 0 ? -0.017 : 0.017, 0.008, 0);
+    throttles.push({ pivot, angle: -22 * D2R, lag: x < 0 ? 1 : 0.9 });
+  }
+  const hotas = { pitch: 0, roll: 0, trig: 0, pickle: 0, pickleT: 0, msl: null, bombs: null };
+  function updateHOTAS(dt) {
+    const ctl = S.ctl || { pitch: 0, roll: 0 };
+    const k = Math.min(1, dt * 14);
+    hotas.pitch += (clamp(ctl.pitch, -1, 1) * 16 * D2R - hotas.pitch) * k;      // pull -> grip comes back toward the pilot
+    hotas.roll += (clamp(ctl.roll, -1, 1) * 18 * D2R - hotas.roll) * k;         // roll left -> grip to the left
+    gimbal.rotation.set(hotas.pitch, 0, hotas.roll);
+    hotas.trig += ((C.gunFiring ? 1 : 0) - hotas.trig) * Math.min(1, dt * 25);
+    trigger.rotation.x = -0.32 * hotas.trig;
+    // Pickle: any missile / bomb release depresses the red button for 0.25 s.
+    if (hotas.msl !== null && (C.missiles < hotas.msl || C.bombs < hotas.bombs)) hotas.pickleT = 0.25;
+    hotas.msl = C.missiles; hotas.bombs = C.bombs;
+    hotas.pickleT = Math.max(0, hotas.pickleT - dt);
+    hotas.pickle += ((hotas.pickleT > 0 ? 1 : 0) - hotas.pickle) * Math.min(1, dt * 30);
+    pickle.position.y = pickleY - 0.0035 * hotas.pickle;
+    const tgt = (-22 + 38 * clamp(S.throttle, 0, 1) + 12 * clamp(S.afterburner, 0, 1)) * D2R;
+    for (const t of throttles) { t.angle += (tgt - t.angle) * Math.min(1, dt * 8 * t.lag); t.pivot.rotation.x = -t.angle; }   // forward = -Z
   }
 
   /* =================================================================
@@ -665,6 +762,7 @@ export function createCockpit3D(THREE, env) {
     sunLight.target.position.copy(eyeWorld); sunLight.target.updateMatrixWorld();
 
     updateEngines(dt);
+    updateHOTAS(dt);
     paintUFC(now); paintTEWS(frame); paintADI(); paintStores(); paintAnnunciator(now);
   }
 
@@ -672,6 +770,10 @@ export function createCockpit3D(THREE, env) {
   return {
     rig, setActive, update, missionClock,
     get active() { return active; },
+    get hotas() {
+      return { pitch: +(hotas.pitch / D2R).toFixed(1), roll: +(hotas.roll / D2R).toFixed(1), trig: +hotas.trig.toFixed(2), pickle: +hotas.pickle.toFixed(2),
+        thrL: +(throttles[0].angle / D2R).toFixed(1), thrR: +(throttles[1].angle / D2R).toFixed(1) };
+    },
     glassOutlineWorld() { return glassOutline.map(p => _w.copy(p).applyMatrix4(rig.matrixWorld).clone()); },
     get head() {
       return { roll: +(head.roll / D2R).toFixed(1), lookPitch: +(head.look / D2R).toFixed(1), lookYaw: +(head.lookYaw / D2R).toFixed(1),

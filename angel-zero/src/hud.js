@@ -218,30 +218,50 @@ export function createHUD(THREE, A) {
   }
 
   /* ------------------------------------------------- tapes & heading strip */
+  // Open-ended pointed bracket readout: `[ 455 >` (point right) or `< 4256 ]` (point left).
+  // 1 px vector strokes, no closed box and no opaque backing, so the sky stays clear.
+  function drawOpenChevron(ctx, cx, cy, w, h, point, col, blur = 3) {
+    const x0 = cx - w / 2, x1 = cx + w / 2, y0 = cy - h / 2, y1 = cy + h / 2, tip = Math.min(9, h * 0.42), serif = 5;
+    ctx.save();
+    glow(ctx, col, blur); ctx.lineWidth = 1; ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
+    ctx.beginPath();
+    if (point === 'right') {
+      ctx.moveTo(x0 + serif, y0 + 0.5); ctx.lineTo(x0 + 0.5, y0 + 0.5); ctx.lineTo(x0 + 0.5, y1 - 0.5); ctx.lineTo(x0 + serif, y1 - 0.5);   // [
+      ctx.moveTo(x1 - tip, y0 + 2); ctx.lineTo(x1, cy); ctx.lineTo(x1 - tip, y1 - 2);                                                     // >
+    } else {
+      ctx.moveTo(x1 - serif, y0 + 0.5); ctx.lineTo(x1 - 0.5, y0 + 0.5); ctx.lineTo(x1 - 0.5, y1 - 0.5); ctx.lineTo(x1 - serif, y1 - 0.5);   // ]
+      ctx.moveTo(x0 + tip, y0 + 2); ctx.lineTo(x0, cy); ctx.lineTo(x0 + tip, y1 - 2);                                                     // <
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawSlimTape(ctx, o, col) {
     const { x, top, bot, value, pxPerUnit, step, side, label, sub, subCol, next, vsi, compact } = o;
     const cy = (top + bot) / 2, half = (bot - top) / 2, dir = side === 'left' ? 1 : -1;
     ctx.save();
     ctx.beginPath(); ctx.rect(x - 58, top, 116, bot - top); ctx.clip();
-    glow(ctx, col, 3);
+    glow(ctx, col, 2);
     ctx.lineWidth = 1;
-    ctx.font = f(compact ? 11 : 12, true);
+    ctx.font = f(compact ? 10 : 11);
     ctx.textBaseline = 'middle';
-    // Thin vertical ruler spine.
-    ctx.beginPath(); ctx.moveTo(x + dir * 10, top); ctx.lineTo(x + dir * 10, bot); ctx.stroke();
+    // Hairline vertical ruler spine.
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.moveTo(x + dir * 10.5, top); ctx.lineTo(x + dir * 10.5, bot); ctx.stroke();
     const first = Math.floor((value - half / pxPerUnit) / step) * step - step;
     for (let v = first; v <= value + half / pxPerUnit + step; v += step) {
       const y = cy - (v - value) * pxPerUnit;
       const major = Math.round(v / step) % 2 === 0;
       ctx.beginPath();
       ctx.moveTo(x + dir * 10, y);
-      ctx.lineTo(x + dir * (10 + (major ? 10 : 5)), y);
+      ctx.lineTo(x + dir * (10 + (major ? 7 : 3)), y);
       ctx.stroke();
       if (major && v >= 0 && Math.abs(y - cy) > 15) {
         ctx.textAlign = side === 'left' ? 'right' : 'left';
-        labelText(ctx, String(v), x + dir * 5, y, col, 2);
+        labelText(ctx, String(v), x + dir * 5, y, col, 1);
       }
     }
+    ctx.globalAlpha = 1;
     // 5 s speed trend caret on SPEED tape.
     if (next !== undefined) {
       const yn = clamp(cy - (next - value) * pxPerUnit, top + 6, bot - 6);
@@ -263,27 +283,18 @@ export function createHUD(THREE, A) {
       ctx.restore();
     }
 
-    // Triangular caret + beveled digital readout box (dark backing behind digits only).
-    const boxW = compact ? 52 : 60, boxH = compact ? 22 : 26;
+    // Open pointed bracket readout `[ 455 >` / `< 4256 ]` (no closed box, no backing).
+    const boxW = compact ? 54 : 62, boxH = compact ? 20 : 24;
     const bx = side === 'left' ? x - boxW + 2 : x - 2;
     ctx.save();
-    numBack(ctx, bx, cy - boxH / 2, boxW, boxH, 'rgba(0, 14, 8, 0.56)');
-    glow(ctx, col, 4); ctx.lineWidth = LW;
+    drawOpenChevron(ctx, bx + boxW / 2, cy, boxW, boxH, side === 'left' ? 'right' : 'left', col, 3);
+    // Fine inner ruler pointer caret.
+    glow(ctx, col, 2);
     ctx.beginPath();
-    if (side === 'left') {
-      ctx.moveTo(bx, cy - boxH / 2); ctx.lineTo(bx + boxW - 7, cy - boxH / 2);
-      ctx.lineTo(bx + boxW, cy); ctx.lineTo(bx + boxW - 7, cy + boxH / 2); ctx.lineTo(bx, cy + boxH / 2);
-    } else {
-      ctx.moveTo(bx + boxW, cy - boxH / 2); ctx.lineTo(bx + 7, cy - boxH / 2);
-      ctx.lineTo(bx, cy); ctx.lineTo(bx + 7, cy + boxH / 2); ctx.lineTo(bx + boxW, cy + boxH / 2);
-    }
-    ctx.closePath(); ctx.stroke();
-    // Sharp inner ruler pointer caret.
-    ctx.beginPath();
-    ctx.moveTo(x + dir * 10, cy); ctx.lineTo(x + dir * 17, cy - 4); ctx.lineTo(x + dir * 17, cy + 4); ctx.closePath(); ctx.fill();
+    ctx.moveTo(x + dir * 10.5, cy); ctx.lineTo(x + dir * 15, cy - 3); ctx.lineTo(x + dir * 15, cy + 3); ctx.closePath(); ctx.fill();
 
     ctx.font = f(compact ? 16 : 18, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    labelText(ctx, String(Math.round(value)), bx + boxW / 2 + (side === 'left' ? -2 : 2), cy + 1, col, 4);
+    labelText(ctx, String(Math.round(value)), bx + boxW / 2 + (side === 'left' ? -3 : 3), cy + 1, col, 3);
 
     ctx.font = f(compact ? 10 : 11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     labelText(ctx, label, bx + boxW / 2, top - 4, col, 3);
@@ -300,7 +311,7 @@ export function createHUD(THREE, A) {
     const ppd = w / 72;
     const NAMES = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
     ctx.save();
-    glow(ctx, col, 3); ctx.lineWidth = 1; ctx.font = f(compact ? 11 : 12, true);
+    glow(ctx, col, 2); ctx.lineWidth = 1; ctx.font = f(compact ? 10 : 11);
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.save();
     ctx.beginPath(); ctx.rect(cx - w / 2, y - 20, w, 28); ctx.clip();
@@ -308,28 +319,31 @@ export function createHUD(THREE, A) {
       const x = cx + (hd - S.heading) * ppd;
       const n = ((hd % 360) + 360) % 360;
       const major = n % 15 === 0;
-      ctx.beginPath(); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + (major ? -1 : 2)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + (major ? 0 : 3)); ctx.stroke();
       if (NAMES[n]) labelText(ctx, NAMES[n], x, y - 3, col, 3);
       else if (n % 30 === 0) labelText(ctx, String(n / 10).padStart(2, '0'), x, y - 3, col, 3);
     }
     ctx.restore();
-    // Fixed center downward triangle pointer + boxed digital heading.
-    glow(ctx, col, 4);
-    ctx.beginPath(); ctx.moveTo(cx, y + 7); ctx.lineTo(cx - 4.5, y + 1); ctx.lineTo(cx + 4.5, y + 1); ctx.closePath(); ctx.fill();
+    // Fixed center caret + open digital heading `▼ 347` (no box).
+    glow(ctx, col, 3);
+    ctx.beginPath(); ctx.moveTo(cx, y + 7); ctx.lineTo(cx - 4, y + 1.5); ctx.lineTo(cx + 4, y + 1.5); ctx.closePath(); ctx.fill();
     const hdgTxt = String(Math.round(S.heading) % 360).padStart(3, '0');
-    numBack(ctx, cx - 21, y + 9, 42, 19, 'rgba(0, 14, 8, 0.56)');
-    ctx.lineWidth = LW; ctx.strokeRect(cx - 21, y + 9, 42, 19);
     ctx.font = f(14, true); ctx.textBaseline = 'middle';
-    labelText(ctx, hdgTxt, cx, y + 19, col, 4);
+    labelText(ctx, hdgTxt, cx, y + 18, col, 3);
+    ctx.lineWidth = 1; ctx.globalAlpha = 0.7;                 // hairline underscore ticks either side
+    ctx.beginPath(); ctx.moveTo(cx - 24, y + 18); ctx.lineTo(cx - 17, y + 18); ctx.moveTo(cx + 17, y + 18); ctx.lineTo(cx + 24, y + 18); ctx.stroke();
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
   function drawModeTag(ctx, x, y, txt, col, lit = true) {
     ctx.save();
-    if (lit) numBack(ctx, x, y, 36, 17, 'rgba(0, 14, 8, 0.50)');
-    glow(ctx, col, lit ? 4 : 0);
-    ctx.lineWidth = 1.1;
-    ctx.strokeRect(x, y, 36, 17);
+    glow(ctx, col, lit ? 3 : 0);
+    ctx.lineWidth = 1;                                       // open corner ticks instead of a closed box
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y + 0.5); ctx.lineTo(x + 0.5, y + 0.5); ctx.lineTo(x + 0.5, y + 16.5); ctx.lineTo(x + 5, y + 16.5);
+    ctx.moveTo(x + 31, y + 0.5); ctx.lineTo(x + 35.5, y + 0.5); ctx.lineTo(x + 35.5, y + 16.5); ctx.lineTo(x + 31, y + 16.5);
+    ctx.stroke();
     ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(txt, x + 18, y + 9);
     ctx.restore();
@@ -813,9 +827,11 @@ export function createHUD(THREE, A) {
     const border = flashRed() || C.banditLock >= 1 ? WARN : C.rwrTrack ? AMBER : G;
 
     ctx.save();
-    noGlow(ctx); ctx.fillStyle = 'rgba(6, 26, 14, 0.35)'; ctx.fillRect(x0, y0, s, s);
+    const RR = 5;                                             // rounded micro-corners
+    const frame = new Path2D(); frame.roundRect(x0 + 0.5, y0 + 0.5, s - 1, s - 1, RR);
+    noGlow(ctx); ctx.fillStyle = 'rgba(6, 26, 14, 0.30)'; ctx.fill(frame);
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, s, s); ctx.clip();
+    ctx.clip(frame);
 
     // Island contours (heading-up).
     ctx.save();
@@ -890,10 +906,11 @@ export function createHUD(THREE, A) {
     ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx + 5.5, cy + 6); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 5.5, cy + 6); ctx.closePath(); ctx.fill();
     ctx.restore();
 
-    // 1px square radar border + corner range/RWR labels.
-    glow(ctx, border, alertOn() ? 7 : 3);
+    // Subtle 1px emerald border with rounded corners + corner range/RWR labels.
+    glow(ctx, border === G ? 'rgba(88, 255, 154, 0.55)' : border, alertOn() ? 7 : 0);
+    if (border === G) ctx.strokeStyle = 'rgba(88, 255, 154, 0.55)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x0 + 0.5, y0 + 0.5, s - 1, s - 1);
+    ctx.stroke(frame);
     ctx.font = f(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     labelText(ctx, RANGE_NM + 'NM', x0 + 6, y0 + 5, G, 2);
     if (C.rwrTrack || C.banditLock >= 1) {
@@ -1109,14 +1126,9 @@ export function createHUD(THREE, A) {
   // Pointed readout: SPEED  [  420 >   (points right)   /   ALT  < 3200  ]  (points left).
   function drawChevronBox(ctx, cx, cy, value, label, point, col, sub, subCol) {
     const w = 78, h = 26, tip = 10;
-    const x0 = cx - w / 2, x1 = cx + w / 2, y0 = cy - h / 2, y1 = cy + h / 2;
+    const y0 = cy - h / 2, y1 = cy + h / 2;
     ctx.save();
-    const path = new Path2D();
-    if (point === 'right') { path.moveTo(x0, y0); path.lineTo(x1 - tip, y0); path.lineTo(x1, cy); path.lineTo(x1 - tip, y1); path.lineTo(x0, y1); }
-    else { path.moveTo(x1, y0); path.lineTo(x0 + tip, y0); path.lineTo(x0, cy); path.lineTo(x0 + tip, y1); path.lineTo(x1, y1); }
-    path.closePath();
-    noGlow(ctx); ctx.fillStyle = 'rgba(0, 16, 8, 0.38)'; ctx.fill(path);     // keeps digits legible over bright cloud
-    glow(ctx, col, 6); ctx.lineWidth = LW; ctx.stroke(path);
+    drawOpenChevron(ctx, cx, cy, w, h, point, col, 5);
     ctx.font = f(19, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     labelText(ctx, String(value), cx + (point === 'right' ? -tip / 2 : tip / 2), cy + 1, col === WARN ? WARN : GB, 6);
     ctx.font = f(11, true); ctx.textBaseline = 'bottom';
