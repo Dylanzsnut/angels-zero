@@ -29,6 +29,17 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     and `STALL WARNING`, barrel roll (Q / double-tap A/D), spring-damped chase
     camera that tightens FOV in High-G turns, 1st-person 3D cockpit
     (`src/cockpit3d.js`) with roll-lag / look-into-turn head inertia.
+  - [x] **Articulated F-15C surfaces (`src/surfaces.js`):** `Ctrl_Stabilator_L/R`
+    (all-moving, pitch + roll differential, +/-24 deg), `Ctrl_Aileron_L/R`
+    (+/-20 deg), auto `Ctrl_Flap_L/R` (0 -> 26 deg below ~260 kt / high AoA),
+    `Ctrl_Rudder_L/R` (+/-22 deg), dorsal `Ctrl_Speedbrake` (0 -> 46 deg on
+    S / overspeed > M1.25, visual only), `Nozzle_L/R` F100 kinematics (1.06x
+    idle -> 0.84x MIL -> 1.16x afterburner) with an inner glow ring; spring
+    `dt * 12` from the live rate commands (`state.ctl`). Cut in
+    `scripts/prep_f15.py`: region-limited bisect + face split, origins on the
+    hinge lines, `hinge_axis` / `hinge_kind` glTF extras, dark hinge fairings
+    and a speedbrake well so deflected surfaces show no see-through slits;
+    GLB 11.6 MB. Verified headless (pitch / roll / yaw / brake / afterburner).
   - **Gap:** flight model and chase camera live in `index.html`
     (`updatePhysics`, `updateCameraAndVisuals`) — no `flight.js` / `camera.js`.
   - **Gap:** no chase-camera FOV *speed* kick (only the High-G tighten).
@@ -111,7 +122,7 @@ toggle, ejection, bridge fly-under. User-facing weapon labels unified to
 MSL / UGB (briefing, radio call, CCIP reload cue, stores list).
 
 ## Debug URL flags (require `?debug`)
-`nointro` · `cockpit` · `freeze` · `warp=s` · `pose=bank,pitch` · `mouse=x,y`
+`hold=s,a,...` (hold keys) · `nointro` · `cockpit` · `freeze` · `warp=s` · `pose=bank,pitch` · `mouse=x,y`
 · `ab` · `highg` · `alt=m` · `spd=m/s` · `at=x,y,z,hdg|airbase|canyon|bridgeA|
 bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `todto=NAME:t` · `rolls=n` · `nvg` / `nvgat=s` · `camat=x,y,z` ·

@@ -377,16 +377,154 @@ for ob in meshes:
     ob.parent = Airframe
     ob.matrix_parent_inverse = Matrix.Identity(4)
 
+# --------------------------------------------- articulated control surfaces
+# Geometry is now in target axes (x right, y up, z aft = -nose). Each movable
+# surface is defined by a plan region (x / z box), a y band and its hinge
+# (line point + axis). For every airframe mesh, only the geometry near the
+# region is bisected along the region's boundary planes; faces whose centroid
+# lies inside the region are split off into the surface object. Cut seams are
+# hole-filled where they close, and dark hinge fairings / a speedbrake well are
+# added to the static airframe so a deflected surface never shows a see-through
+# slit. The hinge point becomes the surface's origin (set after the final
+# length normalisation) and the hinge axis is exported as glTF extras
+# (`hinge_axis`, `hinge_kind`) for src/ in the game.
+CTRL = []
+def _ctrl(name, x, y, z, hinge, axis, kind, normal_y=None):
+    CTRL.append(dict(name=name, x=x, y=y, z=z, hinge=list(hinge), axis=axis, kind=kind, normal_y=normal_y))
+for s, sfx in ((-1, "L"), (1, "R")):
+    def X(a, b):                                                 # |x| range -> this side's x range
+        return (min(a, b), max(a, b)) if s > 0 else (-max(a, b), -min(a, b))
+    _ctrl("Ctrl_Flap_" + sfx, X(2.12, 4.00), (-0.85, -0.25), (4.30, 5.60), (s * 3.06, None, 4.33), (1, 0, 0), "flap")
+    _ctrl("Ctrl_Aileron_" + sfx, X(4.00, 5.85), (-0.85, -0.25), (4.30, 6.10), (s * 4.92, None, 4.33), (1, 0, 0), "aileron")
+    _ctrl("Ctrl_Stabilator_" + sfx, X(1.80, 4.60), (-1.25, -0.75), (6.20, 9.85), (s * 1.80, -1.00, 8.00), (1, 0, 0), "stabilator")
+    _ctrl("Ctrl_Rudder_" + sfx, X(1.60, 1.95), (-0.31, 1.19), (7.49, 8.70), (s * 1.76, 0.44, 7.49), (0, 1, 0), "rudder")
+# Dorsal speedbrake: the flat spine strip between the intake-ramp edges, aft of the canopy vent.
+_ctrl("Ctrl_Speedbrake", (-0.29, 0.29), (-0.15, 0.45), (-1.78, 0.40), (0.0, None, -1.78), (1, 0, 0), "speedbrake", normal_y=0.35)
+
+SKIP_CTRL_MATS = ("cock", "seats", "glass", "engine", "pods", "lights", "hud_disp", "screens")
+gap_mat = bpy.data.materials.new("Ctrl_Gap")
+gap_mat.diffuse_color = (0.06, 0.065, 0.07, 1.0)
+gap_mat.use_nodes = True
+_bsdf = gap_mat.node_tree.nodes.get("Principled BSDF")
+if _bsdf:
+    _bsdf.inputs["Base Color"].default_value = (0.06, 0.065, 0.07, 1.0)
+    _bsdf.inputs["Roughness"].default_value = 0.7
+
+def _in_region(p, c):
+    return c["x"][0] <= p.x <= c["x"][1] and c["y"][0] <= p.y <= c["y"][1] and c["z"][0] <= p.z <= c["z"][1]
+
+def extract_surface(c):
+    planes = [((c["x"][0], 0, 0), (1, 0, 0)), ((c["x"][1], 0, 0), (1, 0, 0)),
+              ((0, c["y"][0], 0), (0, 1, 0)), ((0, c["y"][1], 0), (0, 1, 0)),
+              ((0, 0, c["z"][0]), (0, 0, 1)), ((0, 0, c["z"][1]), (0, 0, 1))]
+    pad = 0.08
+    lo = Vector((c["x"][0] - pad, c["y"][0] - pad, c["z"][0] - pad)); hi = Vector((c["x"][1] + pad, c["y"][1] + pad, c["z"][1] + pad))
+    pieces, seam_count, hinge_ys = [], 0, []
+    for ob in list(meshes):
+        if ob.name.startswith(("Pylon_", "Ctrl_")) or ob.name == "Canopy_Glass":
+            continue
+        mats = " ".join(m.name.lower() for m in ob.data.materials)
+        if any(k in mats for k in SKIP_CTRL_MATS):
+            continue
+        bm = bmesh.new(); bm.from_mesh(ob.data)
+        near = [f for f in bm.faces if any(all(lo[i] <= v.co[i] <= hi[i] for i in range(3)) for v in f.verts)]
+        if not near:
+            bm.free(); continue
+        for co, no in planes:                                        # cut only the local geometry
+            geom = list({e for f in near for e in f.edges}) + list({v for f in near for v in f.verts}) + near
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=co, plane_no=no)
+            near = [f for f in bm.faces if any(all(lo[i] <= v.co[i] <= hi[i] for i in range(3)) for v in f.verts)]
+        bm.normal_update()
+        sel = set()
+        for f in bm.faces:
+            ctr = f.calc_center_median()
+            if not _in_region(ctr, c):
+                continue
+            if c["normal_y"] is not None and f.normal.y < c["normal_y"]:
+                continue
+            sel.add(f.index)
+        if not sel:
+            bm.to_mesh(ob.data); ob.data.update(); bm.free(); continue
+        bm.faces.ensure_lookup_table()
+        for i in sel:                                                # hinge height samples near the hinge line
+            for v in bm.faces[i].verts:
+                if c["axis"] == (1, 0, 0) and abs(v.co.z - c["hinge"][2]) < 0.12:
+                    hinge_ys.append(v.co.y)
+        bm.to_mesh(ob.data); ob.data.update(); bm.free()
+        piece = ob.copy(); piece.data = ob.data.copy()
+        for col in ob.users_collection:
+            col.objects.link(piece)
+        for target, keep in ((piece, True), (ob, False)):
+            b2 = bmesh.new(); b2.from_mesh(target.data); b2.faces.ensure_lookup_table()
+            doomed = [f for f in b2.faces if (f.index in sel) != keep]
+            bmesh.ops.delete(b2, geom=doomed, context="FACES")
+            loose = [v for v in b2.verts if not v.link_faces]
+            if loose:
+                bmesh.ops.delete(b2, geom=loose, context="VERTS")
+            # Cap the cut seams that close into loops (both on the surface and on the airframe).
+            seam = [e for e in b2.edges if e.is_boundary and any(
+                all(abs((v.co - Vector(co)).dot(Vector(no))) < 2e-4 for v in e.verts) for co, no in planes)]
+            if seam:
+                # Only small seam gaps: a big fill would leave a ghost plate where the surface was.
+                res = bmesh.ops.holes_fill(b2, edges=seam, sides=12)
+                for f in res.get("faces", []):
+                    f.material_index = 0
+                seam_count += len(res.get("faces", []))
+            b2.to_mesh(target.data); target.data.update(); b2.free()
+        pieces.append(piece)
+    if not pieces:
+        print("WARN no geometry for", c["name"]); return None
+    bpy.ops.object.select_all(action="DESELECT")
+    with bpy.context.temp_override(active_object=pieces[0], object=pieces[0], selected_objects=pieces, selected_editable_objects=pieces):
+        bpy.ops.object.join()
+    surf = pieces[0]
+    surf.name = c["name"]; surf.data.name = c["name"]
+    surf.parent = Airframe; surf.matrix_parent_inverse = Matrix.Identity(4)
+    if c["hinge"][1] is None:
+        c["hinge"][1] = sum(hinge_ys) / len(hinge_ys) if hinge_ys else sum(c["y"]) / 2
+    meshes.append(surf)
+    print("CTRL %-18s from %d meshes, %d faces, caps %d" % (c["name"], len(pieces), len(surf.data.polygons), seam_count))
+    return surf
+
+def add_fairings():
+    # Dark hinge fairings (static, on the airframe) that close the slit behind
+    # deflected flaps / ailerons / rudders, plus the speedbrake well floor.
+    bm = bmesh.new()
+    for c in CTRL:
+        if c["kind"] in ("flap", "aileron"):
+            x0, x1 = c["x"]
+            m = Matrix.Translation(Vector(((x0 + x1) / 2, c["hinge"][1], c["hinge"][2] - 0.015))) @ Matrix.Rotation(math.pi / 2, 4, "Y")
+            bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=0.055, radius2=0.055, depth=(x1 - x0) * 0.98, matrix=m)
+        elif c["kind"] == "rudder":
+            y0, y1 = c["y"]
+            m = Matrix.Translation(Vector((c["hinge"][0], (y0 + y1) / 2, c["hinge"][2] - 0.01))) @ Matrix.Rotation(math.pi / 2, 4, "X")
+            bmesh.ops.create_cone(bm, cap_ends=True, segments=8, radius1=0.045, radius2=0.045, depth=(y1 - y0) * 0.98, matrix=m)
+        elif c["kind"] == "speedbrake":
+            x0, x1 = c["x"]; z0, z1 = c["z"]; y = c["hinge"][1] - 0.06
+            vs = [bm.verts.new((x0 * 0.95, y, z0 + 0.02)), bm.verts.new((x1 * 0.95, y, z0 + 0.02)),
+                  bm.verts.new((x1 * 0.95, y - 0.12, z1 - 0.02)), bm.verts.new((x0 * 0.95, y - 0.12, z1 - 0.02))]
+            bm.faces.new(vs)
+    me = bpy.data.meshes.new("F15_ControlFairings"); bm.to_mesh(me); bm.free()
+    me.materials.append(gap_mat)
+    ob = bpy.data.objects.new("F15_ControlFairings", me)
+    bpy.context.collection.objects.link(ob)
+    ob.parent = Airframe; ob.matrix_parent_inverse = Matrix.Identity(4)
+    meshes.append(ob)
+
+ctrl_objects = [o for o in (extract_surface(c) for c in CTRL) if o]
+add_fairings()
+print("Control surfaces separated:", [o.name for o in ctrl_objects])
+
 # Decimate dense Sketchfab meshes for a web-sized asset (~1/5 of the triangles).
 decimated = 0
 before_tris = sum(len(o.data.polygons) for o in meshes)
 for ob in meshes:
-    if len(ob.data.polygons) <= 200:
+    if len(ob.data.polygons) <= 200 or ob.name == "F15_ControlFairings":
         continue
     mod = ob.modifiers.new("WebDecimate", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
     # Stores are seen up close when they separate, so they keep more detail.
-    mod.ratio = 0.4 if ob.name.startswith("Pylon_") else 0.18
+    mod.ratio = 0.4 if ob.name.startswith(("Pylon_", "Ctrl_")) else 0.18
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
     ob.data.update()
@@ -428,6 +566,31 @@ for ob in meshes:
     except Exception as exc:
         print("WARN post-decimate solidify failed", ob.name, str(exc))
 
+# Decimation can collapse neighbouring airframe triangles into faces that reach
+# into a control surface's footprint; hidden under the closed surface, they
+# would show as a ghost plate once it deflects. Purge them.
+ghosts = 0
+for c in CTRL:
+    lo = (c["x"][0] + 0.06, c["y"][0] + 0.02, c["z"][0] + 0.06)
+    hi = (c["x"][1] - 0.06, c["y"][1] - 0.02, c["z"][1] - 0.06)
+    for ob in meshes:
+        if ob.name.startswith(("Ctrl_", "Pylon_", "Nozzle_")) or ob.name in ("F15_ControlFairings", "Canopy_Glass"):
+            continue
+        mats = " ".join(m.name.lower() for m in ob.data.materials)
+        if any(k in mats for k in SKIP_CTRL_MATS):
+            continue
+        bm = bmesh.new(); bm.from_mesh(ob.data); bm.normal_update()
+        doomed = []
+        for fc in bm.faces:
+            ctr = fc.calc_center_median()
+            if all(lo[i] <= ctr[i] <= hi[i] for i in range(3)) and (c["normal_y"] is None or fc.normal.y >= c["normal_y"]):
+                doomed.append(fc)
+        if doomed:
+            bmesh.ops.delete(bm, geom=doomed, context="FACES")
+            bm.to_mesh(ob.data); ob.data.update(); ghosts += len(doomed)
+        bm.free()
+print("Ghost faces purged from control-surface footprints:", ghosts)
+
 # Sanitize meshes before export: drop degenerate faces and loose geometry so
 # the glTF exporter never reports an invalid mesh.
 sanitized = 0
@@ -459,7 +622,7 @@ if canopy:
     canopy.name = "Canopy_Glass"
 
 for marker_name, pos in landmarks.items():
-    if not pos:
+    if not pos or marker_name.startswith("Nozzle_"):      # nozzles become real mesh nodes (below)
         continue
     e = bpy.data.objects.new(marker_name, None)
     bpy.context.collection.objects.link(e)
@@ -487,6 +650,7 @@ dims = tuple(round(tgt_max[i] - tgt_min[i], 3) for i in range(3))
 
 # Final exact length normalization after decimation/cleanup.
 f = TARGET_LENGTH / dims[2]
+FINAL_SCALE = f
 for ob in meshes:
     for v in ob.data.vertices:
         v.co *= f
@@ -583,6 +747,43 @@ for ob in sorted([o for o in meshes if o.name.startswith("Pylon_")], key=lambda 
     print("ORDNANCE %-14s center=%s size=%s faces=%d" % (
         ob.name, ordnance[-1]["center"], ordnance[-1]["size"], len(ob.data.polygons)))
 
+# ------------------------------------------- control-surface hinges + nozzles
+# Origins snapped to each hinge line (scaled by the final length normalisation);
+# hinge axis / kind exported as glTF extras -> Object3D.userData in three.js.
+controls = []
+for c in CTRL:
+    ob = bpy.data.objects.get(c["name"])
+    if not ob:
+        continue
+    h = Vector(c["hinge"]) * FINAL_SCALE
+    for v in ob.data.vertices:
+        v.co -= h
+    ob.data.update()
+    ob.location = h
+    ob["hinge_axis"] = list(c["axis"])
+    ob["hinge_kind"] = c["kind"]
+    vs = [v.co for v in ob.data.vertices]
+    span = [round(max(v[i] for v in vs) - min(v[i] for v in vs), 3) for i in range(3)] if vs else [0, 0, 0]
+    controls.append({"name": ob.name, "hinge": [round(x, 3) for x in h], "axis": list(c["axis"]),
+                     "kind": c["kind"], "size": span, "faces": len(ob.data.polygons)})
+    print("CTRLNODE %-18s hinge=%s axis=%s size=%s faces=%d" % (ob.name, controls[-1]["hinge"], c["axis"], span, len(ob.data.polygons)))
+# F100 nozzles: the engine-exit meshes, origin at each nozzle centre (where the old empties sat).
+nozzles = []
+for nm, src_name in (("Nozzle_L", "F15_Object_66"), ("Nozzle_R", "F15_Object_67")):
+    ob = bpy.data.objects.get(src_name)
+    pos = landmarks.get(nm)
+    if not ob or not pos:
+        print("WARN nozzle missing", nm); continue
+    cpos = Vector(pos)
+    for v in ob.data.vertices:
+        v.co -= cpos
+    ob.data.update()
+    ob.location = cpos
+    ob.name = nm; ob.data.name = nm
+    ob["hinge_kind"] = "nozzle"
+    nozzles.append({"name": nm, "center": [round(x, 3) for x in cpos], "faces": len(ob.data.polygons)})
+    print("CTRLNODE %-18s center=%s faces=%d" % (nm, nozzles[-1]["center"], len(ob.data.polygons)))
+
 # ------------------------------------------------------------------- export
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 bpy.ops.export_scene.gltf(
@@ -595,6 +796,7 @@ bpy.ops.export_scene.gltf(
     export_cameras=False,
     export_lights=False,
     export_unused_images=False,
+    export_extras=True,
     use_selection=False,
 )
 
@@ -610,6 +812,8 @@ report = {
     "nozzle_r": nozzle_r,
     "canopy_pilot_eye": canopy_pos,
     "ordnance": ordnance,
+    "controls": controls,
+    "nozzles": nozzles,
     "glb_bytes": os.path.getsize(OUT),
 }
 with open(REPORT, "w", encoding="utf-8") as fh:

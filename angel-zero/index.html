@@ -286,16 +286,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s19b';
-import { createHUD } from './src/hud.js?v=s19b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s19b';
-import { createCombat } from './src/combat.js?v=s19b';
-import { createEjection } from './src/eject.js?v=s19b';
-import { createAudio } from './src/audio.js?v=s19b';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s19b';
-import { createCanopyFX } from './src/canopy.js?v=s19b';
-import { createNVG } from './src/nvg.js?v=s19b';
-import { createWorld, WORLD } from './src/world.js?v=s19b';
+import { createVFX } from './src/vfx.js?v=s20a';
+import { createHUD } from './src/hud.js?v=s20a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s20a';
+import { createCombat } from './src/combat.js?v=s20a';
+import { createEjection } from './src/eject.js?v=s20a';
+import { createAudio } from './src/audio.js?v=s20a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s20a';
+import { createCanopyFX } from './src/canopy.js?v=s20a';
+import { createNVG } from './src/nvg.js?v=s20a';
+import { createWorld, WORLD } from './src/world.js?v=s20a';
+import { createSurfaces } from './src/surfaces.js?v=s20a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -564,7 +565,8 @@ const SPAWN = new THREE.Vector3(0, 4500 * 0.3048, 7600);     // fresh jets enter
 const state = {
   position: SPAWN.clone(), velocity: new THREE.Vector3(0, 0, -200), quaternion: new THREE.Quaternion(),
   throttle: 0.65, afterburner: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
-  gLoad: 1, alpha: 0, speed: 200, mach: 0.6, heading: 0, pitch: 0, bank: 0, radalt: 1500
+  gLoad: 1, alpha: 0, speed: 200, mach: 0.6, heading: 0, pitch: 0, bank: 0, radalt: 1500,
+  ctl: { pitch: 0, roll: 0, yaw: 0, airbrake: 0 }
 };
 
 const mouse = { nx: 0, ny: 0 };
@@ -898,6 +900,11 @@ function updatePhysics(dt) {
   } else rotateBody(AX_Z, state.rollRate * dt);
   rotateBody(AX_Y, state.yawRate * dt);
   q.normalize();
+  // Normalised commands for the articulated control surfaces (src/surfaces.js).
+  state.ctl.pitch = THREE.MathUtils.clamp(state.pitchRate / MAX_PITCH_RATE, -1, 1);
+  state.ctl.roll = THREE.MathUtils.clamp(state.rollRate / MAX_ROLL_RATE, -1, 1);
+  state.ctl.yaw = THREE.MathUtils.clamp(state.yawRate / MAX_YAW_RATE, -1, 1);
+  state.ctl.airbrake += ((keys.s || state.mach > 1.25 ? 1 : 0) - state.ctl.airbrake) * Math.min(1, 3 * dt);
 
   if (keys.w) state.throttle += 0.5 * dt;
   if (keys.s) state.throttle -= 0.5 * dt;
@@ -1038,6 +1045,9 @@ function updateCameraAndVisuals(dt, now) {
   atmosphere.update(dt, vfx.mist, nvg.active);
   updateNavLights(simTime);
   world.update(dt, simTime, Math.max(0.1, navLevel), renderer, camera);
+  if (surfaces) surfaces.update(dt, { pitch: state.ctl.pitch, roll: state.ctl.roll, yaw: state.ctl.yaw, airbrake: state.ctl.airbrake,
+    kts: state.speed * 1.94384, alpha: state.alpha, throttle: state.throttle, afterburner: state.afterburner,
+    active: flightMode === 'FLY' || appMode === 'MENU' });
   if (DEBUG_OVERVIEW) {                                // test hook: ?overview[=height] top-down map camera
     camera.position.set(WORLD.CX, DEBUG_OVERVIEW, WORLD.CZ + 1); camera.up.set(0, 0, -1);
     camera.lookAt(WORLD.CX, 0, WORLD.CZ); camera.fov = 52; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
@@ -1244,7 +1254,10 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     vfx.attachPlume(p);
   }
   jet.add(model);
-  combatSys.init(model, nozzleLocal);               // aggressor fleet clones materials before clipping is attached
+  combatSys.init(model, nozzleLocal);
+  model.updateMatrixWorld(true);
+  surfaces = createSurfaces(THREE, model);              // Ctrl_* hinges + Nozzle_L/R (after the fleet clone)
+  if (DEBUG) console.log('[ANGELS_ZERO] articulated:', surfaces.names.join(', '));               // aggressor fleet clones materials before clipping is attached
   const clipped = new Set();
   model.traverse(o => {
     if (!o.isMesh || clipped.has(o.material)) return;
@@ -1329,7 +1342,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2),
       'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead,
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
-      'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head));
+      'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head),
+      'ctl', JSON.stringify(surfaces ? Object.fromEntries(Object.entries(surfaces.angles).map(([k, v]) => [k.replace('Ctrl_', ''), typeof v === 'number' ? +v.toFixed(1) : v])) : null));
   }
   if (DEBUG && Q.has('pause')) pauseSim();
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));
@@ -1344,6 +1358,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
 const DEBUG_FIRE = DEBUG && Q.has('fire');
+const DEBUG_HOLD = DEBUG && Q.has('hold') ? Q.get('hold').split(',') : null;
+let surfaces = null;
 const RWY_X = () => world.runway.x;
 const DEBUG_OVERVIEW = DEBUG && Q.has('overview') ? (Number(Q.get('overview')) || 22000) : 0;
 const DEBUG_CAM = DEBUG && Q.has('camat') ? new THREE.Vector3(...Q.get('camat').split(',').map(Number)) : null;   // ?camat=x,y,z (jet frame)            // headless test hook: hold the trigger
@@ -1365,6 +1381,7 @@ function menuOrbit(dt) {
 }
 
 function stepSim(dt) {
+  if (DEBUG_HOLD) for (const k of DEBUG_HOLD) keys[k] = true;   // test hook: ?hold=s,a,...
   if (flightMode === 'FLY') updatePhysics(dt);
   combatSys.update(dt, simTime, { playerActive: flightMode === 'FLY', firing: keys.fire || DEBUG_FIRE });
   if (flightMode === 'EJECT' && eject.update(dt)) finishEject();

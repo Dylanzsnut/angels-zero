@@ -43,6 +43,8 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/world.js` — `createWorld`: archipelago heightfield + terrain mesh, the
   shared height grid (`heightAt`, triangle-exact), airbase, bridges, port,
   lighthouses, wind farm, light points and obstacle collision (`collide`).
+- `src/surfaces.js` — `createSurfaces`: hinge-driven `Ctrl_*` deflections and
+  F100 nozzle dilation from `state.ctl` / throttle / afterburner.
 - `src/nvg.js` — `createNVG`: N-key night vision; owns the frame render
   (`nvg.render`), HDR target + bloom + green-phosphor composite when active.
 - `src/audio.js` — `createAudio`: procedural Web Audio (engines, gun, seeker,
@@ -51,8 +53,11 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 
 ## Conventions
 - Axes: aircraft nose = **-Z**, up = **+Y**, right wing = **+X** (metres).
-- F-15 landmarks exported as empties: `Airframe` (root), `Canopy_Glass`,
-  `Canopy_Pilot_Eye`, `Nozzle_L`, `Nozzle_R`; meshes are `F15_Object_*`.
+- F-15 landmarks: `Airframe` (root empty), `Canopy_Glass`, `Canopy_Pilot_Eye`
+  (empty); `Nozzle_L` / `Nozzle_R` are the nozzle meshes (origin at the nozzle
+  centre). Movable surfaces are `Ctrl_*` meshes with origins on their hinge
+  lines and glTF extras `hinge_axis` / `hinge_kind`; stores are `Pylon_MSL_*` /
+  `Pylon_BOMB_*`; everything else is `F15_Object_*` (+ `F15_ControlFairings`).
 - `index.html` keys cockpit handling off Sketchfab material names: placeholders
   (`hud_disp`, `screens`, `GC_LOD`, `GF_LOD`, `poly_31`, `cock2.9`, `cock2.10`)
   are removed; `cock*`, `seats`, `poly_27` and canopy glass hide in cockpit view.
