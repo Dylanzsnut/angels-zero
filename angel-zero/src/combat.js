@@ -32,9 +32,9 @@ export function createCombat(THREE, env) {
   const MSL_SOFT = { turn: 14 * D2R, fov: 18 * D2R, N: 3.0, noise: 0.35, err: 5 * D2R, tag: 'SOFT' };
   const BANDIT_FULL = { turn: 30 * D2R, fov: 45 * D2R, N: 3.6, noise: 0.05, tag: 'B-FULL' };
   const BANDIT_SOFT = { turn: 13 * D2R, fov: 14 * D2R, N: 2.6, noise: 0.6, err: 9 * D2R, tag: 'B-SOFT' };
-  Object.assign(C, { designated: null, lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
-  Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], wave: 0,
-    gunFiring: false, hitMarker: 0 });
+  Object.assign(C, { designated: null, nextTarget: null, lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
+  Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, missileReloadMax: MSL_RELOAD, bombReloadMax: BOMB_RELOAD,
+    bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], events: [], wave: 0, gunFiring: false, hitMarker: 0 });
   // Stores: weapon select (>MSL / >BOMB), bombs, CCIP solution, flares.
   Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX });
 
@@ -42,6 +42,12 @@ export function createCombat(THREE, env) {
     C.comms = C.comms.filter(c => c.text !== text);
     C.comms.push({ text, until: performance.now() + secs * 1000, color });
     if (C.comms.length > 3) C.comms.shift();
+  };
+  const pushEvent = (kind, text, points = 0, color = '#52ff9c') => {
+    const now = performance.now();
+    C.events = (C.events || []).filter(ev => ev.until > now);
+    C.events.push({ kind, text, points, color, born: now, until: now + 2600 });
+    if (C.events.length > 5) C.events.shift();
   };
 
   /* ============================================================ particles */
@@ -388,7 +394,9 @@ export function createCombat(THREE, env) {
       id: i, alive: false, mode: 'PATROL', pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
       quat: new THREE.Quaternion(), speed: 210, bank: 0, hp: 100, heading: 0, center: new THREE.Vector3(), radius: 2500, dir: 1, alt: 1000,
       burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, bLock: 0, mslCD: 10 + rand() * 10, evadeT: 0, evadeDir: 1,
-      wreck: null, label: 'BANDIT ' + String(i + 1).padStart(2, '0'), acc: new THREE.Vector3()
+      wreck: null, label: 'BANDIT ' + String(i + 1).padStart(2, '0'),
+      type: ['SU-30SM', 'MIG-29A', 'SU-35S', 'F-15J', 'SU-33', 'TYPHOON'][i % 6],
+      acc: new THREE.Vector3()
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
@@ -514,6 +522,7 @@ export function createCombat(THREE, env) {
     explosion(e.pos, 1.7);
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
+    pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
     say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
@@ -585,7 +594,9 @@ export function createCombat(THREE, env) {
       designate(best);
     }
     const t = C.designated;
-    if (!t) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
+    if (!t) { C.nextTarget = null; C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
+    const cands = sortedCandidates();
+    C.nextTarget = cands.find(e => e !== t) || null;
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const to = t.pos.clone().sub(S.position), d = to.length();
     const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
@@ -623,7 +634,11 @@ export function createCombat(THREE, env) {
           // Defensive break: a high-G turn or barrel roll inside 900 m can spoof a bandit seeker.
           if (tgt.isPlayer && !m.breakChecked && range < 900 && (S.highG || S.barrelRoll || S.gLoad > 12)) {
             m.breakChecked = true;
-            if (rand() < (q === BANDIT_FULL ? 0.75 : 0.95)) { m.lostTrack = true; say('MISSILE DEFEATED!', 1.6); }
+            if (rand() < (q === BANDIT_FULL ? 0.75 : 0.95)) {
+              m.lostTrack = true; C.score += 250;
+              pushEvent('EVADED', 'MISSILE EVADED', 250, '#52ff9c');
+              say('MISSILE DEFEATED!', 1.6);
+            }
           }
           if (!m.lostTrack) {
             const losRate = los.clone().sub(m.losPrev).divideScalar(Math.max(dt, 1e-4));
@@ -938,7 +953,12 @@ export function createCombat(THREE, env) {
       const near = flares.find(f => f.alive && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
       if (!near) continue;
       m.flareSalvo = near.salvo;
-      if (rand() < FLR_DECOY_P) { m.target = near; m.losPrev.copy(near.pos).sub(m.mesh.position).normalize(); C.decoyed = (C.decoyed || 0) + 1; say('MISSILE EVADED', 1.8, '#4dff91'); }
+      if (rand() < FLR_DECOY_P) {
+        m.target = near; m.losPrev.copy(near.pos).sub(m.mesh.position).normalize();
+        C.decoyed = (C.decoyed || 0) + 1; C.score += 250;
+        pushEvent('EVADED', 'MISSILE EVADED', 250, '#52ff9c');
+        say('MISSILE EVADED', 1.8, '#4dff91');
+      }
     }
   }
 
@@ -955,8 +975,8 @@ export function createCombat(THREE, env) {
     rearm('msl'); rearm('bomb');
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null });
     flareRecharge = 0;
-    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
-      lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
+    Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
+      lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
     for (const m of missiles) if (!m.enemy || m.target?.isPlayer) { m.active = false; m.mesh.visible = false; }
@@ -975,6 +995,7 @@ export function createCombat(THREE, env) {
     playerActiveNow = opts.playerActive;
     const nowMs = performance.now();
     C.comms = C.comms.filter(c => c.until > nowMs);
+    C.events = (C.events || []).filter(ev => ev.until > nowMs);
 
     if (ready) {
       for (const e of enemies) {

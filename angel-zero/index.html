@@ -58,7 +58,7 @@
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 <script type="importmap">
 {
   "imports": {
@@ -124,6 +124,12 @@
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
+    <h3>v1.7.0 &mdash; ACE COMBAT 7 HUD OVERHAUL</h3>
+    <ul>
+      <li>Luminous mint-emerald (#52ff9c) phosphor HUD with Rajdhani avionics typography and crimson alert shift.</li>
+      <li>AC7 open-corner target brackets ([ ]), shrinking diamond lock-on snap, and 26% ring off-screen chevrons.</li>
+      <li>Four-corner tactical clusters in both views: kill feed, missile vector radar, and animated reload bars.</li>
+    </ul>
     <h3>v1.6.0 &mdash; ORDNANCE, CCIP &amp; COUNTERMEASURES</h3>
     <ul>
       <li>Separated wing-pylon AIM-9s and 12 conformal-tank bombs on the F-15 airframe.</li>
@@ -164,12 +170,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s11a';
-import { createHUD } from './src/hud.js?v=s11a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s11a';
-import { createCombat } from './src/combat.js?v=s11a';
-import { createEjection } from './src/eject.js?v=s11a';
-import { createAudio } from './src/audio.js?v=s11a';
+import { createVFX } from './src/vfx.js?v=s12a';
+import { createHUD } from './src/hud.js?v=s12a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s12a';
+import { createCombat } from './src/combat.js?v=s12a';
+import { createEjection } from './src/eject.js?v=s12a';
+import { createAudio } from './src/audio.js?v=s12a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1162,7 +1168,10 @@ resetAircraft();
 hud.resize();
 if (Q.has('nointro')) { appMode = 'PLAY'; hideMenu(); }        // test hook: skip the briefing
 else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
-if (document.fonts && document.fonts.load) document.fonts.load("16px 'Share Tech Mono'").catch(() => {});
+if (document.fonts && document.fonts.load) {
+  document.fonts.load("600 16px 'Rajdhani'").catch(() => {});
+  document.fonts.load("16px 'Share Tech Mono'").catch(() => {});
+}
 animate();
 </script>
 </body>

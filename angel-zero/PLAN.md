@@ -335,5 +335,29 @@ briefing (no audio until a real LAUNCH click). Flags other than
       falling-bomb whistle + wind noise, long sub-bass bomb detonation rumble,
       and 6-pop flare salvo + magnesium sizzle.
 
+## Ace Combat 7 HUD overhaul & visual polish (2026-11-18)
+- [x] `index.html`: loads `Rajdhani` + `Share Tech Mono`, adds `v1.7.0` patch
+      notes, bumps module query tags from `?v=s11a` to `?v=s12a`.
+- [x] `src/combat.js`: exposes `missileReloadMax`, `bombReloadMax`, bandit
+      aircraft types (`SU-30SM`, `MIG-29A`, `SU-35S`, `F-15J`, `SU-33`,
+      `TYPHOON`), `nextTarget` secondary sort, and `events` kill/evade popups
+      (`+1500 DESTROYED`, `+250 MISSILE EVADED`).
+- [x] `src/hud.js`: rebuilt to Ace Combat 7 styling in both 1st-person
+      combiner-clipped cockpit view and 3rd-person chase view (`±8 px` G-force
+      parallax): `#52ff9c` mint-emerald phosphor (`4 px` bloom) shifting to
+      `#ff2e43` crimson on alerts, `Rajdhani` type with dark drop-shadow behind
+      text/digits only, 3D-projected conformal horizon + angled pitch ladder,
+      central `W` waterline + spring-damped FPV, slim `SPEED` / `ALT` / `HEADING`
+      rulers with `A/B` & `ARM` tags, open-corner `[ ]` target brackets (`TGT` /
+      `NEXT`), shrinking diamond `ACQ` → snapped crimson double-bracket `LOCK`,
+      `26 %` ring off-screen chevrons, 4-corner clusters with kill feed, missile
+      vector radar, and bottom-to-top animated missile/bomb reload bars beside
+      the F-15 silhouette, plus centered `MISSILE ALERT` / `PULL UP` / `STALL
+      WARNING` / `DESTROYED` banners.
+- [x] Headless Edge verified (chase `LOCK`, cockpit combiner `LOCK`, and
+      missile alert / `26 %` off-screen crimson `MSL` chevron): zero page console
+      errors, crisp readability over sky and archipelago, updated repo
+      screenshots in `docs/screenshots/`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.
