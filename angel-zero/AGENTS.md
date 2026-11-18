@@ -18,6 +18,9 @@ inspection scene; HUD/combat are intentionally out of scope for Step 1A.
 ## Layout
 - `scripts/build_jet.py` — headless Blender generator (source of truth for the jet).
 - `assets/angels_zero_jet.glb` — exported glTF binary consumed by Three.js.
+- `assets/mcdonnell_douglas_f-15_eagle_fighter_jet.glb` — Sketchfab source model,
+  supplied separately and not committed (>50 MB). `scripts/prep_f15.py` needs it
+  in place to regenerate the normalized GLB.
 - `index.html` — Step 1A Three.js hangar / sky inspection viewer.
 - `prototype_flight_index.html` — preserved ANGELS ZERO flight-sim prototype
   (do not delete; it is the pre-Step-1A version of `index.html`).

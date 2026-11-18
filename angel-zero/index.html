@@ -3,20 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ANGELS ZERO — Step 1A Asset Inspection</title>
+<title>ANGELS ZERO — F-15 Eagle Inspection</title>
 <style>
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; color:#bfe9d3; font-family:"Courier New",monospace; }
   canvas { display:block; }
-  #ui { position:absolute; z-index:10; pointer-events:none; }
-  #brand { top:18px; left:22px; font-size:15px; letter-spacing:3px; color:#d8ffe9; text-shadow:0 0 12px rgba(90,255,170,.35); }
+  #brand { position:absolute; z-index:10; top:18px; left:22px; font-size:15px; letter-spacing:3px; color:#d8ffe9; text-shadow:0 0 12px rgba(90,255,170,.35); pointer-events:none; }
   #brand small { display:block; font-size:10px; color:#6fbf95; letter-spacing:2px; margin-top:4px; }
-  #help { bottom:18px; left:22px; font-size:12px; line-height:1.7; color:#9fdcbb; }
+  #help { position:absolute; z-index:10; bottom:18px; left:22px; font-size:12px; line-height:1.7; color:#9fdcbb; pointer-events:none; }
   #help b { color:#e6fff1; }
-  #viewtag { top:18px; right:22px; font-size:12px; letter-spacing:2px; padding:6px 10px; border:1px solid rgba(126,255,168,.4); background:rgba(4,12,18,.7); }
+  #viewtag { position:absolute; z-index:10; top:18px; right:22px; font-size:12px; letter-spacing:2px; padding:6px 10px; border:1px solid rgba(126,255,168,.4); background:rgba(4,12,18,.7); }
+  #status { position:absolute; z-index:10; left:22px; top:70px; font-size:11px; color:#ffcf8a; }
   #nodes { position:absolute; z-index:10; right:18px; top:60px; width:250px; max-height:72vh; overflow:auto; font-size:10px; line-height:1.45; color:#8fe0b4; background:rgba(3,10,14,.72); border:1px solid rgba(126,255,168,.22); padding:10px 12px; }
   #nodes h3 { margin:0 0 6px; font-size:10px; color:#d2ffe6; letter-spacing:1px; }
-  #nodes div:hover { color:#fff; }
-  #status { position:absolute; z-index:10; left:22px; top:70px; font-size:11px; color:#ffcf8a; }
 </style>
 <script type="importmap">
 {
@@ -28,16 +26,14 @@
 </script>
 </head>
 <body>
-  <div id="ui">
-    <div id="brand">ANGELS ZERO<small>STEP 1A // STEALTH FIGHTER ASSET INSPECTION</small></div>
-    <div id="help">
-      <div><b>MOUSE</b> &nbsp; deflect elevons / ailerons / rudders</div>
-      <div><b>SPACE</b> &nbsp; toggle chase view / pilot eye</div>
-      <div><b>DRAG</b> &nbsp; orbit camera (chase view only)</div>
-    </div>
+  <div id="brand">ANGELS ZERO<small>F-15 EAGLE // ASSET INSPECTION</small></div>
+  <div id="help">
+    <div><b>DRAG</b> &nbsp; orbit camera (chase view)</div>
+    <div><b>SPACE</b> &nbsp; toggle chase / pilot eye</div>
+    <div><b>W / S</b> &nbsp; throttle (afterburner plume length)</div>
   </div>
   <div id="viewtag">VIEW: CHASE</div>
-  <div id="status">LOADING ASSET...</div>
+  <div id="status">LOADING F-15...</div>
   <div id="nodes"><h3>GLTF SCENE GRAPH</h3><div>loading...</div></div>
 
 <script type="module">
@@ -47,180 +43,221 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* ---------------------------------------------------------------- renderer */
-const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance', preserveDrawingBuffer:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.85;
+renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x8fa9bf, 0.0009);
+scene.fog = new THREE.FogExp2(0x8fa9bf, 0.0007);
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 4000);
-const CHASE_POS = new THREE.Vector3(0, 3.5, 14);
-const CHASE_LOOK = new THREE.Vector3(0, 0.65, 0);
-const PILOT_EYE = new THREE.Vector3(0, 1.15, -3.8);
-const PILOT_LOOK = new THREE.Vector3(0, 1.02, -12);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.05, 3000);
+const CHASE_POS = new THREE.Vector3(0, 4.2, 23);
+const CHASE_LOOK = new THREE.Vector3(0, 0.2, 0);
 camera.position.copy(CHASE_POS);
 camera.lookAt(CHASE_LOOK);
 
-// Environment reflections for metallic skin / gold canopy glass.
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.16;
+scene.environmentIntensity = 1.0;
 
 /* -------------------------------------------------------------- sky + sun */
 const skyMat = new THREE.ShaderMaterial({
-  side: THREE.BackSide, depthWrite:false, fog:false,
-  uniforms:{ sun:{ value:new THREE.Vector3(-0.4,0.55,-0.7).normalize() } },
+  side:THREE.BackSide, depthWrite:false, fog:false,
+  uniforms:{ sun:{ value:new THREE.Vector3(-0.4,0.5,-0.7).normalize() } },
   vertexShader:`varying vec3 vD; void main(){ vD=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader:`
     varying vec3 vD; uniform vec3 sun;
     void main(){
       vec3 d=normalize(vD);
       float h=clamp(d.y*0.5+0.5,0.0,1.0);
-      vec3 col=mix(vec3(0.78,0.86,0.94), vec3(0.10,0.30,0.62), pow(h,0.9));
+      vec3 col=mix(vec3(0.80,0.88,0.95), vec3(0.10,0.30,0.62), pow(h,0.9));
       float s=max(dot(d,normalize(sun)),0.0);
-      col += vec3(1.0,0.86,0.62)*pow(s,180.0)*4.0;
+      col += vec3(1.0,0.86,0.62)*pow(s,200.0)*4.0;
       col += vec3(1.0,0.78,0.48)*pow(s,12.0)*0.30;
       gl_FragColor=vec4(col,1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`
 });
-const sky = new THREE.Mesh(new THREE.SphereGeometry(1800,32,20), skyMat);
+const sky = new THREE.Mesh(new THREE.SphereGeometry(1400,32,20), skyMat);
 scene.add(sky);
 
-const sun = new THREE.DirectionalLight(0xfff1d8, 1.2);
-sun.position.set(-300, 420, -520);
+const sun = new THREE.DirectionalLight(0xfff1d8, 2.4);
+sun.position.set(-300, 400, -500);
 scene.add(sun);
-scene.add(new THREE.HemisphereLight(0xbcd9f2, 0x2b3230, 0.55));
-scene.add(new THREE.AmbientLight(0x93a9bd, 0.10));
+scene.add(new THREE.HemisphereLight(0xbcd9f2, 0x2b3230, 1.1));
+scene.add(new THREE.AmbientLight(0x93a9bd, 0.22));
 
-/* ------------------------------------------------------------ hangar deck */
-const deckMat = new THREE.MeshStandardMaterial({ color:0x1c252c, metalness:0.65, roughness:0.55 });
-const deck = new THREE.Mesh(new THREE.CylinderGeometry(34,34,0.35,64), deckMat);
-deck.position.y = -2.7;
+/* ------------------------------------------------------------- hangar deck */
+const deck = new THREE.Mesh(
+  new THREE.CylinderGeometry(38, 38, 0.3, 64),
+  new THREE.MeshStandardMaterial({ color:0x1c252c, metalness:0.6, roughness:0.6 })
+);
+deck.position.y = -3.4;
 scene.add(deck);
-const grid = new THREE.GridHelper(68, 34, 0x3f6b58, 0x26403a);
-grid.position.y = -2.5;
+const grid = new THREE.GridHelper(76, 38, 0x3f6b58, 0x26403a);
+grid.position.y = -3.22;
 grid.material.transparent = true;
-grid.material.opacity = 0.45;
+grid.material.opacity = 0.4;
 scene.add(grid);
 
-/* -------------------------------------------------------------- GLTF load */
-const loader = new GLTFLoader();
-let model = null;
-const pivots = {};
-let firstPerson = false;
+/* ------------------------------------------------------- afterburner plumes */
+const BLUE = new THREE.Color(0x49b6ff);
+const ORANGE = new THREE.Color(0xff7a22);
+const plumes = [];
+function buildPlume(){
+  const g = new THREE.Group();
+  const diamonds = 8;
+  for (let i=0; i<diamonds; i++){
+    const near = (i % 2 === 0) ? 0.20 : 0.44;
+    const far  = (i % 2 === 0) ? 0.44 : 0.20;
+    const geo = new THREE.CylinderGeometry(far, near, 0.95, 18, 1, true);
+    geo.rotateX(Math.PI/2);                    // length along +Z (rearwards)
+    const col = new THREE.Color().lerpColors(BLUE, ORANGE, i/(diamonds-1));
+    const mat = new THREE.MeshBasicMaterial({
+      color: col, transparent:true, opacity:0.16,
+      blending: THREE.AdditiveBlending, depthWrite:false, side: THREE.DoubleSide
+    });
+    const seg = new THREE.Mesh(geo, mat);
+    seg.position.z = 0.55 + i*0.95;
+    g.add(seg);
+  }
+  const coreGeo = new THREE.CylinderGeometry(0.10, 0.17, 7.4, 12, 1, true);
+  coreGeo.rotateX(Math.PI/2);
+  const core = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({
+    color:0xc7e8ff, transparent:true, opacity:0.32,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide
+  }));
+  core.position.z = 4.0;
+  g.add(core);
+  const glow = new THREE.PointLight(0xff8a30, 2.5, 22, 2);
+  glow.position.z = 1.2;
+  g.add(glow);
+  plumes.push(g);
+  return g;
+}
 
-function prepare(gltf){
+/* -------------------------------------------------------------- GLTF load */
+let model = null, firstPerson = false;
+const targets = {};
+const loader = new GLTFLoader();
+
+loader.load('assets/angels_zero_jet.glb', (gltf) => {
   model = gltf.scene;
+  const names = [];
   model.traverse(o => {
-    // Console proof of every loaded node name.
+    names.push(o.name || '(unnamed)');
     console.log('[ANGELS_ZERO NODE]', o.name || '(unnamed)');
     if (o.isMesh) {
       o.frustumCulled = false;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of mats) {
+      for (const m of mats){
         if (!m) continue;
-        if (/Glass|HUD/i.test(o.name)) {
-          m.transparent = true; m.depthWrite = false; m.side = THREE.DoubleSide;
+        if (m.isMeshStandardMaterial) m.envMapIntensity = 1.2;
+        if (/canopy|glass/i.test(o.name) || /glass/i.test(m.name)){
+          m.side = THREE.DoubleSide;
+          m.transparent = true;
+          m.depthWrite = false;
+          m.opacity = Math.min(m.opacity, 0.55);
         }
-        if (m.isMeshStandardMaterial) m.envMapIntensity = 0.22;
       }
     }
   });
-
-  const wanted = ['Left_Elevon','Right_Elevon','Left_Aileron','Right_Aileron',
-                  'Left_Rudder','Right_Rudder','Nozzle_L','Nozzle_R',
-                  'Canopy_Glass','HUD_Glass','MFD_Left','MFD_Center','MFD_Right'];
-  for (const name of wanted) {
-    pivots[name] = model.getObjectByName(name);
-    if (!pivots[name]) console.error('[ANGELS_ZERO] MISSING NODE:', name);
-  }
-
-  // Print the full scene graph as required, and mirror it into the panel.
-  const names = [];
-  model.traverse(o => names.push(o.name || '(unnamed)'));
   console.log('[ANGELS_ZERO SCENE GRAPH]', JSON.stringify(names));
-  const panel = document.getElementById('nodes');
-  panel.innerHTML = '<h3>GLTF SCENE GRAPH (' + names.length + ')</h3>' +
+  document.getElementById('nodes').innerHTML =
+    '<h3>GLTF SCENE GRAPH (' + names.length + ')</h3>' +
     names.map(n => '<div>' + n + '</div>').join('');
 
-  const missing = wanted.filter(n => !pivots[n]);
-  document.getElementById('status').textContent =
-    missing.length ? 'MISSING NODES: ' + missing.join(', ')
-                   : 'ASSET LOADED // ' + names.length + ' NODES // QA OK';
-  document.getElementById('status').style.color = missing.length ? '#ff8a7a' : '#8dffc0';
-  scene.add(model);
-}
+  for (const n of ['Nozzle_L','Nozzle_R','Canopy_Glass','Canopy_Pilot_Eye']){
+    targets[n] = model.getObjectByName(n);
+    if (!targets[n]) console.error('[ANGELS_ZERO] MISSING NODE:', n);
+  }
 
-loader.load('assets/angels_zero_jet.glb', prepare, undefined, err => {
+  // Attach plumes exactly at the exported twin nozzle coordinates.
+  for (const n of ['Nozzle_L','Nozzle_R']){
+    const noz = targets[n];
+    if (!noz){ console.error('Nozzle node missing', n); continue; }
+    const p = buildPlume();
+    p.position.copy(noz.getWorldPosition(new THREE.Vector3()));
+    model.add(p);
+    console.log('[ANGELS_ZERO] plume at', n, p.position.toArray());
+  }
+
+  scene.add(model);
+  document.getElementById('status').textContent =
+    'F-15 LOADED // ' + names.length + ' NODES // ' + (model.userData.note || 'TEXTURES OK');
+  document.getElementById('status').style.color = '#8dffc0';
+}, undefined, (err) => {
   console.error('[ANGELS_ZERO] GLTF load failed', err);
-  document.getElementById('status').textContent = 'ASSET LOAD FAILED — see console';
+  document.getElementById('status').textContent = 'F-15 LOAD FAILED — see console';
 });
 
-/* ----------------------------------------------------------- interaction */
+/* ------------------------------------------------------------- interaction */
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(CHASE_LOOK);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.minDistance = 7;
-controls.maxDistance = 45;
-controls.enabled = true;
+controls.minDistance = 8;
+controls.maxDistance = 60;
 
-const mouse = { x:0, y:0 };
-addEventListener('mousemove', e => {
-  mouse.x = (e.clientX/innerWidth)*2 - 1;
-  mouse.y = -((e.clientY/innerHeight)*2 - 1);
-});
+const keys = { w:false, s:false };
+let throttle = 0.9;
 addEventListener('keydown', e => {
-  if (e.code !== 'Space') return;
-  e.preventDefault();
-  firstPerson = !firstPerson;
-  document.getElementById('viewtag').textContent = firstPerson ? 'VIEW: PILOT EYE' : 'VIEW: CHASE';
-  controls.enabled = !firstPerson;
+  if (e.code === 'Space'){
+    e.preventDefault();
+    firstPerson = !firstPerson;
+    document.getElementById('viewtag').textContent = firstPerson ? 'VIEW: PILOT EYE' : 'VIEW: CHASE';
+    controls.enabled = !firstPerson;
+  }
+  if (e.code === 'KeyW') keys.w = true;
+  if (e.code === 'KeyS') keys.s = true;
+});
+addEventListener('keyup', e => {
+  if (e.code === 'KeyW') keys.w = false;
+  if (e.code === 'KeyS') keys.s = false;
 });
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
 });
-
-if (new URLSearchParams(location.search).has('debug')) {
-  window.__azv = { scene, camera, get model(){ return model; }, pivots };
+if (new URLSearchParams(location.search).has('debug')){
+  window.__az = { scene, camera, controls, renderer, get model(){ return model; }, targets, plumes };
 }
 
-/* ------------------------------------------------------------------- loop */
-const clamp = THREE.MathUtils.clamp;
+/* -------------------------------------------------------------------- loop */
+const clock = new THREE.Clock();
+let elapsed = 0;
 function animate(){
   requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+  const t = elapsed;
 
-  if (model) {
-    // Mouse -> control surface deflection around each part's local hinge axis.
-    const pitch = clamp(mouse.y, -1, 1) * 0.42;
-    const roll  = clamp(mouse.x, -1, 1) * 0.36;
-    const yaw   = clamp(mouse.x, -1, 1) * 0.22;
-    if (pivots.Left_Elevon)  pivots.Left_Elevon.rotation.x  =  pitch;
-    if (pivots.Right_Elevon) pivots.Right_Elevon.rotation.x =  pitch;
-    if (pivots.Left_Aileron) pivots.Left_Aileron.rotation.x =  roll;
-    if (pivots.Right_Aileron)pivots.Right_Aileron.rotation.x = -roll;
-    if (pivots.Left_Rudder)  pivots.Left_Rudder.rotation.y  =  yaw;
-    if (pivots.Right_Rudder) pivots.Right_Rudder.rotation.y =  yaw;
-    if (pivots.Nozzle_L)     pivots.Nozzle_L.rotation.x      = -pitch*0.18;
-    if (pivots.Nozzle_R)     pivots.Nozzle_R.rotation.x      = -pitch*0.18;
+  if (keys.w) throttle = Math.min(1, throttle + dt*0.4);
+  if (keys.s) throttle = Math.max(0.15, throttle - dt*0.4);
+
+  // Mach-diamond shimmer + throttle-scaled plume length.
+  for (const p of plumes){
+    const flick = 1 + 0.06*Math.sin(t*11 + p.position.x*3);
+    p.scale.set(1, 1, (0.35 + throttle*0.85) * flick);
+    p.children.forEach(c => {
+      if (c.isMesh) c.material.opacity = (c.geometry.parameters.radiusTop < 0.2 ? 0.26 : 0.13) + 0.10*throttle;
+      if (c.isPointLight) c.intensity = 1.5 + throttle*3.5;
+    });
   }
 
-  if (firstPerson) {
-    camera.position.copy(PILOT_EYE);
-    camera.lookAt(PILOT_LOOK);
+  if (firstPerson){
+    // Pilot eye inside the F-15 canopy, just abeam the HUD and MFD panel.
+    camera.position.set(0, 0.35, -5.0);
+    camera.lookAt(0, 0.10, -14);
   } else {
     controls.update();
   }
-
   sky.position.copy(camera.position);
   renderer.render(scene, camera);
 }

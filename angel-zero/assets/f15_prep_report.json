@@ -1,0 +1,33 @@
+{
+  "source": "mcdonnell_douglas_f-15_eagle_fighter_jet.glb",
+  "removed": [
+    "Object_12",
+    "Object_74",
+    "Object_75",
+    "Object_9"
+  ],
+  "scale": 1.036066,
+  "faces_before": 263062,
+  "faces_after": 47929,
+  "dimensions_m": [
+    13.201,
+    5.764,
+    19.4
+  ],
+  "nozzle_l": [
+    -0.7006,
+    -0.6415,
+    7.6323
+  ],
+  "nozzle_r": [
+    0.6919,
+    -0.6415,
+    7.6323
+  ],
+  "canopy_pilot_eye": [
+    -0.3512,
+    -0.5926,
+    -4.2347
+  ],
+  "glb_bytes": 13017988
+}
