@@ -1,12 +1,12 @@
 import http.server
-import socketserver
 import os
+import socketserver
 import sys
 import threading
 import webbrowser
 
 DEFAULT_PORT = 8090
-DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "angel-zero")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -15,7 +15,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         # Always serve fresh assets so local edits are visible on reload.
-        self.send_header('Cache-Control', 'no-store, must-revalidate')
+        self.send_header("Cache-Control", "no-store, must-revalidate")
         super().end_headers()
 
 
@@ -41,11 +41,11 @@ def start_server():
             continue
 
     if httpd is None:
-        print("Error: Could not bind to any port in range 8090-8109.", flush=True)
+        print(f"Error: Could not bind to any port in range {port}-{port + 19}.", flush=True)
         sys.exit(1)
 
     url = f"http://127.0.0.1:{port}/"
-    print(f"Orbital Perimeter running at {url}", flush=True)
+    print(f"ANGELS ZERO running at {url}", flush=True)
     print("Keep this window open while playing. Press Ctrl+C to stop.", flush=True)
 
     if not no_browser:

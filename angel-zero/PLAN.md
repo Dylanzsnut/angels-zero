@@ -315,5 +315,25 @@ MISSILE_ALERT); `?bogey=metres` (bogey 1 dead ahead); `?fire` (hold trigger);
 briefing (no audio until a real LAUNCH click). Flags other than
 `nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
+## Pylon ordnance, CCIP bombing & flare/chaff countermeasures (2026-11-18)
+- [x] `scripts/prep_f15.py`: separates `Object_71` loose fragments via touching
+      AABB clusters, 1-D k-means and shared-vertex voting into centered store
+      nodes `Pylon_MSL_1..4` (wing-pylon missiles) and `Pylon_BOMB_1..12`
+      (conformal-tank bombs); exports 44,731 faces in `angels_zero_jet.glb`
+      (11,534,544 bytes).
+- [x] `src/combat.js` & `index.html`: `R` / `1` / `2` switches between `>MSL`
+      and `>BOMB` modes; launching hides the pylon store on the F-15 and flies
+      a clone of that exact mesh.
+- [x] Closed-form `solveImpact()` CCIP ballistic solution (2.5 m/s ejector push
+      + gravity) driving the live HUD CCIP bomb fall line, impact pipper and
+      time-of-fall readout (`src/hud.js`), plus water geysers, ground fireballs
+      and shockwave rings on detonation (70 m blast radius, 10 s reload).
+- [x] `X` / `G` dispenses 6 staggered magnesium flares + chaff (`FLR 4`, +1 per
+      8 s), breaking bandit seeker locks (`bLock -> 0`) and rolling an 85 %
+      decoy chance within 1.2 NM.
+- [x] `src/audio.js`: procedural bomb-rack release clunk, pitch-sliding
+      falling-bomb whistle + wind noise, long sub-bass bomb detonation rumble,
+      and 6-pop flare salvo + magnesium sizzle.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

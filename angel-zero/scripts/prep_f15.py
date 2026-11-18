@@ -65,6 +65,214 @@ for ob in list(bpy.data.objects):
 bpy.context.view_layer.update()   # ensure imported world matrices are current
 print("Removed gear objects:", removed)
 
+# ------------------------------------------------- separate pylon ordnance
+# The Sketchfab model carries its stores in one shared mesh (Object_71,
+# material "pods"): 12 bombs on the conformal-tank stations (6 per side,
+# 2 columns x 3 rows) and 4 missiles on the wing-pylon side rails. The mesh
+# is shattered into ~3,500 loose fragments, so separate(type='LOOSE') alone
+# would give fragments, not weapons. Fragments are grouped instead:
+#   1. union fragments whose world bounding boxes touch -> one cluster per
+#      missile, one cluster per side for the touching bomb racks;
+#   2. a bomb-side cluster is split by station: inner/outer column on |x|,
+#      then three rows along the fuselage axis (1-D k-means on fragment centres).
+# Fuel tanks (body4.0) and targeting pods (Object_72) are not stores and stay.
+# Source axes here: +Y nose, +Z up, +X right wing.
+ORDNANCE_SRC = "Object_71"
+
+def mesh_islands(ob):
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.verts.ensure_lookup_table()
+    mw = ob.matrix_world
+    seen, out = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, cur = [v], []
+        seen.add(v.index)
+        while stack:
+            c = stack.pop()
+            cur.append(c.index)
+            for e in c.link_edges:
+                o = e.other_vert(c)
+                if o.index not in seen:
+                    seen.add(o.index)
+                    stack.append(o)
+        pts = [mw @ bm.verts[i].co for i in cur]
+        mn = Vector(tuple(min(p[k] for p in pts) for k in range(3)))
+        mx = Vector(tuple(max(p[k] for p in pts) for k in range(3)))
+        out.append((cur, mn, mx))
+    bm.free()
+    return out
+
+def touch_clusters(isl):
+    par = list(range(len(isl)))
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]
+            i = par[i]
+        return i
+    active = []
+    for i in sorted(range(len(isl)), key=lambda i: isl[i][1].x):   # sweep along x
+        mn, mx = isl[i][1], isl[i][2]
+        active = [j for j in active if isl[j][2].x >= mn.x]
+        for j in active:
+            a, b = isl[j][1], isl[j][2]
+            if all(a[k] <= mx[k] and mn[k] <= b[k] for k in range(3)):
+                par[find(i)] = find(j)
+        active.append(i)
+    groups = {}
+    for i in range(len(isl)):
+        groups.setdefault(find(i), []).append(i)
+    return list(groups.values())
+
+def bounds_of(isl, ids):
+    mn = Vector(tuple(min(isl[i][1][k] for i in ids) for k in range(3)))
+    mx = Vector(tuple(max(isl[i][2][k] for i in ids) for k in range(3)))
+    return mn, mx
+
+def kmeans_1d(vals, weights, k, iters=30):
+    s = sorted(vals)
+    cents = [s[int((j + 0.5) * len(s) / k)] for j in range(k)]
+    for _ in range(iters):
+        acc = [[0.0, 0.0] for _ in range(k)]
+        for v, w in zip(vals, weights):
+            j = min(range(k), key=lambda j: abs(v - cents[j]))
+            acc[j][0] += v * w
+            acc[j][1] += w
+        cents = [acc[j][0] / acc[j][1] if acc[j][1] else cents[j] for j in range(k)]
+    return sorted(cents)
+
+def extract_part(src, vids, name):
+    ob = src.copy()
+    ob.data = src.data.copy()
+    ob.name = name
+    ob.data.name = name
+    for col in src.users_collection:
+        col.objects.link(ob)
+    keep = set(vids)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
+    bm.to_mesh(ob.data)
+    ob.data.update()
+    bm.free()
+    return ob
+
+ordnance_parts = []          # (name, vertex ids)
+src_ord = bpy.data.objects.get(ORDNANCE_SRC)
+if src_ord:
+    isl = mesh_islands(src_ord)
+    msl, bomb_sides = [], []
+    for ids in touch_clusters(isl):
+        mn, mx = bounds_of(isl, ids)
+        d = mx - mn
+        if d.y > 2.4 and d.x < 0.6 and d.z < 0.6:
+            msl.append((mn, mx, ids))                      # slim, finned, rail-mounted
+        elif d.y > 5.0 and d.x > 0.7:
+            bomb_sides.append((mn, mx, ids))               # a whole conformal bomb rack
+    # Missiles: inboard rails first, left before right, so launches alternate wings.
+    msl.sort(key=lambda m: (round(abs((m[0].x + m[1].x) / 2), 1), (m[0].x + m[1].x) / 2))
+    for n, (mn, mx, ids) in enumerate(msl, 1):
+        ordnance_parts.append(("Pylon_MSL_%d" % n, [v for i in ids for v in isl[i][0]]))
+    bombs = []
+    mw_ord = src_ord.matrix_world
+    vco = src_ord.data.vertices
+    def key_of(vi):
+        p = mw_ord @ vco[vi].co
+        return (round(p.x, 3), round(p.y, 3), round(p.z, 3))
+    ambiguous, moved_fragments = [], 0
+    for mn, mx, ids in bomb_sides:
+        xmid = (mn.x + mx.x) / 2
+        side = -1 if xmid < 0 else 1
+        cols = {0: [], 1: []}
+        for i in ids:
+            a, b = isl[i][1], isl[i][2]
+            if b.y - a.y > 2.6:            # rack rails spanning several stations stay on the jet
+                continue
+            cx = (a.x + b.x) / 2
+            cols[0 if abs(cx) < abs(xmid) else 1].append(i)
+        for col, cids in cols.items():
+            # Rows come from the long body panels; tail fins sit just aft (-Y)
+            # of their own bomb's body, right in front of the next bomb's nose,
+            # so each fragment joins the body whose [tail - 0.75 m, nose] span
+            # contains it rather than the nearest centroid.
+            ctr = {i: (isl[i][1].y + isl[i][2].y) / 2 for i in cids}
+            body = [i for i in cids if isl[i][2].y - isl[i][1].y > 1.0]
+            cents = kmeans_1d([ctr[i] for i in body], [len(isl[i][0]) for i in body], 3)
+            span = []
+            for r in range(3):
+                mem = [i for i in body if min(range(3), key=lambda q: abs(ctr[i] - cents[q])) == r]
+                span.append((min(isl[i][1].y for i in mem), max(isl[i][2].y for i in mem)) if mem else (cents[r], cents[r]))
+            axis = []
+            for r in range(3):
+                mem = [i for i in body if min(range(3), key=lambda q: abs(ctr[i] - cents[q])) == r] or body
+                axis.append((min(isl[i][1].x for i in mem), max(isl[i][2].x for i in mem),
+                             min(isl[i][1].z for i in mem), max(isl[i][2].z for i in mem)))
+            rows = {r: [] for r in range(3)}
+            for i in cids:
+                y = ctr[i]
+                a, b = isl[i][1], isl[i][2]
+                # Narrow pieces just ahead of a body are that bomb's nose cone
+                # (fins are wide), so they never join the bomb in front.
+                if max(b.x - a.x, b.z - a.z) < 0.30:
+                    def on_axis(r):              # nose pieces stay inside the body's cross-section; fin blades reach out
+                        x0, x1, z0, z1 = axis[r]
+                        return a.x >= x0 - 0.02 and b.x <= x1 + 0.02 and a.z >= z0 - 0.02 and b.z <= z1 + 0.02
+                    nose = [r for r in range(3) if span[r][1] - 0.02 <= y <= span[r][1] + 0.45 and on_axis(r)]
+                    if nose:
+                        rows[nose[0]].append(i)
+                        ambiguous.append(i)
+                        continue
+                def gap(r):
+                    lo, hi = span[r][0] - 0.75, span[r][1] + 0.02
+                    return 0.0 if lo <= y <= hi else min(abs(y - lo), abs(y - hi))
+                rows[min(range(3), key=lambda r: (gap(r), abs(y - cents[r])))].append(i)
+            # A fin-root triangle can pass the nose test; the unwelded fragments of
+            # one store still share vertex positions, so an ambiguous fragment
+            # moves to whichever row it shares the most positions with.
+            row_of = {i: r for r, rids in rows.items() for i in rids}
+            pos_rows = {}
+            for i in cids:
+                if i in ambiguous:
+                    continue
+                for vi in isl[i][0]:
+                    pos_rows.setdefault(key_of(vi), set()).add(row_of[i])
+            for i in [j for j in ambiguous if j in row_of]:     # this column's ambiguous fragments
+                votes = {}
+                for vi in isl[i][0]:
+                    for r in pos_rows.get(key_of(vi), ()):
+                        votes[r] = votes.get(r, 0) + 1
+                if votes:
+                    best = max(votes, key=votes.get)
+                    if best != row_of[i] and votes[best] > votes.get(row_of[i], 0):
+                        rows[row_of[i]].remove(i)
+                        rows[best].append(i)
+                        moved_fragments += 1
+            for r, rids in rows.items():
+                if rids:
+                    bmn, bmx = bounds_of(isl, rids)
+                    bombs.append((side, col, -cents[r], bmn, bmx, rids))
+    print("Ordnance fragments re-homed by shared vertices:", moved_fragments, "of", len(ambiguous))
+    # Release order: front row first, inner column first, alternating left / right.
+    bombs.sort(key=lambda b: (round(b[2], 1), b[1], b[0]))
+    for n, (side, col, _, bmn, bmx, rids) in enumerate(bombs, 1):
+        ordnance_parts.append(("Pylon_BOMB_%d" % n, [v for i in rids for v in isl[i][0]]))
+    taken = set()
+    for name, vids in ordnance_parts:
+        extract_part(src_ord, vids, name)
+        taken.update(vids)
+    # The source mesh keeps only what was not extracted (pylon adapters, rack rails).
+    bm = bmesh.new()
+    bm.from_mesh(src_ord.data)
+    bm.verts.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.verts[i] for i in taken], context="VERTS")
+    bm.to_mesh(src_ord.data)
+    src_ord.data.update()
+    bm.free()
+    bpy.context.view_layer.update()
+print("Ordnance separated:", [n for n, _ in ordnance_parts])
+
 # ------------------------------------------------- normals / solid skin prep
 # Every material is two-sided so mirrored surfaces never disappear in glTF.
 for mat in bpy.data.materials:
@@ -164,7 +372,8 @@ for ob in list(bpy.data.objects):
 Airframe = bpy.data.objects.new("Airframe", None)
 bpy.context.collection.objects.link(Airframe)
 for ob in meshes:
-    ob.name = "F15_" + ob.name
+    if not ob.name.startswith("Pylon_"):
+        ob.name = "F15_" + ob.name
     ob.parent = Airframe
     ob.matrix_parent_inverse = Matrix.Identity(4)
 
@@ -176,7 +385,8 @@ for ob in meshes:
         continue
     mod = ob.modifiers.new("WebDecimate", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
-    mod.ratio = 0.18
+    # Stores are seen up close when they separate, so they keep more detail.
+    mod.ratio = 0.4 if ob.name.startswith("Pylon_") else 0.18
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
     ob.data.update()
@@ -349,6 +559,30 @@ print("Strut islands removed:", len(strut_islands))
 for nm, box in strut_islands:
     print("  STRUT", nm, box)
 
+# ------------------------------------------------- ordnance origins / report
+# Each store gets its origin at its bounds centre (equivalent to
+# origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')) so the game can clone it
+# at the pylon's world transform and fly it from its own centre.
+ordnance = []
+for ob in sorted([o for o in meshes if o.name.startswith("Pylon_")], key=lambda o: o.name):
+    vs = [v.co.copy() for v in ob.data.vertices]
+    if not vs:
+        print("WARN empty ordnance", ob.name)
+        continue
+    mn = Vector(tuple(min(v[i] for v in vs) for i in range(3)))
+    mx = Vector(tuple(max(v[i] for v in vs) for i in range(3)))
+    c = (mn + mx) * 0.5
+    for v in ob.data.vertices:
+        v.co -= c
+    ob.data.update()
+    ob.location = c
+    ordnance.append({"name": ob.name, "center": [round(x, 3) for x in c],
+                     "size": [round(x, 3) for x in (mx - mn)],
+                     "faces": len(ob.data.polygons),
+                     "materials": [m.name for m in ob.data.materials]})
+    print("ORDNANCE %-14s center=%s size=%s faces=%d" % (
+        ob.name, ordnance[-1]["center"], ordnance[-1]["size"], len(ob.data.polygons)))
+
 # ------------------------------------------------------------------- export
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 bpy.ops.export_scene.gltf(
@@ -375,6 +609,7 @@ report = {
     "nozzle_l": nozzle_l,
     "nozzle_r": nozzle_r,
     "canopy_pilot_eye": canopy_pos,
+    "ordnance": ordnance,
     "glb_bytes": os.path.getsize(OUT),
 }
 with open(REPORT, "w", encoding="utf-8") as fh:

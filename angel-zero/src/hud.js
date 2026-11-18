@@ -238,7 +238,8 @@ export function createHUD(THREE, A) {
     const gun = C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo).padStart(3, '0');
     const msl = C.missileReload > 0 ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles);
     ctx.fillText('GUN ' + gun, xr, y);
-    ctx.fillText('MSL ' + msl, xr, y + 18);
+    const bombs = C.bombReload > 0 ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs);
+    ctx.fillText((C.weapon === 'BOMB' ? '>BOMB ' + bombs : '>MSL ' + msl) + '  FLR ' + (C.flares ?? '-'), xr, y + 18);
     ctx.fillText('KILLS ' + C.kills, xr, y + 36);
     if (S.afterburner > 0.3) glow(ctx, AMBER);
     ctx.fillText('THR ' + String(Math.round(S.throttle * 100)).padStart(3, '0') + (S.afterburner > 0.3 ? ' AB' : '   '), xr, y + 54);
@@ -359,6 +360,51 @@ export function createHUD(THREE, A) {
     }
     ctx.restore();
     drawLeadReticle(ctx);
+    drawCCIP(ctx);
+  }
+
+  // CCIP (>BOMB): bomb fall line from the boresight W to the live ground-impact
+  // pipper. combat.js solves the same closed-form arc it flies the bombs on.
+  function drawCCIP(ctx) {
+    if (C.weapon !== 'BOMB' || C.dead) return;
+    const origin = A.isFirstPerson() ? cam.position : S.position;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const w = toScreen(origin.clone().addScaledVector(fwd, 5000));
+    if (!w.ok) return;
+    const now = performance.now();
+    ctx.save(); ctx.textAlign = 'center';
+    if (C.bombs <= 0 || C.bombReload > 0) {
+      glow(ctx, AMBER, 4); ctx.font = f(14); ctx.textBaseline = 'top';
+      ctx.fillText('BOMB RLD ' + Math.max(0, C.bombReload).toFixed(1), w.x, w.y + 40);
+      ctx.restore(); return;
+    }
+    const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const c = C.ccip;
+    const inFront = c && c.clone().sub(cam.position).dot(camFwd) > 0;
+    const p = c && inFront ? toScreen(c) : null;
+    const onScreen = p && p.ok && p.x > 20 && p.x < HW - 20 && p.y > 20 && p.y < HH - 20;
+    glow(ctx, G, 6); ctx.lineWidth = 1.6;
+    if (onScreen) {
+      ctx.beginPath(); ctx.moveTo(w.x, w.y + 12); ctx.lineTo(p.x, p.y - 15); ctx.stroke();      // bomb fall line
+      ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI * 2); ctx.stroke();                 // pipper ◎
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 19, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, C.ccipTof / 20)); ctx.stroke();  // time-of-fall arc
+      const rng = Math.hypot(c.x - S.position.x, c.z - S.position.z) / 1852;
+      ctx.font = f(12); ctx.textBaseline = 'top';
+      ctx.fillText('T ' + C.ccipTof.toFixed(1) + 'S  ' + rng.toFixed(1) + 'NM', p.x, p.y + 24);
+    } else {
+      // Pipper below the field of view: run the fall line to the edge, cue a dive.
+      const dir = p ? new THREE.Vector2(p.x - w.x, p.y - w.y) : new THREE.Vector2(0, 1);
+      if (dir.y < 0.2 * Math.abs(dir.x) || dir.lengthSq() < 1) dir.set(dir.x, Math.abs(dir.x) * 0.2 + 1);
+      dir.normalize();
+      const k = Math.min((HH - 34 - w.y) / Math.max(dir.y, 1e-3), dir.x ? (dir.x > 0 ? HW - 34 - w.x : w.x - 34) / Math.abs(dir.x) : 1e9);
+      const ex = w.x + dir.x * k, ey = w.y + dir.y * k;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.moveTo(w.x, w.y + 12); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.setLineDash([]);
+      if (Math.floor(now / 300) % 2) { glow(ctx, AMBER, 4); ctx.font = f(13); ctx.textBaseline = 'bottom'; ctx.fillText(c ? 'CCIP ▼ DIVE' : 'CCIP — NO SOLN', ex, ey - 6); }
+    }
+    ctx.restore();
   }
 
   /* ----------------------------------------- M61 gun sight: funnel + LCOS */
@@ -892,8 +938,9 @@ export function createHUD(THREE, A) {
     ctx.font = f(15);
     const lines = [
       ['GUN', C.reload > 0 ? '---' : String(C.ammo)],
-      ['>MSL', C.missileReload > 0 ? '---' : String(C.missiles)]
+      [(C.weapon === 'MSL' ? '>' : ' ') + 'MSL', C.missileReload > 0 ? '---' : String(C.missiles)]
     ];
+    if (C.bombMax) lines.push([(C.weapon === 'BOMB' ? '>' : ' ') + 'BOMB', C.bombReload > 0 ? '---' : String(C.bombs)]);
     if (C.special) lines.push(['>' + C.special.name, String(C.special.count)]);
     if (C.flares !== undefined) lines.push(['FLR', String(C.flares)]);
     lines.push(['DMG', Math.round(100 - C.health) + '%']);

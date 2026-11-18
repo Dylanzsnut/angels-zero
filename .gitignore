@@ -1,13 +1,12 @@
 node_modules/
 .wrangler/
 .DS_Store
-reference/
-
-# existing workspace artifacts
-.edge_tmp2/
+Thumbs.db
 __pycache__/
 *.pyc
 *.blend1
 *.rar
-screenshot*.png
-Thumbs.db
+.edge_tmp*/
+
+# Sketchfab source model (>50 MB, supplied separately per angel-zero/AGENTS.md)
+angel-zero/assets/mcdonnell_douglas_f-15_eagle_fighter_jet.glb

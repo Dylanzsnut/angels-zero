@@ -1,6 +1,7 @@
 // ANGELS ZERO — procedural Web Audio synthesis (no audio files).
 // Twin F100 turbine + afterburner roar, M61 "brrrt", AIM-9 seeker growl / lock
-// tone, missile launch whoosh, dual-tone missile alert, sub-bass explosions.
+// tone, missile launch whoosh, dual-tone missile alert, sub-bass explosions,
+// bomb-rack clunk, falling-bomb whistle, detonation rumble, flare pop / sizzle.
 // Everything is generated from oscillators, noise buffers and filters.
 
 export function createAudio() {
@@ -106,6 +107,12 @@ export function createAudio() {
     N.alert = osc('square', 1200); N.alertLP = filt('lowpass', 3500, 0.7); N.alertGain = gain(0);
     N.alert.connect(N.alertLP).connect(N.alertGain).connect(master);
 
+    // Falling-bomb whistle: sine sliding down in pitch + a band of wind noise.
+    N.whistle = osc('sine', 1600); N.whistleGain = gain(0);
+    N.whistle.connect(N.whistleGain).connect(cockpitLP);
+    N.wind = loopNoise(pink); N.windBP = filt('bandpass', 1200, 3); N.windGain = gain(0);
+    N.wind.connect(N.windBP).connect(N.windGain).connect(cockpitLP);
+
     N.white = white; N.brown = brown;
     ready = true;
     resume();
@@ -138,6 +145,62 @@ export function createAudio() {
     const thump = ctx.createOscillator(); thump.type = 'sine'; thump.frequency.setValueAtTime(140, t); thump.frequency.exponentialRampToValueAtTime(50, t + 0.25);
     const tg = gain(0); tg.gain.setValueAtTime(0.5, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
     thump.connect(tg).connect(cockpitLP); thump.start(t); thump.stop(t + 0.32);
+  }
+
+  // Bomb rack release: ejector-cartridge crack + heavy metallic clunk of the hooks.
+  function bombRelease(intensity = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime, k = Math.min(1, Math.max(0.1, intensity));
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const bp = filt('bandpass', 1800, 1.5);
+    const ng = gain(0); ng.gain.setValueAtTime(0.5 * k, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    n.connect(bp).connect(ng).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 0.06);
+    for (const [f0, f1, dur, a] of [[180, 70, 0.22, 0.7], [420, 260, 0.12, 0.25], [760, 690, 0.18, 0.12]]) {
+      const o = ctx.createOscillator(); o.type = f0 > 400 ? 'square' : 'sine';
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      const lp = filt('lowpass', 1600, 2);
+      const g = gain(0); g.gain.setValueAtTime(a * k, t + 0.004); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(lp).connect(g).connect(cockpitLP); o.start(t); o.stop(t + dur + 0.02);
+    }
+  }
+  // Bomb detonation: long sub-bass rumble, crack and rolling brown-noise thunder.
+  function bombDetonation(intensity = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime, k = Math.min(1.4, Math.max(0.05, intensity));
+    const sub = ctx.createOscillator(); sub.type = 'sine';
+    sub.frequency.setValueAtTime(48, t); sub.frequency.exponentialRampToValueAtTime(16, t + 3.2);
+    const sg = gain(0); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(1.0 * k, t + 0.03); sg.gain.exponentialRampToValueAtTime(0.001, t + 3.6);
+    sub.connect(sg).connect(cockpitLP); sub.start(t); sub.stop(t + 3.7);
+    const crack = ctx.createBufferSource(); crack.buffer = N.white;
+    const cg = gain(0); cg.gain.setValueAtTime(0.7 * k, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    crack.connect(filt('highpass', 900, 0.7)).connect(cg).connect(cockpitLP); crack.start(t, Math.random()); crack.stop(t + 0.14);
+    const n = ctx.createBufferSource(); n.buffer = N.brown;
+    const lp = filt('lowpass', 700, 0.9); lp.frequency.setValueAtTime(1100, t); lp.frequency.exponentialRampToValueAtTime(70, t + 4.0);
+    const ng = gain(0); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(1.3 * k, t + 0.05);
+    ng.gain.setTargetAtTime(0.5 * k, t + 0.4, 0.5); ng.gain.exponentialRampToValueAtTime(0.001, t + 4.4);
+    n.connect(lp).connect(ng).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 4.5);
+  }
+  // Flare salvo: six staggered cartridge pops + magnesium sizzle.
+  function flare(intensity = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime, k = Math.min(1, Math.max(0.1, intensity));
+    for (let i = 0; i < 6; i++) {
+      const at = t + i * 0.07;
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(320, at); o.frequency.exponentialRampToValueAtTime(70, at + 0.09);
+      const g = gain(0); g.gain.setValueAtTime(0.45 * k, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.1);
+      o.connect(g).connect(cockpitLP); o.start(at); o.stop(at + 0.11);
+      const n = ctx.createBufferSource(); n.buffer = N.white;
+      const ng = gain(0); ng.gain.setValueAtTime(0.35 * k, at); ng.gain.exponentialRampToValueAtTime(0.001, at + 0.03);
+      n.connect(filt('bandpass', 2500, 1.2)).connect(ng).connect(cockpitLP); n.start(at, Math.random()); n.stop(at + 0.04);
+    }
+    const s = ctx.createBufferSource(); s.buffer = N.white;
+    const hp = filt('highpass', 4200, 0.8);
+    const sg = gain(0); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.16 * k, t + 0.15); sg.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+    // crackle: chop the sizzle with a fast random-ish square LFO
+    const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.setValueAtTime(23, t); lfo.frequency.linearRampToValueAtTime(41, t + 2.2);
+    const depth = gain(0.06 * k); lfo.connect(depth).connect(sg.gain);
+    s.connect(hp).connect(sg).connect(cockpitLP); s.start(t, Math.random()); s.stop(t + 2.3); lfo.start(t); lfo.stop(t + 2.3);
   }
 
   // Overdrive curve (classic k-shaped soft/hard clip), amount = 35.
@@ -223,6 +286,13 @@ export function createAudio() {
     set(N.growl.frequency, p.seeker === 'ACQ' ? 420 : 260, 0.05);
     set(N.lockGain.gain, p.seeker === 'LOCK' ? 0.05 : 0, 0.02);
 
+    // Falling bomb: pitch slides from 1.6 kHz to 450 Hz across the fall (p.whistle = {level, fall}).
+    const wl = p.whistle ? p.whistle.level : 0, wf = p.whistle ? p.whistle.fall : 0;
+    set(N.whistle.frequency, 1600 - 1150 * Math.min(1, wf), 0.05);
+    set(N.whistleGain.gain, 0.05 * wl, 0.08);
+    set(N.windBP.frequency, 1500 - 900 * Math.min(1, wf), 0.08);
+    set(N.windGain.gain, 0.08 * wl, 0.08);
+
     if (p.alert) {
       const phase = Math.floor(ctx.currentTime / 0.14) % 2;
       N.alert.frequency.setValueAtTime(phase ? 800 : 1200, ctx.currentTime);
@@ -242,7 +312,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

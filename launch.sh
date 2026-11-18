@@ -2,7 +2,7 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "Starting Orbital Perimeter..."
+echo "Starting ANGELS ZERO..."
 
 if command -v python3 >/dev/null 2>&1; then
     exec python3 server.py
@@ -15,8 +15,8 @@ elif command -v npx >/dev/null 2>&1; then
     elif command -v xdg-open >/dev/null 2>&1; then
         (sleep 1 && xdg-open "http://127.0.0.1:8090/") &
     fi
-    exec npx --yes serve -l 8090 .
+    exec npx --yes serve -l 8090 angel-zero
 else
-    echo "Error: Python 3 or Node.js is required to run Orbital Perimeter locally."
+    echo "Error: Python 3 or Node.js is required to run ANGELS ZERO locally."
     exit 1
 fi

@@ -91,7 +91,9 @@
         <div class="col">
           <h2>COMBAT</h2>
           <div class="bind"><span class="k"><kbd>L-CLICK</kbd> <kbd>F</kbd></span><span class="a">M61 Vulcan cannon (hold)</span></div>
-          <div class="bind"><span class="k"><kbd>R-CLICK</kbd> <kbd>M</kbd></span><span class="a">AIM-9 Sidewinder</span></div>
+          <div class="bind"><span class="k"><kbd>R-CLICK</kbd> <kbd>M</kbd></span><span class="a">Fire selected: AIM-9 / drop bomb</span></div>
+          <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Switch &gt;MSL / &gt;BOMB (CCIP)</span></div>
+          <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Flares + chaff (FLR)</span></div>
           <div class="bind"><span class="k"><kbd>C</kbd> <kbd>TAB</kbd></span><span class="a">Cycle target (nose order)</span></div>
           <div class="bind"><span class="k">SEEKER</span><span class="a">Hold target in circle ~1.3 s: ACQ &rarr; LOCK</span></div>
           <div class="bind"><span class="k">PIPPER</span><span class="a">Fly the boresight onto it, fire</span></div>
@@ -102,7 +104,7 @@
           <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject (parachute bailout)</span></div>
           <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Pause &amp; controls</span></div>
           <div class="bind"><span class="k"><kbd>M</kbd></span><span class="a">Mute (in this menu)</span></div>
-          <div class="bind"><span class="k"><kbd>R</kbd></span><span class="a">Reset aircraft</span></div>
+          <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
         </div>
       </div>
       <div class="row">
@@ -122,6 +124,13 @@
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
+    <h3>v1.6.0 &mdash; ORDNANCE, CCIP &amp; COUNTERMEASURES</h3>
+    <ul>
+      <li>Separated wing-pylon AIM-9s and 12 conformal-tank bombs on the F-15 airframe.</li>
+      <li>Switchable &gt;MSL / &gt;BOMB modes (R / 1 / 2) with live CCIP bomb fall line and impact pipper.</li>
+      <li>Water geysers, ground fireballs, shockwave rings and falling-bomb whistle audio.</li>
+      <li>Magnesium flare + chaff salvos (X / G) that break RWR locks and decoy inbound missiles.</li>
+    </ul>
     <h3>v1.5.0 &mdash; SORTIE &amp; SOUND</h3>
     <ul>
       <li>Briefing screen with full controls; flight starts only on LAUNCH SORTIE.</li>
@@ -155,12 +164,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s10a';
-import { createHUD } from './src/hud.js?v=s10a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s10a';
-import { createCombat } from './src/combat.js?v=s10a';
-import { createEjection } from './src/eject.js?v=s10a';
-import { createAudio } from './src/audio.js?v=s10a';
+import { createVFX } from './src/vfx.js?v=s11a';
+import { createHUD } from './src/hud.js?v=s11a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s11a';
+import { createCombat } from './src/combat.js?v=s11a';
+import { createEjection } from './src/eject.js?v=s11a';
+import { createAudio } from './src/audio.js?v=s11a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -692,11 +701,15 @@ addEventListener('keydown', e => {
   if (k === 'd') keys.d = true;
   if (k === 'shift') keys.shift = true;
   if (k === 'f') keys.fire = true;
-  if (k === 'm' && !e.repeat) combatSys.fireMissile();
+  if (k === 'm' && !e.repeat) combatSys.fireSelected();
+  if (k === 'r' && !e.repeat) combatSys.toggleWeapon();
+  if (k === '1' && !e.repeat) combatSys.setWeapon('MSL');
+  if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
+  if ((k === 'x' || k === 'g') && !e.repeat) combatSys.dispenseFlares();
   if ((k === 'c' || e.key === 'Tab') && !e.repeat) { e.preventDefault(); combatSys.cycleTarget(); }
   if (k === 'q' && !e.repeat) startRoll(-1);
   if (k === 'e' && !e.repeat) triggerEject('manual');
-  if (k === 'r' && flightMode === 'FLY') resetAircraft();
+  if (k === 'backspace' && flightMode === 'FLY') { e.preventDefault(); resetAircraft(); }
 });
 addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
@@ -710,7 +723,7 @@ addEventListener('keyup', e => {
 addEventListener('mousedown', e => {
   if (uiModal || appMode !== 'PLAY') return;
   if (e.button === 0) keys.fire = true;
-  if (e.button === 2) combatSys.fireMissile();
+  if (e.button === 2) combatSys.fireSelected();
 });
 addEventListener('mouseup', e => { if (e.button === 0) keys.fire = false; });
 addEventListener('contextmenu', e => e.preventDefault());
@@ -885,6 +898,11 @@ function updateCameraAndVisuals(dt, now) {
     }
     camera.up.copy(AX_Y).applyQuaternion(q).lerp(horiz, dive).normalize();
     camera.lookAt(LOOK_OFFSET.clone().applyQuaternion(q).add(state.position).lerp(state.position.clone().addScaledVector(velDir, 45), dive));
+    if (DEBUG_CAM) {                                   // test hook: fixed inspection camera in the jet's frame
+      camera.position.copy(DEBUG_CAM).applyQuaternion(state.quaternion).add(state.position);
+      camera.up.copy(AX_Y).applyQuaternion(state.quaternion);
+      camera.lookAt(state.position.clone().add(new THREE.Vector3(0, DEBUG_CAM.y < 0 ? -1.5 : 0, 0).applyQuaternion(state.quaternion)));
+    }
   }
   if (combat.gunFiring && appMode === 'PLAY' && flightMode === 'FLY') {
     // 6,000 rpm rotary cannon: high-frequency airframe micro-vibration (~1.5 px).
@@ -919,8 +937,17 @@ function updateAudio() {
   audio.update({
     throttle: state.throttle, afterburner: state.afterburner, engineOn: flightMode === 'FLY', cockpit: firstPerson,
     firing: flightMode === 'FLY' && (keys.fire || DEBUG_FIRE) && combat.ammo > 0 && combat.reload <= 0,
-    seeker, alert: hud.hudAlertState === 'MISSILE_ALERT'
+    seeker, alert: hud.hudAlertState === 'MISSILE_ALERT', whistle: bombWhistle()
   });
+}
+// Loudest falling bomb: level by distance to the listener, fall = fraction of its time of fall.
+function bombWhistle() {
+  let best = null;
+  for (const b of combatSys.liveBombs) {
+    const level = 1 / (1 + b.obj.position.distanceTo(camera.position) / 450);
+    if (!best || level > best.level) best = { level, fall: b.t / Math.max(1, b.tof) };
+  }
+  return best;
 }
 // Distance-attenuated combat sound effects raised by src/combat.js.
 function onSfx(type, pos, scale = 1) {
@@ -929,6 +956,9 @@ function onSfx(type, pos, scale = 1) {
   if (type === 'explosion') audio.explosion(scale * near * 1.2);
   else if (type === 'launch') audio.missileLaunch(near);
   else if (type === 'hit') audio.hit(Math.min(1, near * 2.5));
+  else if (type === 'release') audio.bombRelease(firstPerson ? 1 : 0.7);
+  else if (type === 'bomb') audio.bombDetonation(scale * Math.min(1.2, 1 / (1 + d / 1500) * 1.6));
+  else if (type === 'flare') audio.flare(firstPerson ? 0.8 : 1);
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
@@ -1028,6 +1058,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
   if (DEBUG && Q.has('six')) combatSys.placeBehind(0, Number(Q.get('six')) || 1200);
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
+  if (DEBUG && Q.has('wpn')) combatSys.setWeapon(Q.get('wpn').toUpperCase());
+  if (DEBUG && Q.has('bomb')) { combatSys.update(0, 0, { playerActive: true, firing: false }); for (let i = 0; i < (Number(Q.get('bomb')) || 1); i++) { combatSys.update(0.25, 0, { playerActive: true, firing: false }); combatSys.dropBomb(); } }
+  if (DEBUG && Q.has('flare')) combatSys.dispenseFlares();
   if (DEBUG && Q.has('cycle')) {                      // test hook: press C n times, log the designation order
     combatSys.update(0, 0, { playerActive: true, firing: false });
     const seq = [combat.designated ? combat.designated.label : '-'];
@@ -1043,6 +1076,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       const t0 = i * h, t1 = t0 + h;
       if (mslAt >= t0 && mslAt < t1) { console.log('[ANGELS_ZERO] fire @', t1.toFixed(2), combat.lockState, combat.lockProgress.toFixed(2)); combatSys.fireMissile(); }
       if (rollAt >= t0 && rollAt < t1) startRoll(1);
+      if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
+      if (Q.has('flareat') && Number(Q.get('flareat')) >= t0 && Number(Q.get('flareat')) < t1) { console.log('[ANGELS_ZERO] flares @', t1.toFixed(2)); combatSys.dispenseFlares(); }
       if (Q.has('breakat') && !state.barrelRoll && combatSys.missiles.some(m => m.active && m.enemy && !m.lostTrack &&
         m.mesh.position.distanceTo(state.position) < Number(Q.get('breakat')))) { console.log('[ANGELS_ZERO] break @', t1.toFixed(2)); startRoll(1); }
       simTime += h;
@@ -1070,7 +1105,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
    ============================================================================ */
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
-const DEBUG_FIRE = DEBUG && Q.has('fire');            // headless test hook: hold the trigger
+const DEBUG_FIRE = DEBUG && Q.has('fire');
+const DEBUG_CAM = DEBUG && Q.has('camat') ? new THREE.Vector3(...Q.get('camat').split(',').map(Number)) : null;   // ?camat=x,y,z (jet frame)            // headless test hook: hold the trigger
 // Title-screen flight path: a banked orbit over the island chain.
 let menuT = 0;
 function menuOrbit(dt) {

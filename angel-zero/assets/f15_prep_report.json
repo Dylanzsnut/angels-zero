@@ -156,8 +156,8 @@
     ]
   ],
   "scale": 1.036066,
-  "faces_before": 234165,
-  "faces_after": 43496,
+  "faces_before": 234180,
+  "faces_after": 44731,
   "dimensions_m": [
     13.415,
     5.462,
@@ -178,5 +178,279 @@
     -0.8013,
     -4.3017
   ],
-  "glb_bytes": 11460344
+  "ordnance": [
+    {
+      "name": "Pylon_BOMB_1",
+      "center": [
+        -1.794,
+        -2.01,
+        -0.692
+      ],
+      "size": [
+        0.514,
+        0.642,
+        2.456
+      ],
+      "faces": 135,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_10",
+      "center": [
+        1.801,
+        -1.919,
+        4.486
+      ],
+      "size": [
+        0.532,
+        0.67,
+        3.069
+      ],
+      "faces": 146,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_11",
+      "center": [
+        -2.26,
+        -1.67,
+        4.819
+      ],
+      "size": [
+        0.555,
+        0.679,
+        2.453
+      ],
+      "faces": 127,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_12",
+      "center": [
+        2.261,
+        -1.669,
+        4.818
+      ],
+      "size": [
+        0.557,
+        0.676,
+        2.453
+      ],
+      "faces": 125,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_2",
+      "center": [
+        1.793,
+        -2.017,
+        -0.632
+      ],
+      "size": [
+        0.516,
+        0.628,
+        2.577
+      ],
+      "faces": 136,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_3",
+      "center": [
+        -2.26,
+        -1.774,
+        -0.236
+      ],
+      "size": [
+        0.555,
+        0.637,
+        2.457
+      ],
+      "faces": 127,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_4",
+      "center": [
+        2.262,
+        -1.768,
+        -0.236
+      ],
+      "size": [
+        0.557,
+        0.638,
+        2.456
+      ],
+      "faces": 125,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_5",
+      "center": [
+        -1.794,
+        -2.01,
+        1.75
+      ],
+      "size": [
+        0.514,
+        0.642,
+        2.508
+      ],
+      "faces": 139,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_6",
+      "center": [
+        1.793,
+        -2.016,
+        1.804
+      ],
+      "size": [
+        0.516,
+        0.629,
+        2.617
+      ],
+      "faces": 140,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_7",
+      "center": [
+        -2.26,
+        -1.774,
+        2.219
+      ],
+      "size": [
+        0.555,
+        0.637,
+        2.456
+      ],
+      "faces": 127,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_8",
+      "center": [
+        2.263,
+        -1.768,
+        2.22
+      ],
+      "size": [
+        0.557,
+        0.638,
+        2.457
+      ],
+      "faces": 125,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_BOMB_9",
+      "center": [
+        -1.794,
+        -1.911,
+        4.486
+      ],
+      "size": [
+        0.514,
+        0.686,
+        3.071
+      ],
+      "faces": 145,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_MSL_1",
+      "center": [
+        -2.498,
+        -0.894,
+        1.262
+      ],
+      "size": [
+        0.432,
+        0.432,
+        2.985
+      ],
+      "faces": 174,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_MSL_2",
+      "center": [
+        2.493,
+        -0.894,
+        1.262
+      ],
+      "size": [
+        0.417,
+        0.417,
+        2.985
+      ],
+      "faces": 174,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_MSL_3",
+      "center": [
+        -3.263,
+        -0.895,
+        1.148
+      ],
+      "size": [
+        0.486,
+        0.486,
+        3.87
+      ],
+      "faces": 188,
+      "materials": [
+        "pods.0"
+      ]
+    },
+    {
+      "name": "Pylon_MSL_4",
+      "center": [
+        3.259,
+        -0.895,
+        1.148
+      ],
+      "size": [
+        0.486,
+        0.485,
+        3.87
+      ],
+      "faces": 188,
+      "materials": [
+        "pods.0"
+      ]
+    }
+  ],
+  "glb_bytes": 11534544
 }

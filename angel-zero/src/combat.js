@@ -17,7 +17,10 @@ export function createCombat(THREE, env) {
 
   const WAVE_SIZE = 6;
   const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1050;   // M61A1: 6,000 rpm, 1,050 m/s
-  const MSL_MAX = 6, MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
+  let MSL_MAX = 6;                                            // becomes the pylon-missile count once the GLB loads
+  const MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
+  const BOMB_INTERVAL = 0.22, BOMB_RELOAD = 10, BOMB_EJECT = 2.5, BOMB_RADIUS = 70;
+  const FLR_MAX = 4, FLR_RECHARGE = 8, FLR_PER_SALVO = 6, FLR_DECOY_RANGE = 1.2 * NM, FLR_DECOY_P = 0.85;
   const LOCK_RANGE = 3.5 * NM, PURSUE_RANGE = 4.0 * NM;
   // Player IR seeker: 14 deg cone (7 deg half-angle) around the nose, ~1.3 s to a solid lock.
   const SEEKER_HALF = 7 * D2R, LOCK_TIME = 1.3, LOCK_DECAY = 0.8;
@@ -32,6 +35,8 @@ export function createCombat(THREE, env) {
   Object.assign(C, { designated: null, lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
   Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], wave: 0,
     gunFiring: false, hitMarker: 0 });
+  // Stores: weapon select (>MSL / >BOMB), bombs, CCIP solution, flares.
+  Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX });
 
   const say = (text, secs = 2.5, color = '#4dff91') => {
     C.comms = C.comms.filter(c => c.text !== text);
@@ -106,7 +111,7 @@ export function createCombat(THREE, env) {
     }
   }
   const fire = new Particles(900, true);
-  const smoke = new Particles(1400, false);
+  const smoke = new Particles(2000, false);
 
   const flashes = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffa040, 0, 900, 1.6); scene.add(l); return { l, t: 0 }; });
   let flashNext = 0;
@@ -223,21 +228,35 @@ export function createCombat(THREE, env) {
   for (let i = 0; i < 16; i++) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(mslBody, mslMat), new THREE.Mesh(mslNose, mslDark), new THREE.Mesh(finGeo, mslDark), new THREE.Mesh(canardGeo, mslDark));
+    const parts = g.children.slice();
     const plume = new THREE.Mesh(plumeGeo, plumeMat); g.add(plume);
     g.visible = false; scene.add(g);
-    missiles.push({ mesh: g, plume, active: false, enemy: false, target: null, vel: new THREE.Vector3(), age: 0, life: 12, motor: false, losPrev: new THREE.Vector3(), smokeAcc: 0 });
+    missiles.push({ mesh: g, parts, visual: null, plume, active: false, enemy: false, target: null, vel: new THREE.Vector3(), age: 0, life: 12, motor: false, losPrev: new THREE.Vector3(), smokeAcc: 0 });
   }
   const MSL_NOSE = new THREE.Vector3(0, 0, -1);
   const RAILS = [new THREE.Vector3(-2.7, -0.95, 0.9), new THREE.Vector3(2.7, -0.95, 0.9)];
   let railNext = 0, mslCooldown = 0;
 
-  function launch(fromPos, fromQuat, fromVel, target, enemy, quality) {
+  // `visual` (optional): a store node from the F-15 GLB. Its exact mesh is cloned
+  // into the missile body in place of the procedural AIM-9 parts.
+  function launch(fromPos, fromQuat, fromVel, target, enemy, quality, visual) {
     const m = missiles.find(x => !x.active); if (!m) return null;
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
-    m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false;
+    m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
+    if (m.visual) { m.mesh.remove(m.visual); m.visual = null; }
+    for (const p of m.parts) p.visible = !visual;
+    m.plume.position.z = 0; m.motorDelay = 0.18;
+    if (visual) {
+      const v = cloneStore(visual.node);
+      v.position.set(0, 0, 0);
+      v.quaternion.copy(fromQuat).invert().multiply(visual.node.getWorldQuaternion(new THREE.Quaternion()));
+      m.mesh.add(v); m.visual = v;
+      m.plume.position.z = visual.halfLen - 1.45;           // flame at the real missile's tail
+      m.motorDelay = 0.06;                                     // 0.06 s rail drop, then ignition
+    }
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(fromQuat);
-    m.vel.copy(fromVel).addScaledVector(down, 9);
+    m.vel.copy(fromVel).addScaledVector(down, visual ? 4 : 9);
     m.jit = null;
     if (m.q.err) {                                     // soft lock: seeker not settled, launch with a heading error
       const ax = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).cross(m.vel).normalize();
@@ -249,12 +268,21 @@ export function createCombat(THREE, env) {
   }
   function fireMissile() {
     if (!env.isReady() || C.dead || C.missiles <= 0 || C.missileReload > 0 || mslCooldown > 0) return false;
-    const rail = RAILS[railNext]; railNext = 1 - railNext;
-    const pos = rail.clone().applyQuaternion(S.quaternion).add(S.position);
+    // Next missile still hanging on its pylon: hide it on the wing and fly its clone.
+    const store = stores.msl.find(st => st.node.visible);
+    let pos;
+    if (store) {
+      jet.updateMatrixWorld(true);
+      pos = store.node.getWorldPosition(new THREE.Vector3());
+    } else {
+      const rail = RAILS[railNext]; railNext = 1 - railNext;
+      pos = rail.clone().applyQuaternion(S.quaternion).add(S.position);
+    }
     // Guidance quality follows the lock state at the moment of launch.
     const st = C.lockState, tgt = st === 'NONE' ? null : C.designated;
-    const m = launch(pos, S.quaternion, S.velocity, tgt, false, st === 'LOCK' ? MSL_FULL : MSL_SOFT);
+    const m = launch(pos, S.quaternion, S.velocity, tgt, false, st === 'LOCK' ? MSL_FULL : MSL_SOFT, store);
     if (!m) return false;
+    if (store) store.node.visible = false;
     C.missiles--; mslCooldown = MSL_INTERVAL;
     if (C.missiles <= 0) C.missileReload = MSL_RELOAD;
     C.lastLaunch = st;
@@ -576,7 +604,7 @@ export function createCombat(THREE, env) {
       if (!m.active) continue;
       m.age += dt;
       const pos = m.mesh.position;
-      if (!m.motor && m.age > 0.18) { m.motor = true; m.plume.visible = true; }
+      if (!m.motor && m.age > (m.motorDelay || 0.18)) { m.motor = true; m.plume.visible = true; }
       const speed = m.vel.length();
       if (m.motor) {
         const burning = m.age < 3.2;
@@ -614,8 +642,9 @@ export function createCombat(THREE, env) {
             const fuse = m.enemy ? 22 : 18;
             if (range < fuse) {
               if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); }
+              else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
               else { explosion(pos, 0.8); destroyEnemy(tgt, true); }
-              logShot(m, 'HIT');
+              logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
           }
@@ -650,6 +679,13 @@ export function createCombat(THREE, env) {
     if (C.mslLog.length > 16) C.mslLog.shift();
   }
 
+  // Debug: does a falling bomb render the very geometry of its pylon node?
+  function sameGeo(b) {
+    const st = stores.bomb.find(s => s.node.name === b.name); if (!st) return false;
+    const g = o => { let r = null; o.traverse(q => { if (q.isMesh && !r) r = q.geometry; }); return r; };
+    return g(st.node) === g(b.obj);
+  }
+
   function damagePlayer(n) {
     if (C.dead) return;
     C.health = Math.max(0, C.health - n);
@@ -657,15 +693,268 @@ export function createCombat(THREE, env) {
     if (C.health <= 0) env.onPlayerDown('damage');
   }
 
+
+  /* ================================================ pylon stores (GLB) */
+  // assets/angels_zero_jet.glb carries the F-15's real ordnance as separate nodes:
+  // Pylon_MSL_1..4 (wing-pylon missiles) and Pylon_BOMB_1..12 (conformal-tank
+  // bombs), each with its origin at its bounds centre. Firing hides the node on
+  // the jet and flies a clone of that exact mesh; reloading shows them again.
+  const stores = { msl: [], bomb: [] };
+  const freeMats = new Map();            // store material -> copy without the cockpit clip planes
+  function collectStores(model) {
+    model.updateMatrixWorld(true);
+    model.traverse(o => {
+      const m = /^Pylon_(MSL|BOMB)_(\d+)$/.exec(o.name || '');
+      if (!m || /^Pylon_/.test(o.parent?.name || '')) return;
+      const box = new THREE.Box3().setFromObject(o);
+      const size = box.getSize(new THREE.Vector3());
+      stores[m[1] === 'MSL' ? 'msl' : 'bomb'].push({ node: o, n: +m[2], halfLen: size.z / 2 });
+      o.traverse(q => {
+        if (!q.isMesh) return;
+        for (const mat of Array.isArray(q.material) ? q.material : [q.material]) {
+          if (mat && !freeMats.has(mat)) { const c = mat.clone(); c.clippingPlanes = null; freeMats.set(mat, c); }
+        }
+      });
+    });
+    stores.msl.sort((a, b) => a.n - b.n); stores.bomb.sort((a, b) => a.n - b.n);
+    if (stores.msl.length) MSL_MAX = stores.msl.length;
+    Object.assign(C, { mslMax: MSL_MAX, missiles: MSL_MAX, bombMax: stores.bomb.length, bombs: stores.bomb.length });
+    if (!stores.bomb.length) C.weapon = 'MSL';
+  }
+  // Exact clone of a store node (shared geometry) at the node's world scale.
+  function cloneStore(node) {
+    const c = node.clone();
+    c.traverse(q => {
+      if (!q.isMesh) return;
+      q.material = Array.isArray(q.material) ? q.material.map(m => freeMats.get(m) || m) : (freeMats.get(q.material) || q.material);
+      q.castShadow = true;
+    });
+    node.getWorldScale(c.scale);
+    return c;
+  }
+  function rearm(kind) { for (const st of stores[kind]) st.node.visible = true; }
+
+  /* ================================================================ bombs */
+  // Free-fall store: released with the jet's velocity plus a 2.5 m/s ejector
+  // push along the jet's -Y, then pure gravity (no drag) — the same closed-form
+  // arc the CCIP pipper solves, so the pipper is exact.
+  const liveBombs = [];
+  let bombCooldown = 0, lastImpact = null;
+  function setWeapon(w) {
+    if (w === 'BOMB' && !stores.bomb.length) w = 'MSL';
+    if (C.weapon !== w) { C.weapon = w; say(w === 'BOMB' ? 'BOMBS SELECTED — CCIP' : 'AIM-9 SELECTED', 1.0); }
+    return C.weapon;
+  }
+  function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'BOMB' : 'MSL'); }
+  function fireSelected() { return C.weapon === 'BOMB' ? dropBomb() : fireMissile(); }
+  function dropBomb() {
+    if (!env.isReady() || C.dead || C.bombs <= 0 || C.bombReload > 0 || bombCooldown > 0) return false;
+    const st = stores.bomb.find(b => b.node.visible); if (!st) return false;
+    jet.updateMatrixWorld(true);
+    const obj = cloneStore(st.node);
+    st.node.getWorldPosition(obj.position); st.node.getWorldQuaternion(obj.quaternion);
+    st.node.visible = false;
+    scene.add(obj);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(S.quaternion);
+    const v0 = S.velocity.clone().addScaledVector(down, BOMB_EJECT);
+    const hit = solveImpact(obj.position, v0);
+    liveBombs.push({ obj, p0: obj.position.clone(), v0, vel: v0.clone(), t: 0, tof: hit ? hit.t : 20, name: st.node.name });
+    C.bombs--; bombCooldown = BOMB_INTERVAL;
+    if (C.bombs <= 0) C.bombReload = BOMB_RELOAD;
+    C.lastDrop = { name: st.node.name, ccip: C.ccip ? C.ccip.clone() : null };
+    if (env.onSfx) env.onSfx('release', obj.position, 1);
+    say('BOMB AWAY — ' + (stores.bomb.length - C.bombs) + '/' + stores.bomb.length, 1.0, '#ffbf3f');
+    return true;
+  }
+  // Closed-form fall: p(t) = p0 + v0 t - 1/2 g t^2. Returns the ground hit or null.
+  const _bp = new THREE.Vector3();
+  function bombAt(p0, v0, t, out) { return out.copy(p0).addScaledVector(v0, t).setY(p0.y + v0.y * t - 0.5 * G0 * t * t); }
+  function solveImpact(p0, v0, tMax = 60) {
+    let tPrev = 0;
+    for (let t = 0.25; t <= tMax; t += 0.25) {
+      bombAt(p0, v0, t, _bp);
+      if (_bp.y <= groundLevel(_bp.x, _bp.z)) {
+        let lo = tPrev, hi = t;
+        for (let i = 0; i < 14; i++) {                   // bisect to ~1.5 cm along the arc
+          const mid = (lo + hi) / 2; bombAt(p0, v0, mid, _bp);
+          if (_bp.y <= groundLevel(_bp.x, _bp.z)) hi = mid; else lo = mid;
+        }
+        return { t: hi, p: bombAt(p0, v0, hi, new THREE.Vector3()) };
+      }
+      tPrev = t;
+    }
+    return null;
+  }
+  // CCIP: impact point of the next bomb if released this instant.
+  function updateCCIP() {
+    if (C.weapon !== 'BOMB' || C.bombs <= 0 || C.bombReload > 0) { C.ccip = null; return; }
+    const st = stores.bomb.find(b => b.node.visible);
+    const p0 = st ? st.node.getWorldPosition(new THREE.Vector3()) : S.position.clone();
+    const v0 = S.velocity.clone().addScaledVector(new THREE.Vector3(0, -1, 0).applyQuaternion(S.quaternion), BOMB_EJECT);
+    const hit = solveImpact(p0, v0);
+    C.ccip = hit ? hit.p : null; C.ccipTof = hit ? hit.t : 0;
+  }
+  const _nose = new THREE.Vector3(), _dq = new THREE.Quaternion(), _id = new THREE.Quaternion();
+  function updateBombs(dt) {
+    for (let i = liveBombs.length - 1; i >= 0; i--) {
+      const b = liveBombs[i];
+      b.t += dt;
+      bombAt(b.p0, b.v0, b.t, b.obj.position);
+      b.vel.copy(b.v0).setY(b.v0.y - G0 * b.t);
+      // Weathervane: the nose follows the velocity vector down the arc.
+      _nose.set(0, 0, -1).applyQuaternion(b.obj.quaternion);
+      _dq.setFromUnitVectors(_nose, b.vel.clone().normalize());
+      b.obj.quaternion.premultiply(_id.identity().slerp(_dq, Math.min(1, dt * 1.6)));
+      const pos = b.obj.position, g = groundLevel(pos.x, pos.z);
+      if (pos.y <= g) {
+        pos.y = g;
+        detonateBomb(pos.clone(), terrainHeight(pos.x, pos.z) < 0);
+        lastImpact = { name: b.name, p: pos.clone(), t: +b.t.toFixed(2) };
+        scene.remove(b.obj);
+        liveBombs.splice(i, 1);
+      }
+    }
+  }
+  // Shockwave rings (fixed pool, plain additive material).
+  const ringGeo = new THREE.RingGeometry(0.82, 1.0, 48); ringGeo.rotateX(-Math.PI / 2);
+  const rings = Array.from({ length: 4 }, () => {
+    const r = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffe2b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    r.visible = false; r.frustumCulled = false; scene.add(r); return { r, t: 0, water: false };
+  });
+  let ringNext = 0;
+  function detonateBomb(pos, water) {
+    const ring = rings[ringNext]; ringNext = (ringNext + 1) % rings.length;
+    ring.r.position.copy(pos).setY(pos.y + 1.5); ring.t = 0; ring.water = water; ring.r.visible = true;
+    ring.r.material.color.set(water ? 0xdff4ff : 0xffd8a0);
+    if (water) {
+      // Water geyser: tall white column, falling spray curtain, low mist.
+      splash(pos, 2.4);
+      for (let i = 0; i < 110; i++) {
+        const a = rand() * Math.PI * 2, r = rand() * 6;
+        smoke.spawn({ x: pos.x + Math.cos(a) * r, y: 1, z: pos.z + Math.sin(a) * r, vx: Math.cos(a) * (2 + rand() * 6), vy: 55 + rand() * 75, vz: Math.sin(a) * (2 + rand() * 6),
+          life: 2.6 + rand() * 1.8, s0: 6, s1: 26 + rand() * 18, r: 0.95, g: 0.97, b: 1.0, a: 0.85, drag: 0.35, rise: -22 });
+      }
+      for (let i = 0; i < 40; i++) {
+        const a = rand() * Math.PI * 2;
+        smoke.spawn({ x: pos.x, y: 2, z: pos.z, vx: Math.cos(a) * (25 + rand() * 25), vy: 2 + rand() * 4, vz: Math.sin(a) * (25 + rand() * 25),
+          life: 3 + rand() * 2, s0: 8, s1: 34, r: 0.88, g: 0.92, b: 0.96, a: 0.55, drag: 0.9, rise: 0.4 });
+      }
+      if (env.onSfx) env.onSfx('bomb', pos, 0.8);
+    } else {
+      // Ground burst: big fireball, dust skirt, rising smoke column.
+      explosion(pos, 2.4);
+      for (let i = 0; i < 60; i++) {
+        const a = rand() * Math.PI * 2, sp = 30 + rand() * 45;
+        smoke.spawn({ x: pos.x, y: pos.y + 2, z: pos.z, vx: Math.cos(a) * sp, vy: 3 + rand() * 6, vz: Math.sin(a) * sp,
+          life: 3.5 + rand() * 2, s0: 10, s1: 40 + rand() * 20, r: 0.42, g: 0.36, b: 0.3, a: 0.7, drag: 1.0, rise: 1.2 });
+      }
+      for (let i = 0; i < 40; i++) {
+        const g = 0.08 + rand() * 0.06;
+        smoke.spawn({ x: pos.x + (rand() - 0.5) * 10, y: pos.y + 5, z: pos.z + (rand() - 0.5) * 10, vx: (rand() - 0.5) * 6, vy: 18 + rand() * 22, vz: (rand() - 0.5) * 6,
+          life: 6 + rand() * 4, s0: 14, s1: 60 + rand() * 30, r: g, g, b: g, a: 0.8, drag: 0.5, rise: 3 });
+      }
+      if (env.onSfx) env.onSfx('bomb', pos, 1);
+    }
+    // Blast: bandits caught low over the impact are destroyed.
+    for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) destroyEnemy(e, true);
+    if (playerActiveNow && S.position.distanceTo(pos) < BOMB_RADIUS * 0.8) damagePlayer(30);
+  }
+  function updateRings(dt) {
+    for (const g of rings) {
+      if (!g.r.visible) continue;
+      g.t += dt;
+      const k = g.t / 1.4;
+      if (k >= 1) { g.r.visible = false; continue; }
+      g.r.scale.setScalar(8 + 260 * Math.pow(k, 0.6));
+      g.r.material.opacity = (1 - k) * (g.water ? 0.55 : 0.8);
+    }
+  }
+
+  /* ================================================== flares and chaff */
+  // X / G: six magnesium flares + chaff from the tail dispensers. FLR 4 -> 0,
+  // +1 every 8 s. Bandit missiles within 1.2 NM of a burning flare roll once per
+  // salvo: 85 % divert onto a flare ("MISSILE EVADED"). Dispensing also breaks
+  // every bandit's seeker lock (bLock -> 0).
+  const flares = [];
+  const DISPENSERS = [new THREE.Vector3(-0.9, -0.55, 6.4), new THREE.Vector3(0.9, -0.55, 6.4)];
+  const flareLights = Array.from({ length: 2 }, () => { const l = new THREE.PointLight(0xffe0a0, 0, 260, 1.8); scene.add(l); return l; });
+  let flareCD = 0, flareRecharge = 0, flareSalvo = 0, playerActiveNow = false;
+  function dispenseFlares() {
+    if (!env.isReady() || C.dead || C.flares <= 0 || flareCD > 0) return false;
+    C.flares--; flareCD = 0.45; flareSalvo++;
+    if (C.flares < FLR_MAX && flareRecharge <= 0) flareRecharge = FLR_RECHARGE;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(S.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    for (let i = 0; i < FLR_PER_SALVO; i++) {
+      const side = i % 2 ? 1 : -1;
+      const pos = DISPENSERS[i % 2].clone().applyQuaternion(S.quaternion).add(S.position);
+      const vel = S.velocity.clone().multiplyScalar(0.92)
+        .addScaledVector(right, side * (10 + rand() * 14)).addScaledVector(up, -(6 + rand() * 10)).addScaledVector(fwd, -(4 + rand() * 6));
+      flares.push({ pos, vel, age: -i * 0.07, life: 3.4 + rand() * 0.8, alive: true, isFlare: true, salvo: flareSalvo, emit: 0 });
+    }
+    for (let i = 0; i < 70; i++) {                      // chaff bloom: glittering foil
+      const p = DISPENSERS[i % 2].clone().applyQuaternion(S.quaternion).add(S.position);
+      const v = S.velocity.clone().multiplyScalar(0.85).add(new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(40));
+      const w = 0.75 + rand() * 0.25;
+      fire.spawn({ x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z, life: 0.5 + rand() * 0.9, s0: 0.9, s1: 0.5, r: w, g: w, b: w * 1.05, a: 0.9, drag: 2.6 });
+    }
+    for (const e of enemies) e.bLock = 0;               // seekers break lock
+    say('FLARES — ' + C.flares + ' LEFT', 1.0, '#ffe0a0');
+    if (env.onSfx) env.onSfx('flare', S.position, 1);
+    return true;
+  }
+  function updateFlares(dt) {
+    flareCD = Math.max(0, flareCD - dt);
+    if (C.flares < FLR_MAX) {
+      flareRecharge -= dt;
+      if (flareRecharge <= 0) { C.flares++; flareRecharge = C.flares < FLR_MAX ? FLR_RECHARGE : 0; }
+    }
+    let lit = 0; const centre = [new THREE.Vector3(), new THREE.Vector3()], cnt = [0, 0];
+    for (let i = flares.length - 1; i >= 0; i--) {
+      const f = flares[i];
+      f.age += dt;
+      if (f.age < 0) continue;                           // staggered ejection
+      f.vel.multiplyScalar(Math.exp(-dt * 1.1)); f.vel.y -= G0 * 0.55 * dt;
+      f.pos.addScaledVector(f.vel, dt);
+      if (f.age > f.life || f.pos.y < groundLevel(f.pos.x, f.pos.z) || !f.alive) { f.alive = false; flares.splice(i, 1); continue; }
+      const k = 1 - f.age / f.life;
+      f.emit += dt * 40;
+      while (f.emit >= 1) {
+        f.emit -= 1;
+        const hot = rand();
+        fire.spawn({ x: f.pos.x, y: f.pos.y, z: f.pos.z, vx: f.vel.x * 0.3 + (rand() - 0.5) * 4, vy: f.vel.y * 0.3 + (rand() - 0.5) * 4, vz: f.vel.z * 0.3 + (rand() - 0.5) * 4,
+          life: 0.18 + rand() * 0.16, s0: (5 + hot * 4) * (0.5 + 0.5 * k), s1: 1.5, r: 1, g: 0.9 + 0.1 * hot, b: 0.55 + 0.4 * hot, a: 1, drag: 1.5 });
+        if (rand() < 0.45) smoke.spawn({ x: f.pos.x, y: f.pos.y, z: f.pos.z, vx: (rand() - 0.5) * 2, vy: (rand() - 0.5) * 2, vz: (rand() - 0.5) * 2,
+          life: 4 + rand() * 2.5, s0: 2.5, s1: 16 + rand() * 8, r: 0.93, g: 0.93, b: 0.92, a: 0.55, drag: 0.9, rise: 0.8 });
+      }
+      const j = lit++ % 2; centre[j].add(f.pos); cnt[j]++;
+    }
+    flareLights.forEach((l, j) => {
+      if (cnt[j]) { l.position.copy(centre[j].divideScalar(cnt[j])); l.intensity = 220 * (0.7 + 0.3 * rand()); } else l.intensity = 0;
+    });
+    // Decoy roll for bandit missiles near any burning flare (once per missile per salvo).
+    for (const m of missiles) {
+      if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
+      const near = flares.find(f => f.alive && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
+      if (!near) continue;
+      m.flareSalvo = near.salvo;
+      if (rand() < FLR_DECOY_P) { m.target = near; m.losPrev.copy(near.pos).sub(m.mesh.position).normalize(); C.decoyed = (C.decoyed || 0) + 1; say('MISSILE EVADED', 1.8, '#4dff91'); }
+    }
+  }
+
   /* ================================================================ API */
   let ready = false, waveTimer = 0;
   function init(model, nozzleLocal) {
+    collectStores(model);
     buildFleet(model, nozzleLocal);
     spawnWave();
     ready = true;
   }
 
   function resetPlayer() {
+    rearm('msl'); rearm('bomb');
+    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null });
+    flareRecharge = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
     for (const e of enemies) e.bLock = 0;
@@ -680,7 +969,10 @@ export function createCombat(THREE, env) {
     C.missileWarning = Math.max(0, C.missileWarning - dt);
     mslCooldown = Math.max(0, mslCooldown - dt);
     if (C.reload > 0) { C.reload -= dt; if (C.reload <= 0) C.ammo = GUN_MAX; }
-    if (C.missileReload > 0) { C.missileReload -= dt; if (C.missileReload <= 0) C.missiles = MSL_MAX; }
+    if (C.missileReload > 0) { C.missileReload -= dt; if (C.missileReload <= 0) { C.missiles = MSL_MAX; rearm('msl'); } }
+    if (C.bombReload > 0) { C.bombReload -= dt; if (C.bombReload <= 0) { C.bombs = stores.bomb.length; rearm('bomb'); } }
+    bombCooldown = Math.max(0, bombCooldown - dt);
+    playerActiveNow = opts.playerActive;
     const nowMs = performance.now();
     C.comms = C.comms.filter(c => c.until > nowMs);
 
@@ -730,6 +1022,8 @@ export function createCombat(THREE, env) {
       return false;
     });
     updateMissiles(dt, playerActive);
+    updateBombs(dt); updateRings(dt); updateFlares(dt);
+    if (playerActive) updateCCIP(); else C.ccip = null;
 
     for (const f of flashes) { if (f.t > 0) { f.t -= dt; f.l.intensity = Math.max(0, f.t) * 900; } else f.l.intensity = 0; }
     fire.update(dt); smoke.update(dt);
@@ -737,6 +1031,8 @@ export function createCombat(THREE, env) {
 
   return {
     init, update, resetPlayer, fireMissile, cycleTarget, designate, explosion, splash, say,
+    fireSelected, dropBomb, setWeapon, toggleWeapon, dispenseFlares,
+    get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
     get enemies() { return enemies; }, missiles,
     get ready() { return ready; },
@@ -767,6 +1063,16 @@ export function createCombat(THREE, env) {
         lock: { tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         bandit: { lock: +C.banditLock.toFixed(2), rwr: C.rwrTrack, incoming: C.incoming || 0, warn: +C.missileWarning.toFixed(2) },
         shots: C.mslLog.map(l => l.tag + ':' + l.result + '@' + l.t).join(' '),
+        stores: { wpn: C.weapon, msl: C.missiles, mslOnPylons: stores.msl.filter(s => s.node.visible).map(s => s.n).join(','),
+          bombs: C.bombs, bombsOnPylons: stores.bomb.filter(s => s.node.visible).length,
+          falling: liveBombs.map(b => b.name + '@' + b.obj.position.y.toFixed(0) + 'm/sameGeo=' + sameGeo(b)).join(' '),
+          ccip: C.ccip ? C.ccip.toArray().map(x => Math.round(x)) : null, tof: +C.ccipTof.toFixed(2),
+          lastDrop: C.lastDrop ? { name: C.lastDrop.name, ccip: C.lastDrop.ccip && C.lastDrop.ccip.toArray().map(x => Math.round(x)) } : null,
+          lastImpact: lastImpact ? { name: lastImpact.name, p: lastImpact.p.toArray().map(x => Math.round(x)), t: lastImpact.t } : null,
+          flr: C.flares, flaresLive: flares.length, decoyed: C.decoyed || 0,
+          flareRel: flares.slice(0, 2).map(f => f.pos.clone().sub(S.position).applyQuaternion(S.quaternion.clone().invert()).toArray().map(x => Math.round(x)).join('/') + ' age' + f.age.toFixed(2)).join(' '),
+          fireOn: fire.p.filter(q => q.on).length, smokeOn: smoke.p.filter(q => q.on).length,
+          pylonMissile: missiles.filter(m => m.active && m.visual).length },
         live: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.lostTrack ? '/lost' : '') + (m.target && !m.lostTrack ? '@' + Math.round(m.target.pos.distanceTo(m.mesh.position)) : '')).join(' ') };
     }
   };
