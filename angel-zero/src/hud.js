@@ -1,8 +1,11 @@
-// ANGELS ZERO — Ace Combat 7: Skies Unknown style Hi-DPI 2D tactical HUD.
-// Luminous mint-emerald phosphor (#52ff9c), Rajdhani condensed military type,
-// 3D-projected conformal ladder + W waterline + spring-damped FPV, AC7 open-corner
-// target brackets with shrinking diamond lock-on snap, 26% off-screen chevrons,
-// 4-corner combat clusters in both cockpit and chase views, and center banners.
+// ANGELS ZERO — clean Ace Combat 8 style Hi-DPI 2D tactical HUD.
+// Luminous emerald phosphor (#58ff9a, 1.35 px strokes, 6 px bloom), Rajdhani
+// condensed type, crimson (#ff2e43) on MISSILE ALERT / PULL UP / STALL.
+// 3rd person: uncluttered -o- reticle with velocity parallax flanked by pointed
+// SPEED / ALT boxes (no ladders or tapes). 1st person: conformal ladder + tapes
+// clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
+// list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
+// open-corner target brackets, edge pointers, minimal top-left telemetry.
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -11,14 +14,14 @@ export function createHUD(THREE, A) {
   const smooth = THREE.MathUtils.smoothstep, clamp = THREE.MathUtils.clamp;
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 
-  const G = '#52ff9c';
-  const GD = 'rgba(82, 255, 156, 0.42)';
-  const GB = '#b8ffda';
+  const G = '#58ff9a';
+  const GD = 'rgba(88, 255, 154, 0.42)';
+  const GB = '#c4ffdc';
   const WARN = '#ff2e43';
   const AMBER = '#ffb838';
   const CYAN = '#38b6ff';
-  const FONT = "'Rajdhani', 'Share Tech Mono', 'Consolas', monospace";
-  const LW = 1.25;
+  const FONT = "'Rajdhani', 'Share Tech Mono', sans-serif";
+  const LW = 1.35;
   const f = (px, bold = false) => `${bold ? '700' : '600'} ${px}px ${FONT}`;
 
   let HW = 0, HH = 0, DPR = 1;
@@ -38,9 +41,9 @@ export function createHUD(THREE, A) {
     if (color === WARN) return 'rgba(255, 46, 67, 0.65)';
     if (color === AMBER) return 'rgba(255, 184, 56, 0.55)';
     if (color === CYAN) return 'rgba(56, 182, 255, 0.55)';
-    return 'rgba(0, 255, 110, 0.55)';
+    return 'rgba(50, 255, 120, 0.55)';
   }
-  function glow(ctx, color = G, blur = 4) {
+  function glow(ctx, color = G, blur = 6) {
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.shadowColor = blur > 0 ? glowColor(color) : 'transparent';
@@ -77,16 +80,20 @@ export function createHUD(THREE, A) {
   const pulseAlpha = (periodMs = 160) => (Math.floor(performance.now() / periodMs) % 2 === 0 ? 1.0 : 0.45);
   const mslFlash = () => Math.floor(performance.now() / 140) % 2 === 0;
 
+  // 3rd-person layout: everything keys off the boresight point (screen centre-ish).
+  const BOX_OFF = 165;                                   // SPEED / ALT box centres, px either side of the reticle
   function chaseLayout() {
-    const tapeW = clamp(HW * 0.52, 460, 760);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const b = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
+    const cx = b.ok ? clamp(b.x, HW * 0.3, HW * 0.7) : HW / 2, cy = b.ok ? clamp(b.y, HH * 0.3, HH * 0.7) : HH / 2;
     return {
-      cx: HW / 2, cy: HH / 2,
-      minX: HW / 2 - tapeW / 2, maxX: HW / 2 + tapeW / 2,
+      cx, cy,
+      minX: cx - BOX_OFF - 60, maxX: cx + BOX_OFF + 60,
       minY: HH * 0.16, maxY: HH * 0.76,
-      boxW: tapeW * 0.70, boxH: HH * 0.54,
-      tapeL: HW / 2 - tapeW / 2, tapeR: HW / 2 + tapeW / 2,
-      tapeTop: HH * 0.25, tapeBot: HH * 0.67,
-      compassY: 42, compassW: Math.min(HW * 0.36, 460)
+      boxW: (BOX_OFF + 60) * 2, boxH: HH * 0.54,
+      // Zones occupied by the SPEED / ALT boxes (used to keep secondary target cues clear of them).
+      tapeL: cx - BOX_OFF + 33, tapeR: cx + BOX_OFF - 33,
+      tapeTop: cy - 34, tapeBot: cy + 22
     };
   }
 
@@ -388,13 +395,13 @@ export function createHUD(THREE, A) {
     const pulse = age < 0.6 ? 1 - age / 0.6 : 0;
     ctx.save();
     if (pulse > 0) {
-      const col = C.designateOk ? '#52ff9c' : AMBER;
+      const col = C.designateOk ? G : AMBER;
       glow(ctx, col, 10 * pulse);
       ctx.globalAlpha = 0.35 + 0.65 * pulse;
       ctx.lineWidth = 1.2 + 1.8 * pulse;
       ctx.beginPath(); ctx.arc(c.x, c.y, r * (1 + 0.06 * pulse), 0, Math.PI * 2); ctx.stroke();
     } else {
-      glow(ctx, 'rgba(82, 255, 156, 0.5)', 0);
+      glow(ctx, 'rgba(88, 255, 154, 0.5)', 0);
       ctx.lineWidth = 1.2;
       ctx.setLineDash([3, 6]);
       ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
@@ -416,7 +423,7 @@ export function createHUD(THREE, A) {
     const ch = A.isFirstPerson() ? null : chaseLayout();
     const inTape = (px, py) => ch && py > ch.tapeTop - 22 && py < ch.tapeBot + 28 &&
       ((px > ch.tapeL - 66 && px < ch.tapeL + 24) || (px > ch.tapeR - 24 && px < ch.tapeR + 66));
-    const inCorner = (px, py) => (px < 268 && py < 195) || (px < 252 && py > HH - 248) || (px > HW - 294 && py > HH - 210);
+    const inCorner = (px, py) => (px < 268 && py < 195) || (px < 252 && py > HH - 248) || (px > HW - 200 && py > HH - 300);
     const onScreenOf = (pos, isPrim = false) => {
       const p = toScreen(pos);
       return { p, on: pos.clone().sub(cam.position).dot(fwd) > 0 && p.ok && p.x > 36 && p.x < HW - 36 && p.y > 42 && p.y < HH - 42 && !inCorner(p.x, p.y) && (isPrim || !inTape(p.x, p.y)) };
@@ -440,7 +447,7 @@ export function createHUD(THREE, A) {
       if (e !== prim) {
         const isNext = e === nextTgt;
         const s = isNext ? 15 : 11;
-        const col = isNext ? 'rgba(82, 255, 156, 0.85)' : 'rgba(82, 255, 156, 0.6)';
+        const col = isNext ? 'rgba(88, 255, 154, 0.85)' : 'rgba(88, 255, 154, 0.6)';
         ctx.save();
         glow(ctx, col, isNext ? 3 : 2);
         ctx.lineWidth = isNext ? 1.25 : 1;
@@ -527,38 +534,50 @@ export function createHUD(THREE, A) {
       }
     }
 
-    // Off-screen directional chevrons along the central 26% HH ring.
-    const ringR = HH * 0.26;
+    // Off-screen pointers: hollow edge triangles (filled crimson for missiles) with
+    // stacked micro-labels, sliding along the screen border clear of the corner clusters.
+    const EDGE = 40, placed = [];
+    offRing.sort((a, b) => (b.isMsl - a.isMsl) || (b.isPrim - a.isPrim) || a.range - b.range);
     for (const item of offRing) {
       const v = item.pos.clone().applyMatrix4(cam.matrixWorldInverse);
       let ang = Math.atan2(-v.y, v.x);
       if (v.z > 0 && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) ang = Math.PI / 2;
-      const px = HW / 2 + Math.cos(ang) * ringR, py = HH / 2 + Math.sin(ang) * ringR;
+      const mx = HW / 2 - EDGE, my = HH / 2 - EDGE;
+      const k = Math.min(mx / Math.max(Math.abs(Math.cos(ang)), 1e-3), my / Math.max(Math.abs(Math.sin(ang)), 1e-3));
+      let px = HW / 2 + Math.cos(ang) * k, py = HH / 2 + Math.sin(ang) * k;
+      // Keep clear of the top-left telemetry, radar (bottom-left) and stores (bottom-right).
+      if (px < 250 && py < 150) { if (Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang))) py = 150; else px = 250; }
+      if (px < 270 && py > HH - 270) { if (Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang))) py = HH - 270; else px = 270; }
+      if (px > HW - 210 && py > HH - 310) { if (Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang))) py = HH - 310; else px = HW - 210; }
+      // De-overlap: slide along the edge away from pointers already placed.
+      const sideEdge = Math.abs(Math.cos(ang)) * my > Math.abs(Math.sin(ang)) * mx;
+      for (let guard = 0; guard < 8; guard++) {
+        const hit = placed.find(q => Math.abs(q.x - px) < (sideEdge ? 40 : 70) && Math.abs(q.y - py) < (sideEdge ? 36 : 34));
+        if (!hit) break;
+        if (sideEdge) py = hit.y + (py >= hit.y ? 38 : -38); else px = hit.x + (px >= hit.x ? 72 : -72);
+      }
+      placed.push({ x: px, y: py });
       const col = item.isMsl || item.isThreat || (item.isPrim && C.lockState === 'LOCK') ? WARN
         : item.isPrim ? (C.lockState === 'ACQ' ? AMBER : G) : GD;
-      const sz = item.isMsl || item.isPrim ? 1 : 0.72;
-
+      const sz = item.isMsl || item.isPrim ? 1 : 0.75;
+      if (item.isMsl && !mslFlash()) continue;
       ctx.save();
       ctx.translate(px, py); ctx.rotate(ang);
-      glow(ctx, col, item.isMsl || item.isPrim ? 5 : 2);
-      ctx.lineWidth = 1.4;
-      // Sleek AC7 directional chevron (pointing outward along ang).
+      glow(ctx, col, item.isMsl || item.isPrim ? 6 : 3);
+      ctx.lineWidth = LW;
       ctx.beginPath();
-      ctx.moveTo(11 * sz, 0); ctx.lineTo(-6 * sz, -7 * sz); ctx.lineTo(-2 * sz, 0); ctx.lineTo(-6 * sz, 7 * sz); ctx.closePath();
-      if (item.isMsl || item.isPrim) ctx.fill(); else ctx.stroke();
-      if (item.isMsl) {
-        ctx.beginPath(); ctx.moveTo(17 * sz, 0); ctx.lineTo(9 * sz, -6 * sz); ctx.moveTo(17 * sz, 0); ctx.lineTo(9 * sz, 6 * sz); ctx.stroke();
-      }
+      ctx.moveTo(12 * sz, 0); ctx.lineTo(-7 * sz, -8 * sz); ctx.lineTo(-7 * sz, 8 * sz); ctx.closePath();
+      if (item.isMsl) ctx.fill(); else ctx.stroke();
       ctx.restore();
-
-      if (item.isMsl || item.isPrim) {
-        ctx.save();
-        ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        const tx = HW / 2 + Math.cos(ang) * (ringR - 25), ty = HH / 2 + Math.sin(ang) * (ringR - 25);
-        labelText(ctx, item.isMsl ? 'MSL' : 'TGT', tx, ty - 6, col, 3);
-        labelText(ctx, formatDist(item.range), tx, ty + 6, col, 3);
-        ctx.restore();
-      }
+      // Stacked labels on the inboard side of the pointer.
+      ctx.save();
+      ctx.font = f(11, true); ctx.textBaseline = 'middle';
+      const lx = px - Math.cos(ang) * 30, ly = py - Math.sin(ang) * 22;
+      ctx.textAlign = Math.cos(ang) > 0.35 ? 'right' : Math.cos(ang) < -0.35 ? 'left' : 'center';
+      const name = item.isMsl ? 'MSL' : item.isPrim ? 'TGT' : (item.label || 'BANDIT');
+      labelText(ctx, name, lx, ly - 6, col, 3);
+      labelText(ctx, formatDist(item.range), lx, ly + 6, col, 3);
+      ctx.restore();
     }
 
     drawLeadReticle(ctx);
@@ -722,50 +741,35 @@ export function createHUD(THREE, A) {
 
   /* --------------------------------------------------- 4-corner AC7 clusters */
   function drawTopLeft(ctx) {
-    const x = 20, y = 16, w = 232;
+    // Minimal AC8 telemetry: no opaque box, dark text shadows only.
+    const x = 22, y = 18;
     ctx.save();
-    numBack(ctx, x, y, w, 108, 'rgba(0, 14, 8, 0.24)');
-    glow(ctx, G, 3); ctx.lineWidth = 1.1;
-    ctx.beginPath(); ctx.moveTo(x, y + 12); ctx.lineTo(x, y); ctx.lineTo(x + 28, y); ctx.stroke();
-
+    glow(ctx, G, 4); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - 6, y + 10); ctx.lineTo(x - 6, y - 4); ctx.lineTo(x + 18, y - 4); ctx.stroke();
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.font = f(15, true);
-    labelText(ctx, 'TIME', x + 10, y + 7, GD, 2);
-    labelText(ctx, A.missionClock(), x + 66, y + 7, GB, 4);
+    ctx.font = f(13, true);
+    labelText(ctx, 'TIME', x, y, GD, 3);
+    labelText(ctx, 'SCORE', x, y + 19, GD, 3);
+    ctx.font = f(16, true);
+    labelText(ctx, A.missionClock(), x + 52, y - 1, GB, 5);
     const score = C.score ?? C.kills * 1500;
-    labelText(ctx, 'SCORE', x + 10, y + 27, GD, 2);
-    labelText(ctx, String(score).padStart(6, '0'), x + 66, y + 27, GB, 4);
+    labelText(ctx, String(score).padStart(6, '0'), x + 52, y + 18, GB, 5);
     const alive = A.getEnemies().filter(e => e.alive).length;
-    const tgtTxt = C.lockTarget ? 'LOCK ' + formatDist(C.lockTarget.pos.distanceTo(S.position)) : alive + ' BANDIT' + (alive === 1 ? '' : 'S');
-    labelText(ctx, 'TARGET', x + 10, y + 47, GD, 2);
-    labelText(ctx, tgtTxt, x + 66, y + 47, C.lockTarget ? WARN : G, 4);
+    ctx.font = f(12, true);
+    labelText(ctx, 'BANDITS ' + alive, x, y + 40, G, 3);
+    let ey = y + 62;
+    if (A.isNVG && A.isNVG()) { drawNVGBadge(ctx, x, y + 58); ey += 26; }
 
-    // Thin ALPHA (cyan-blue) vs BRAVO (crimson) team gauge bars.
-    const alpha = score, bravo = (C.deaths || 0) * 1500 + Math.round((100 - C.health) * 15);
-    const top = Math.max(3000, alpha, bravo);
-    const bw = w - 102;
-    for (const [i, lab, val, colr] of [[0, 'ALPHA', alpha, CYAN], [1, 'BRAVO', bravo, WARN]]) {
-      const by = y + 71 + i * 16;
-      ctx.font = f(11, true); ctx.textAlign = 'left';
-      labelText(ctx, lab, x + 10, by - 1, colr, 3);
-      noGlow(ctx); ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'; ctx.fillRect(x + 56, by + 2, bw, 5);
-      glow(ctx, colr, 4); ctx.fillRect(x + 56, by + 2, bw * clamp(val / top, 0, 1), 5);
-      ctx.textAlign = 'right'; ctx.font = f(11);
-      labelText(ctx, String(val), x + w - 8, by - 1, colr, 2);
-    }
-
-    // Floating kill / evade event popups below the gauge bars.
+    // Floating kill / evade event popups.
     const now = performance.now();
     const evs = (C.events || []).filter(ev => ev.until > now);
     evs.slice(-3).forEach((ev, i) => {
       const age = (now - ev.born) / 1000, left = (ev.until - now) / 1000;
-      const alphaFade = clamp(Math.min(age * 6, left * 1.8), 0, 1);
-      const ey = y + 116 + i * 22;
-      ctx.globalAlpha = alphaFade;
-      numBack(ctx, x, ey, w, 19, 'rgba(0, 18, 10, 0.48)');
-      glow(ctx, ev.color || G, 4); ctx.fillRect(x, ey, 2.5, 19);
-      ctx.font = f(12, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      labelText(ctx, `+${ev.points}  ${ev.text}`, x + 9, ey + 10, ev.color || G, 4);
+      ctx.globalAlpha = clamp(Math.min(age * 6, left * 1.8), 0, 1);
+      const yy = ey + i * 20;
+      glow(ctx, ev.color || G, 4); ctx.fillRect(x - 6, yy + 1, 2, 14);
+      ctx.font = f(12, true); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      labelText(ctx, (ev.points ? `+${ev.points}  ` : '') + ev.text, x + 2, yy, ev.color || G, 4);
     });
     ctx.restore();
   }
@@ -799,7 +803,7 @@ export function createHUD(THREE, A) {
     const border = flashRed() || C.banditLock >= 1 ? WARN : C.rwrTrack ? AMBER : G;
 
     ctx.save();
-    noGlow(ctx); ctx.fillStyle = 'rgba(0, 22, 12, 0.42)'; ctx.fillRect(x0, y0, s, s);
+    noGlow(ctx); ctx.fillStyle = 'rgba(6, 26, 14, 0.35)'; ctx.fillRect(x0, y0, s, s);
     ctx.save();
     ctx.beginPath(); ctx.rect(x0, y0, s, s); ctx.clip();
 
@@ -809,23 +813,21 @@ export function createHUD(THREE, A) {
     ctx.globalAlpha = 0.34; ctx.drawImage(topo.cv, topo.x0, topo.z0, topo.size, topo.size);
     ctx.restore();
 
-    // Subtle concentric range rings + crosshairs.
-    ctx.strokeStyle = 'rgba(82, 255, 156, 0.26)'; ctx.lineWidth = 1;
-    for (const fr of [0.25, 0.5, 0.95]) { ctx.beginPath(); ctx.arc(cx, cy, half * 0.90 * fr, 0, Math.PI * 2); ctx.stroke(); }
-    ctx.beginPath(); ctx.moveTo(x0, cy); ctx.lineTo(x0 + s, cy); ctx.moveTo(cx, y0); ctx.lineTo(cx, y0 + s); ctx.stroke();
+    // Three concentric range rings.
+    ctx.strokeStyle = 'rgba(88, 255, 154, 0.34)'; ctx.lineWidth = 1;
+    for (const fr of [0.33, 0.66, 0.97]) { ctx.beginPath(); ctx.arc(cx, cy, half * 0.90 * fr, 0, Math.PI * 2); ctx.stroke(); }
 
-    // Crisp white forward camera FOV lines.
-    const hf = Math.atan(Math.tan(cam.fov / 2 * D2R) * cam.aspect);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)'; ctx.lineWidth = 1;
+    // Forward FOV wedge: diagonals from the ownship arrow to the two top corners.
+    ctx.strokeStyle = 'rgba(88, 255, 154, 0.62)'; ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(-hf) * s, cy - Math.cos(hf) * s);
-    ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(hf) * s, cy - Math.cos(hf) * s);
+    ctx.moveTo(cx, cy); ctx.lineTo(x0, y0);
+    ctx.moveTo(cx, cy); ctx.lineTo(x0 + s, y0);
     ctx.stroke();
 
-    // Rotated N / E / S / W edge letters.
-    glow(ctx, G, 3); ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Rotated N / E / S / W letters tucked just inside the outer ring.
+    glow(ctx, G, 4); ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const [deg, lab] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']]) {
-      const a = (deg - S.heading) * D2R, r = half * 0.80;
+      const a = (deg - S.heading) * D2R, r = half * 0.76;
       ctx.save(); ctx.translate(cx + Math.sin(a) * r, cy - Math.cos(a) * r); ctx.rotate(a);
       ctx.fillText(lab, 0, 0); ctx.restore();
     }
@@ -891,78 +893,85 @@ export function createHUD(THREE, A) {
     [0.20, 0.88], [0.17, 1.0], [0.04, 1.0]
   ];
 
-  function drawBottomRight(ctx) {
-    const w = 258, h = 176, x = HW - w - 20, y = HH - h - 20;
+  // AIM-9 icon: vertical body, nose cone, tail fins; the body fills bottom-up as
+  // that pylon's round reloads (bright when loaded, amber while refilling).
+  function drawMissileIcon(ctx, x, y, h, fill, loaded) {
+    const w = h > 36 ? 6 : 5, top = y - h / 2, bot = y + h / 2;
     ctx.save();
-    numBack(ctx, x, y, w, h, 'rgba(0, 14, 8, 0.24)');
-    glow(ctx, G, 3); ctx.lineWidth = 1.1;
-    ctx.beginPath(); ctx.moveTo(x + w - 28, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + 20); ctx.stroke();
+    const col = loaded ? G : fill > 0 ? AMBER : GD;
+    glow(ctx, col, loaded ? 5 : 2); ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, bot - 5); ctx.lineTo(x - w / 2, top + 6); ctx.lineTo(x, top); ctx.lineTo(x + w / 2, top + 6); ctx.lineTo(x + w / 2, bot - 5);
+    ctx.moveTo(x - w / 2, bot - 5); ctx.lineTo(x - w / 2 - 4, bot); ctx.lineTo(x + w / 2 + 4, bot); ctx.lineTo(x + w / 2, bot - 5);
+    ctx.moveTo(x - w / 2, top + 11); ctx.lineTo(x - w / 2 - 2.5, top + 15); ctx.moveTo(x + w / 2, top + 11); ctx.lineTo(x + w / 2 + 2.5, top + 15);
+    ctx.stroke();
+    if (fill > 0.01) {
+      const bodyTop = top + 6, bodyH = bot - 5 - bodyTop, fh = bodyH * clamp(fill, 0, 1);
+      ctx.globalAlpha = loaded ? 0.85 : 0.6;
+      ctx.fillRect(x - w / 2 + 1.2, bot - 5 - fh, w - 2.4, fh);
+    }
+    ctx.restore();
+  }
 
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.font = f(17, true);
-    labelText(ctx, A.callsign, x + 12, y + 8, GB, 4);
-
-    ctx.font = f(14, true);
-    const lines = [
-      ['GUN', C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo).padStart(3, '0'), G],
-      [(C.weapon === 'MSL' ? '>' : ' ') + 'MSL', C.missileReload > 0 ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles), C.weapon === 'MSL' ? GB : G]
+  function drawBottomRight(ctx) {
+    // Right-aligned stores list, F-15C silhouette and pylon icons; no heavy box.
+    const xr = HW - 26, xl = xr - 150, rowH = 20;
+    const y0 = HH - 286;
+    ctx.save();
+    ctx.font = f(15, true); ctx.textBaseline = 'top';
+    const reloadMsl = C.missileReload > 0, reloadBomb = C.bombReload > 0;
+    const rows = [
+      ['  GUN', C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo), G],
+      [(C.weapon === 'MSL' ? '> ' : '  ') + 'MSL', reloadMsl ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles), C.weapon === 'MSL' ? GB : G]
     ];
-    if (C.bombMax) lines.push([(C.weapon === 'BOMB' ? '>' : ' ') + 'BOMB', C.bombReload > 0 ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs), C.weapon === 'BOMB' ? GB : G]);
-    if (C.flares !== undefined) lines.push(['FLR', String(C.flares), G]);
-    lines.push(['DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
+    if (C.bombMax) rows.push([(C.weapon === 'BOMB' ? '> ' : '  ') + 'UGB', reloadBomb ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs), C.weapon === 'BOMB' ? GB : G]);
+    rows.push(null);                                        // dashed separator
+    if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
+    rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
+    let y = y0;
+    for (const r of rows) {
+      if (!r) {
+        glow(ctx, GD, 0); ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(xl + 4, y + 6); ctx.lineTo(xr, y + 6); ctx.stroke();
+        ctx.setLineDash([]); y += 12; continue;
+      }
+      const [k, v, col] = r;
+      ctx.textAlign = 'left'; labelText(ctx, k, xl, y, col, 4);
+      ctx.textAlign = 'right'; labelText(ctx, v, xr, y, col, 5);
+      y += rowH;
+    }
 
-    lines.forEach(([k, v, col], i) => {
-      const yy = y + 34 + i * 21;
-      ctx.textAlign = 'left'; labelText(ctx, k, x + 12, yy, col, 3);
-      ctx.textAlign = 'right'; labelText(ctx, v, x + 122, yy, col, 3);
-    });
-
-    // Top-down F-15 vector silhouette.
-    const sx = x + 190, sy = y + 76, sc = 46;
+    // Top-down F-15C Eagle silhouette (hull colour = damage).
+    const sx = xr - 72, sy = y + 50, sc = 40;
     const hull = C.health, hCol = hull > 60 ? G : hull > 30 ? AMBER : WARN;
-    glow(ctx, hCol, 6); ctx.lineWidth = 1.25;
+    glow(ctx, hCol, 6); ctx.lineWidth = LW;
     ctx.beginPath();
     PLANFORM.forEach(([px, py], i) => i ? ctx.lineTo(sx + px * sc * 0.62, sy + py * sc) : ctx.moveTo(sx + px * sc * 0.62, sy + py * sc));
     for (let i = PLANFORM.length - 1; i >= 0; i--) ctx.lineTo(sx - PLANFORM[i][0] * sc * 0.62, sy + PLANFORM[i][1] * sc);
     ctx.closePath();
-    ctx.globalAlpha = 0.16; ctx.fill();
-    ctx.globalAlpha = 1; ctx.stroke();
+    ctx.globalAlpha = 0.14; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
 
-    // Vertical missile reload bars flanking the F-15 silhouette (fill bottom-to-top during reload).
-    const slots = C.mslMax || 4;
-    const perSide = Math.ceil(slots / 2);
-    const reloadFrac = C.missileReload > 0 ? clamp(1 - C.missileReload / (C.missileReloadMax || 6), 0, 1) : 1;
-    const barW = 7, barH = Math.min(24, Math.floor(62 / perSide));
-    for (let sideIdx = 0; sideIdx < 2; sideIdx++) {
-      const rx = sideIdx === 0 ? sx - 48 : sx + 41;
-      const sideCount = sideIdx === 0 ? Math.ceil(C.missiles / 2) : Math.floor(C.missiles / 2);
-      const sideTotal = sideIdx === 0 ? Math.ceil(slots / 2) : Math.floor(slots / 2);
-      for (let k = 0; k < sideTotal; k++) {
-        const ry = sy + 20 - k * (barH + 5);
-        const ready = C.missileReload <= 0 && k < sideCount;
-        const fill = ready ? 1 : C.missileReload > 0 ? reloadFrac : 0;
-        noGlow(ctx); ctx.strokeStyle = ready ? G : GD; ctx.lineWidth = 1;
-        ctx.strokeRect(rx + 0.5, ry - barH + 0.5, barW - 1, barH - 1);
-        if (fill > 0.01) {
-          const fh = Math.round((barH - 2) * fill);
-          glow(ctx, ready ? G : AMBER, ready ? 4 : 2);
-          ctx.fillRect(rx + 1, ry - 1 - fh, barW - 2, fh);
-        }
-      }
-    }
+    // Pylon icons: big AIM-9s left / right (inboard rails 1, 2), smaller under-wing
+    // stores below (outboard rails 3, 4). Each fills as its own pylon reloads.
+    const pyl = C.mslPylons && C.mslPylons.length ? C.mslPylons : Array.from({ length: C.mslMax || 4 }, (_, i) => i < C.missiles);
+    const frac = reloadMsl ? clamp(1 - C.missileReload / (C.missileReloadMax || 6), 0, 1) : 0;
+    const icon = (i, x, yy, h) => { if (i < pyl.length) drawMissileIcon(ctx, x, yy, h, pyl[i] ? 1 : frac, !!pyl[i]); };
+    icon(0, sx - 56, sy - 6, 44);
+    icon(1, sx + 56, sy - 6, 44);
+    icon(2, sx - 56, sy + 38, 28);
+    icon(3, sx + 56, sy + 38, 28);
 
-    // Bomb reload bar along fuselage center when >BOMB is reloading.
-    if (C.bombMax && C.bombReload > 0) {
+    // UGB reload strip along the fuselage while bombs reload.
+    if (C.bombMax && reloadBomb) {
       const bf = clamp(1 - C.bombReload / (C.bombReloadMax || 10), 0, 1);
-      noGlow(ctx); ctx.strokeStyle = GD; ctx.strokeRect(sx - 22, y + h - 42, 44, 5);
-      glow(ctx, AMBER, 3); ctx.fillRect(sx - 21, y + h - 41, 42 * bf, 3);
+      noGlow(ctx); ctx.strokeStyle = GD; ctx.strokeRect(sx - 22, sy + 50, 44, 5);
+      glow(ctx, AMBER, 3); ctx.fillRect(sx - 21, sy + 51, 42 * bf, 3);
     }
 
-    // G-load + AOA micro-readout below silhouette.
-    ctx.font = f(13, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const aoaDeg = (S.alpha * R2D).toFixed(1);
-    labelText(ctx, `${S.gLoad.toFixed(1)}G`, sx - 32, y + h - 25, S.gLoad > 7.5 ? WARN : GB, 3);
-    labelText(ctx, `AOA ${aoaDeg}°`, sx + 22, y + h - 25, S.alpha > A.STALL_AOA * 0.85 ? WARN : G, 3);
+    // G / AOA micro-readout.
+    ctx.font = f(12, true); ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    labelText(ctx, `${S.gLoad.toFixed(1)}G   AOA ${(S.alpha * R2D).toFixed(1)}°`, xr, sy + 60,
+      S.gLoad > 7.5 || S.alpha > A.STALL_AOA * 0.85 ? WARN : G, 3);
     ctx.restore();
   }
 
@@ -1061,6 +1070,47 @@ export function createHUD(THREE, A) {
     return { path, minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, boxW: maxX - minX, boxH: maxY - minY };
   }
 
+  // AC8 centre reticle: circle + wing ticks + tail fin, at the boresight, nudged
+  // (max 22 px) toward the flight-path vector for a subtle velocity parallax.
+  function drawReticle(ctx, g, dt, col) {
+    const v = S.velocity.clone().normalize();
+    fpvDir.lerp(v, 1 - Math.exp(-dt / 0.08)).normalize();
+    const p = toScreen(cam.position.clone().addScaledVector(fpvDir, 4500));
+    let dx = 0, dy = 0;
+    if (p.ok) { dx = clamp((p.x - g.cx) * 0.35, -22, 22); dy = clamp((p.y - g.cy) * 0.35, -22, 22); }
+    const x = g.cx + dx, y = g.cy + dy;
+    ctx.save();
+    glow(ctx, col === WARN ? WARN : GB, 6); ctx.lineWidth = LW + 0.2;
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 24, y); ctx.lineTo(x - 7, y);
+    ctx.moveTo(x + 7, y); ctx.lineTo(x + 24, y);
+    ctx.moveTo(x, y - 7); ctx.lineTo(x, y - 15);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Pointed readout: SPEED  [  420 >   (points right)   /   ALT  < 3200  ]  (points left).
+  function drawChevronBox(ctx, cx, cy, value, label, point, col, sub, subCol) {
+    const w = 78, h = 26, tip = 10;
+    const x0 = cx - w / 2, x1 = cx + w / 2, y0 = cy - h / 2, y1 = cy + h / 2;
+    ctx.save();
+    const path = new Path2D();
+    if (point === 'right') { path.moveTo(x0, y0); path.lineTo(x1 - tip, y0); path.lineTo(x1, cy); path.lineTo(x1 - tip, y1); path.lineTo(x0, y1); }
+    else { path.moveTo(x1, y0); path.lineTo(x0 + tip, y0); path.lineTo(x0, cy); path.lineTo(x0 + tip, y1); path.lineTo(x1, y1); }
+    path.closePath();
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 16, 8, 0.38)'; ctx.fill(path);     // keeps digits legible over bright cloud
+    glow(ctx, col, 6); ctx.lineWidth = LW; ctx.stroke(path);
+    ctx.font = f(19, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    labelText(ctx, String(value), cx + (point === 'right' ? -tip / 2 : tip / 2), cy + 1, col === WARN ? WARN : GB, 6);
+    ctx.font = f(11, true); ctx.textBaseline = 'bottom';
+    labelText(ctx, label, cx, y0 - 4, col, 4);
+    if (sub) {
+      ctx.font = f(12, true); ctx.textBaseline = 'top';
+      labelText(ctx, sub, cx, y1 + 5, subCol || col, 5);
+    }
+    ctx.restore();
+  }
+
   let spdPrev = null, spdAcc = 0;
   function drawCentralHUD(ctx, g, dt, compact) {
     if (spdPrev !== null && dt > 0) spdAcc += (((S.speed - spdPrev) / dt) - spdAcc) * Math.min(1, dt * 2.5);
@@ -1074,6 +1124,17 @@ export function createHUD(THREE, A) {
     const raltFt = Math.max(0, Math.round(S.radalt * 3.28084));
     const raltText = raltFt < 1000 ? `RALT ${raltFt}` : `RALT ${raltFt}`;
     const raltCol = raltFt < 1000 && !C.dead ? (pullUpOn() ? WARN : AMBER) : GD;
+
+    if (!compact) {
+      // 3rd person (AC8): no ladders / tapes — reticle + pointed SPEED / ALT boxes only.
+      drawReticle(ctx, g, dt, hudCol);
+      drawGunFunnel(ctx, hudCol);
+      drawChevronBox(ctx, g.cx - BOX_OFF, g.cy, Math.round(kts), 'SPEED', 'right', spdCol,
+        S.afterburner > 0.3 ? '[A/B]' : '', AMBER);
+      drawChevronBox(ctx, g.cx + BOX_OFF, g.cy, Math.round(altFt), 'ALT', 'left', altCol,
+        raltFt < 1000 && !C.dead ? 'RALT ' + raltFt : '', raltCol);
+      return;
+    }
 
     ctx.save();
     if (g.path) ctx.clip(g.path);
@@ -1093,13 +1154,6 @@ export function createHUD(THREE, A) {
         label: 'ALT', sub: raltFt < 1000 ? raltText : '', subCol: raltCol, compact: true }, altCol);
       if (S.afterburner > 0.3) drawModeTag(ctx, g.minX + 18, g.minY + 14, 'A/B', AMBER, true);
       if (!C.dead && (C.missiles > 0 || C.ammo > 0)) drawModeTag(ctx, g.minX + 18, g.minY + 35, 'ARM', hudCol, true);
-    } else {
-      drawHeadingStrip(ctx, g.cx, g.compassY, g.compassW, hudCol, false);
-      drawModeTag(ctx, g.cx + g.compassW / 2 + 12, g.compassY - 4, 'A/B', S.afterburner > 0.3 ? AMBER : GD, S.afterburner > 0.3);
-      drawSlimTape(ctx, { x: g.tapeL, top: g.tapeTop, bot: g.tapeBot, value: kts, pxPerUnit: 1.55, step: 10, side: 'left',
-        label: 'SPEED', sub: 'MACH ' + S.mach.toFixed(2), next: kts + spdAcc * 1.94384 * 5 }, spdCol);
-      drawSlimTape(ctx, { x: g.tapeR, top: g.tapeTop, bot: g.tapeBot, value: altFt, pxPerUnit: 0.155, step: 100, side: 'right',
-        label: 'ALT FT', sub: raltFt < 1000 ? raltText : `RALT ${raltFt}`, subCol: raltCol, vsi: S.velocity.y * 196.85 }, altCol);
     }
 
     ctx.restore();
@@ -1159,21 +1213,17 @@ export function createHUD(THREE, A) {
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
     drawComms(hctx, fp ? HH * 0.62 : HH * 0.84);
-    if (A.isNVG && A.isNVG()) drawNVGBadge(hctx, fp);
     if (!A.isModal()) drawStickCue(hctx);
   }
 
-  // [ NVG ] status badge just under the heading tape / heading box.
-  function drawNVGBadge(ctx, fp) {
-    const x = HW / 2, y = fp ? 30 : 84;
+  // [ NVG ] status badge (top-left telemetry block).
+  function drawNVGBadge(ctx, x, y) {
     ctx.save();
-    ctx.font = f(13, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const w = ctx.measureText('[ NVG ]').width + 14;
-    ctx.fillStyle = 'rgba(0, 10, 4, 0.72)';
-    ctx.fillRect(x - w / 2, y - 10, w, 20);
-    glow(ctx, '#52ff9c', 3); ctx.lineWidth = 1;
-    ctx.strokeRect(x - w / 2 + 0.5, y - 9.5, w - 1, 19);
-    labelText(ctx, '[ NVG ]', x, y + 1, '#52ff9c', 3);
+    ctx.font = f(13, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText('[ NVG ]').width + 12;
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 12, 5, 0.55)'; ctx.fillRect(x - 6, y, w, 20);
+    glow(ctx, G, 4); ctx.lineWidth = 1; ctx.strokeRect(x - 5.5, y + 0.5, w - 1, 19);
+    labelText(ctx, '[ NVG ]', x, y + 10.5, G, 4);
     ctx.restore();
   }
 

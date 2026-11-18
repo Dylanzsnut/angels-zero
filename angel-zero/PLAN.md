@@ -472,5 +472,34 @@ briefing (no audio until a real LAUNCH click). Flags other than
       frame mean RGB 97/239/165; off -> lights restored and the frame matches
       a daylight reference (mean |diff| 0.13/255). Build tag `s16a`.
 
+## Ace Combat 8 HUD rebuild (2026-11-18)
+- [x] `src/hud.js` palette / type: #58ff9a phosphor, 1.35 px strokes, 6 px
+      bloom (`rgba(50,255,120,0.55)`), `'Rajdhani', 'Share Tech Mono',
+      sans-serif`; centre symbology, SPEED / ALT boxes and radar border turn
+      #ff2e43 on MISSILE ALERT / PULL UP / STALL.
+- [x] 3rd person: heading strip, pitch ladder and vertical tapes removed.
+      Centre `-o-` reticle at the boresight with a max 22 px velocity-vector
+      parallax; pointed SPEED box (`[ 420 >`, `[A/B]` under it on burner) and
+      ALT box (`< 3200 ]`, `RALT` under 1,000 ft) at +/-165 px, with a light
+      dark fill so digits stay legible over bright cloud. 1st person keeps
+      the conformal ladder + compact tapes clipped to the combiner glass.
+- [x] Square radar: rgba(6,26,14,0.35) fill, 1 px border, 3 range rings,
+      FOV wedge from the ownship arrow to the top corners, rotated N/E/S/W
+      inside the outer ring, triangle bandit blips, pulsing red missile
+      vectors (no ground/naval targets exist yet, so no square blips).
+- [x] Bottom-right stores list (no box): `GUN`, `> MSL`, `UGB` (caret
+      follows `R` / `1` / `2`), dashed separator, `FLR`, `DMG`; F-15C
+      silhouette flanked by two AIM-9 icons (pylons 1-2) with two smaller
+      icons below (pylons 3-4), each lit from `combat.mslPylons` and filling
+      bottom-up while its pylon reloads; G / AOA micro-readout.
+- [x] Off-screen pointers moved to the screen edges: hollow triangles
+      (pulsing filled crimson for missiles) with stacked type + range labels,
+      kept clear of the corner clusters and de-overlapped along the edge.
+      Top-left: TIME / SCORE / BANDITS + `[ NVG ]` badge with no opaque box;
+      kill / evade popups below. Brackets, ACQ diamond, LOCK / SHOOT, C-key
+      acquisition ring, CLOUD OBSCURED and CCIP unchanged.
+- [x] Headless chase + cockpit + MISSILE ALERT / A/B + LOCK + >BOMB CCIP
+      under NVG: zero page console errors. Build tag `s17a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

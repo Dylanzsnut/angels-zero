@@ -1059,6 +1059,7 @@ export function createCombat(THREE, env) {
     C.comms = C.comms.filter(c => c.until > nowMs);
     C.events = (C.events || []).filter(ev => ev.until > nowMs);
 
+    C.mslPylons = stores.msl.map(st => st.node.visible);      // HUD per-pylon AIM-9 icons
     // Cloud densities for the player and every bandit (missiles sample their own).
     C.playerCloud = playerActive ? cloudAt(S.position) : 0;
     C.playerInCloud = C.playerCloud > CLOUD_T;
