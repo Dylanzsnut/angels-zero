@@ -594,7 +594,7 @@ export function createHUD(THREE, A) {
     ctx.save(); ctx.textAlign = 'center';
     if (C.bombs <= 0 || C.bombReload > 0) {
       ctx.font = f(13, true); ctx.textBaseline = 'top';
-      labelText(ctx, 'BOMB RLD ' + Math.max(0, C.bombReload).toFixed(1), w.x, w.y + 34, AMBER, 4);
+      labelText(ctx, 'UGB RLD ' + Math.max(0, C.bombReload).toFixed(1), w.x, w.y + 34, AMBER, 4);
       ctx.restore(); return;
     }
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);

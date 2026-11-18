@@ -812,7 +812,7 @@ export function createCombat(THREE, env) {
   let bombCooldown = 0, lastImpact = null;
   function setWeapon(w) {
     if (w === 'BOMB' && !stores.bomb.length) w = 'MSL';
-    if (C.weapon !== w) { C.weapon = w; say(w === 'BOMB' ? 'BOMBS SELECTED — CCIP' : 'AIM-9 SELECTED', 1.0); }
+    if (C.weapon !== w) { C.weapon = w; say(w === 'BOMB' ? 'UGB SELECTED — CCIP' : 'AIM-9 SELECTED', 1.0); }
     return C.weapon;
   }
   function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'BOMB' : 'MSL'); }

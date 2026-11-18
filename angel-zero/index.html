@@ -198,9 +198,9 @@
             <div class="bind"><span class="k"><kbd>MOUSE</kbd></span><span class="a">Pitch / roll</span></div>
             <div class="bind"><span class="k"><kbd>LMB</kbd> <kbd>F</kbd></span><span class="a">Vulcan cannon</span></div>
             <div class="bind"><span class="k"><kbd>W</kbd> <kbd>S</kbd></span><span class="a">Throttle / brake</span></div>
-            <div class="bind"><span class="k"><kbd>RMB</kbd> <kbd>M</kbd></span><span class="a">Fire MSL / BOMB</span></div>
+            <div class="bind"><span class="k"><kbd>RMB</kbd> <kbd>M</kbd></span><span class="a">Fire MSL / UGB</span></div>
             <div class="bind"><span class="k"><kbd>SHIFT</kbd></span><span class="a">Afterburner / Hi-G</span></div>
-            <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Switch weapon</span></div>
+            <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Toggle MSL / UGB</span></div>
             <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
             <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Target in Sight</span></div>
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
@@ -249,7 +249,7 @@
     <h3>v1.6.0 &mdash; ORDNANCE, CCIP &amp; COUNTERMEASURES</h3>
     <ul>
       <li>Separated wing-pylon AIM-9s and 12 conformal-tank bombs on the F-15 airframe.</li>
-      <li>Switchable &gt;MSL / &gt;BOMB modes (R / 1 / 2) with live CCIP bomb fall line and impact pipper.</li>
+      <li>Switchable &gt;MSL / &gt;UGB modes (R / 1 / 2) with live CCIP bomb fall line and impact pipper.</li>
       <li>Water geysers, ground fireballs, shockwave rings and falling-bomb whistle audio.</li>
       <li>Magnesium flare + chaff salvos (X / G) that break RWR locks and decoy inbound missiles.</li>
     </ul>
@@ -286,16 +286,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s19a';
-import { createHUD } from './src/hud.js?v=s19a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s19a';
-import { createCombat } from './src/combat.js?v=s19a';
-import { createEjection } from './src/eject.js?v=s19a';
-import { createAudio } from './src/audio.js?v=s19a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s19a';
-import { createCanopyFX } from './src/canopy.js?v=s19a';
-import { createNVG } from './src/nvg.js?v=s19a';
-import { createWorld, WORLD } from './src/world.js?v=s19a';
+import { createVFX } from './src/vfx.js?v=s19b';
+import { createHUD } from './src/hud.js?v=s19b';
+import { createCockpit3D } from './src/cockpit3d.js?v=s19b';
+import { createCombat } from './src/combat.js?v=s19b';
+import { createEjection } from './src/eject.js?v=s19b';
+import { createAudio } from './src/audio.js?v=s19b';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s19b';
+import { createCanopyFX } from './src/canopy.js?v=s19b';
+import { createNVG } from './src/nvg.js?v=s19b';
+import { createWorld, WORLD } from './src/world.js?v=s19b';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
