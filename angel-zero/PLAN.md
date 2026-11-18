@@ -115,11 +115,37 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       page console errors. Render cost 2.5 ms/frame (137 draw calls) after
       cloud instancing; HUD 0.8 ms chase / 2.5 ms cockpit on the dev machine.
 
+## 3D first-person cockpit + combiner HUD (2026-11-18)
+- [x] `src/cockpit3d.js`: cockpit rig locked to the eye point with a sculpted
+      canopy bow (hex bolt heads), sills, glare shield, angled pedestal with
+      physical LOCK/GS/DCLT/BARO/FLIR buttons (lit by live state), side panels,
+      curved MeshPhysical combiner glass on twin struts; sun shadow map follows
+      the cockpit (cockpit view only).
+- [x] Camera rides inside the rig: +/-6 deg look-into-turn yaw, roll lag and G
+      slump on springs, plus AB / G / transonic vibration.
+- [x] Live CanvasTexture screens: UFC (STPT / TIME / fault status), twin NL+EGT
+      dials with RPM, slanted standby ADI, stores MFD (stations, MASS LIVE,
+      CHAFF/FLARE/DECOY show `--` until those systems exist). Screens repaint
+      only when values change; CPU-backed canvases avoid slow GPU readback.
+- [x] HUD in cockpit view: conformal ladder (5 deg steps), horizon cardinals,
+      compass with heading box, A/B tag, SPEED tape with 5 s NEXT trend caret,
+      ALT tape, W boresight, FPV, all clipped to the projected combiner glass.
+- [x] Corner clusters: TIME/SCORE/TARGET + ALPHA/BRAVO bars; square heading-up
+      radar (rings, orbiting N/E/S/W, FOV cone, topo, contacts); ALPHA 1 status
+      (GUN, >MSL, optional special/FLR lines, DMG, silhouette with missile
+      rails, G).
+- [x] `hud.hudAlertState` (`NORMAL` / `MISSILE_ALERT`): automatic from inbound
+      missiles, or `hud.setAlertState()`; flashes radar border, combiner ladder
+      and a MISSILE ALERT banner red. `combat.deaths` feeds the BRAVO bar.
+- [x] Verified: Space toggles cockpit both ways, alert flashes and clears,
+      zero page console errors headless; cockpit frame ~7 ms on RTX 4060.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
 (fast-forwards the sim before the first frame); `?alt=metres`; `?spd=m/s`;
-`?force=cone,vapor,mist` (holds transient VFX on for stills). Flags other than
+`?force=cone,vapor,mist` (holds transient VFX on for stills); `?alert` (forces
+MISSILE_ALERT). Flags other than
 `nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
 ## Next (future)

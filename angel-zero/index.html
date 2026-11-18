@@ -82,6 +82,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createVFX } from './src/vfx.js';
 import { createHUD } from './src/hud.js';
+import { createCockpit3D } from './src/cockpit3d.js';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -401,16 +402,17 @@ const cockpitHidden = [];          // interior meshes hidden in first-person
 const WINGTIP_L = new THREE.Vector3(-6.6, -0.5, 3.0);
 const WINGTIP_R = new THREE.Vector3(6.6, -0.5, 3.0);
 const EYE = new THREE.Vector3(0, 0.42, -4.75);
-const COCKPIT_PITCH = THREE.MathUtils.degToRad(-7);
 
 // First-person clip volume (jet-local box) that cuts the airframe's own
 // windscreen bow out of the pilot's view; the 2D canopy frame replaces it.
 // Points inside the box are on the negative side of all six planes, so
 // clipIntersection removes exactly that volume and nothing else.
+// The box ends just in front of the 3D glare shield (z -5.7), so the nose ahead stays intact
+// while the airframe's own windscreen bow and canopy sills beside the pilot are removed.
 const COCKPIT_CLIP_LOCAL = [
-  new THREE.Plane(new THREE.Vector3(1, 0, 0), -0.85), new THREE.Plane(new THREE.Vector3(-1, 0, 0), -0.85),
-  new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.4), new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.25),
-  new THREE.Plane(new THREE.Vector3(0, 0, 1), 2.8), new THREE.Plane(new THREE.Vector3(0, 0, -1), -6.7)
+  new THREE.Plane(new THREE.Vector3(1, 0, 0), -1.2), new THREE.Plane(new THREE.Vector3(-1, 0, 0), -1.2),
+  new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.4), new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.05),
+  new THREE.Plane(new THREE.Vector3(0, 0, 1), 2.8), new THREE.Plane(new THREE.Vector3(0, 0, -1), -5.7)
 ];
 const cockpitClip = COCKPIT_CLIP_LOCAL.map(p => p.clone());
 function updateCockpitClip() { cockpitClip.forEach((p, i) => p.copy(COCKPIT_CLIP_LOCAL[i]).applyMatrix4(jet.matrixWorld)); }
@@ -603,6 +605,7 @@ function updateLock() {
 
 function killPlayer() {
   combat.health = 0; combat.dead = true; combat.deadTimer = 4;
+  combat.deaths = (combat.deaths || 0) + 1;
   spawnExplosion(state.position, 2.6);
   jet.visible = false;
 }
@@ -733,6 +736,7 @@ function setView(fp) {
   camera.updateProjectionMatrix();
   for (const m of cockpitHidden) m.visible = !fp;
   renderer.localClippingEnabled = fp;
+  cockpit.setActive(fp);
   if (!fp) { camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position); camVelocity.set(0, 0, 0); prevPlanePos.copy(state.position); }
 }
 
@@ -874,11 +878,8 @@ function updateCameraAndVisuals(dt, now) {
 
   if (firstPerson) {
     updateCockpitClip();
-    camera.position.copy(EYE).applyQuaternion(q).add(state.position);
-    camera.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(AX_X, COCKPIT_PITCH));
-    const buffet = THREE.MathUtils.smoothstep(state.gLoad, 5, 9) * 0.004 + state.afterburner * 0.0015
-      + THREE.MathUtils.smoothstep(state.mach, 0.92, 1.05) * 0.0012;
-    if (buffet > 0) camera.rotateX((Math.random() - 0.5) * buffet).rotateY((Math.random() - 0.5) * buffet);
+    // 3D cockpit rig at the eye point; it owns the camera (head-turn lag, G slump, vibration).
+    cockpit.update(dt, now, EYE.clone().applyQuaternion(q).add(state.position), q);
   } else {
     // Spring-damped chase camera: translation tracked rigidly, offset lags in turns.
     camera.position.add(state.position.clone().sub(prevPlanePos));
@@ -919,13 +920,17 @@ function updateCameraAndVisuals(dt, now) {
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
+const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat });
 const hud = createHUD(THREE, {
   canvas: document.getElementById('hud'), state, combat, camera, missiles, mouse, EYE, STALL_AOA,
-  sunAzimuth: SUN_AZIMUTH,
+  sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE },
   getEnemies: () => enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
-  isReady: () => modelReady, getMist: () => vfx.mist
+  isReady: () => modelReady, getMist: () => vfx.mist,
+  getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
+  missionClock: () => cockpit.missionClock(simTime)
 });
+if (DEBUG && Q.has('alert')) hud.setAlertState('MISSILE_ALERT');
 
 /* ============================================================================
    9. GLTF LOAD
@@ -1039,7 +1044,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, mouse, keys, vfx, hud, perf, jet, cockpitHidden, terrainHeight, setView,
+  window.__az = { scene, camera, renderer, state, combat, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
     get enemies() { return enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
 resetAircraft();

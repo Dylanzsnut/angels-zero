@@ -19,8 +19,6 @@ export function createHUD(THREE, A) {
   let maxG = 1;
   const inertia = { x: 0, y: 0, vx: 0, vy: 0 };
   const fpvDir = new THREE.Vector3(0, 0, -1);
-  const eng = { rpmL: 65, rpmR: 65, egtL: 400, egtR: 400 };
-  const fcs = { stabL: 0, stabR: 0, ailL: 0, ailR: 0, rud: 0 };
 
   function resize() {
     DPR = Math.min(devicePixelRatio || 1, 3);
@@ -40,14 +38,7 @@ export function createHUD(THREE, A) {
   function pxPerDeg() { return focal() * Math.tan(D2R); }
   const wrap180 = a => ((a % 360) + 540) % 360 - 180;
 
-  function layout(fp) {
-    if (fp) {
-      const consoleTop = HH * 0.70;
-      const half = Math.min(HW * 0.25, 360);
-      return { cx: HW / 2, cy: HH * 0.40, boxW: Math.min(HW * 0.34, 520), boxH: HH * 0.46, consoleTop,
-        tapeL: HW / 2 - half, tapeR: HW / 2 + half, tapeTop: HH * 0.17, tapeBot: consoleTop - 132,
-        compassY: HH * 0.105, compassW: Math.min(HW * 0.36, 460), blockY: consoleTop - 80 };
-    }
+  function layout() {                                // chase-view HUD layout
     return { cx: HW / 2, cy: HH / 2, boxW: Math.min(HW * 0.44, 600), boxH: HH * 0.56,
       tapeL: HW * 0.17, tapeR: HW * 0.83, tapeTop: HH * 0.22, tapeBot: HH * 0.70,
       compassY: 40, compassW: Math.min(HW * 0.44, 520), blockY: HH * 0.70 + 54 };
@@ -64,17 +55,6 @@ export function createHUD(THREE, A) {
     inertia.x = clamp(inertia.x + inertia.vx * dt, -12, 12);
     inertia.y = clamp(inertia.y + inertia.vy * dt, -12, 12);
     if (!C.dead) maxG = Math.max(maxG, S.gLoad);
-    const spool = Math.min(1, dt * 1.6);
-    const rpmT = 65 + 30 * S.throttle + 6 * S.afterburner, egtT = 390 + 420 * S.throttle + 175 * S.afterburner;
-    eng.rpmL += (rpmT - eng.rpmL) * spool; eng.rpmR += (rpmT * 0.995 - eng.rpmR) * spool * 0.93;
-    eng.egtL += (egtT - eng.egtL) * spool * 0.8; eng.egtR += (egtT + 6 - eng.egtR) * spool * 0.75;
-    const act = Math.min(1, dt * 9);
-    const stab = clamp(-S.pitchRate * 16, -25, 15), diff = clamp(S.rollRate * 3.5, -10, 10);
-    fcs.stabL += (clamp(stab + diff, -29, 15) - fcs.stabL) * act;
-    fcs.stabR += (clamp(stab - diff, -29, 15) - fcs.stabR) * act;
-    fcs.ailL += (clamp(S.rollRate * 7, -20, 20) - fcs.ailL) * act;
-    fcs.ailR += (clamp(-S.rollRate * 7, -20, 20) - fcs.ailR) * act;
-    fcs.rud += (clamp(S.yawRate * 60, -30, 30) - fcs.rud) * act;
   }
   function shake() {
     const k = S.afterburner * (0.6 + 0.8 * smooth(S.mach, 0.8, 1.2));
@@ -330,7 +310,7 @@ export function createHUD(THREE, A) {
 
   /* -------------------------------------------------------------- MFDs */
   function makeMFD() { const c = document.createElement('canvas'); return { c, ctx: c.getContext('2d'), size: 0, dpr: 0 }; }
-  const mfdRadar = makeMFD(), mfdADI = makeMFD(), mfdTel = makeMFD();
+  const mfdRadar = makeMFD();
   function sizeMFD(m, s) {
     if (m.size === s && m.dpr === DPR) return;
     m.size = s; m.dpr = DPR;
@@ -452,233 +432,286 @@ export function createHUD(THREE, A) {
     ctx.restore();
   }
 
-  function drawADIMFD(ctx, s) {
-    const fs = mfdFrame(ctx, s, 'ADI', OSB.adi);
-    const cx = s / 2, cy = s * 0.53, R = s * 0.32, ppd = R / 30;
-    const pitchDeg = S.pitch * R2D;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
-    ctx.translate(cx, cy); ctx.rotate(S.bank);
-    noGlow(ctx);
-    const hy = pitchDeg * ppd;
-    const sky = ctx.createLinearGradient(0, hy - R * 2, 0, hy); sky.addColorStop(0, '#0a3d8f'); sky.addColorStop(1, '#4aa3ff');
-    ctx.fillStyle = sky; ctx.fillRect(-R * 2, hy - R * 4, R * 4, R * 4);
-    const gnd = ctx.createLinearGradient(0, hy, 0, hy + R * 2); gnd.addColorStop(0, '#9a5a1e'); gnd.addColorStop(1, '#3b1e06');
-    ctx.fillStyle = gnd; ctx.fillRect(-R * 2, hy, R * 4, R * 4);
-    ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-R * 2, hy); ctx.lineTo(R * 2, hy); ctx.stroke();
-    ctx.lineWidth = LW; ctx.font = f(fs); ctx.textBaseline = 'middle';
-    for (let m = -80; m <= 80; m += 5) {
-      if (m === 0) continue;
-      const y = hy - m * ppd; if (Math.abs(y) > R) continue;
-      const w = m % 10 === 0 ? R * 0.30 : R * 0.13;
-      ctx.beginPath(); ctx.moveTo(-w, y); ctx.lineTo(w, y); ctx.stroke();
-      if (m % 10 === 0) { ctx.textAlign = 'left'; ctx.fillText(String(Math.abs(m)), w + 3, y); ctx.textAlign = 'right'; ctx.fillText(String(Math.abs(m)), -w - 3, y); }
-    }
-    ctx.restore();
-    ctx.save();
-    glow(ctx, G, 2); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-    // Bank-angle scale with labelled 30/60 marks.
-    ctx.lineWidth = LW; ctx.font = f(fs); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
-      const r = a * D2R - Math.PI / 2, l = a % 30 === 0 ? 11 : 6;
-      ctx.beginPath(); ctx.moveTo(cx + Math.cos(r) * R, cy + Math.sin(r) * R); ctx.lineTo(cx + Math.cos(r) * (R + l), cy + Math.sin(r) * (R + l)); ctx.stroke();
-      if (a !== 0 && Math.abs(a) % 30 === 0) ctx.fillText(String(Math.abs(a)), cx + Math.cos(r) * (R + l + fs * 0.8), cy + Math.sin(r) * (R + l + fs * 0.8));
-    }
-    const pr = S.bank - Math.PI / 2;
-    ctx.save(); ctx.translate(cx + Math.cos(pr) * (R - 2), cy + Math.sin(pr) * (R - 2)); ctx.rotate(S.bank);
-    glow(ctx, AMBER, 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-6, 11); ctx.lineTo(6, 11); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    glow(ctx, AMBER, 3); ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(cx - R * 0.55, cy); ctx.lineTo(cx - R * 0.18, cy); ctx.lineTo(cx - R * 0.09, cy + R * 0.09);
-    ctx.moveTo(cx + R * 0.55, cy); ctx.lineTo(cx + R * 0.18, cy); ctx.lineTo(cx + R * 0.09, cy + R * 0.09); ctx.stroke();
-    ctx.fillRect(cx - 2.5, cy - 2.5, 5, 5);
-    glow(ctx, G, 1); ctx.font = f(fs); ctx.textBaseline = 'bottom';
-    ctx.textAlign = 'left'; ctx.fillText('P ' + (pitchDeg >= 0 ? '+' : '') + pitchDeg.toFixed(0), s * 0.04, s * 0.90);
-    ctx.textAlign = 'right'; ctx.fillText('BANK ' + Math.abs(S.bank * R2D).toFixed(0) + (S.bank < -0.01 ? 'R' : S.bank > 0.01 ? 'L' : ''), s * 0.96, s * 0.90);
-    ctx.textBaseline = 'top';
-    ctx.fillText('VS ' + Math.round(S.velocity.y * 196.85), s * 0.96, s * 0.10);
-    ctx.restore();
-  }
-
   const PLANFORM = [[0, -1], [0.05, -0.86], [0.09, -0.62], [0.11, -0.42], [0.20, -0.30], [0.21, -0.08], [0.93, 0.30], [0.93, 0.40],
     [0.30, 0.42], [0.27, 0.56], [0.60, 0.78], [0.60, 0.90], [0.20, 0.88], [0.17, 1.0], [0.04, 1.0]];
-  function gauge(ctx, x, y, r, v, vmin, vmax, label, txt, warn, fs) {
-    const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
-    const t = clamp((v - vmin) / (vmax - vmin), 0, 1);
-    glow(ctx, GD, 0); ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(x, y, r, a0, a1); ctx.stroke();
-    glow(ctx, warn ? AMBER : G, 4);
-    ctx.beginPath(); ctx.arc(x, y, r, a0, a0 + (a1 - a0) * t); ctx.stroke();
-    ctx.lineWidth = LW;
-    const an = a0 + (a1 - a0) * t;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(an) * r * 0.85, y + Math.sin(an) * r * 0.85); ctx.stroke();
-    ctx.font = f(fs); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(txt, x, y + r * 0.45);
-    glow(ctx, G, 1); ctx.textBaseline = 'bottom';
-    ctx.fillText(label, x, y - r - 2);
-  }
-  function drawTelemetryMFD(ctx, s) {
-    const fs = mfdFrame(ctx, s, 'FCS / ENG', OSB.tel);
-    const cx = s * 0.27, cy = s * 0.50, sc = s * 0.24;
-    const hull = C.health, col = hull > 60 ? CYAN : hull > 30 ? AMBER : WARN;
-    ctx.save();
-    glow(ctx, col, 5); ctx.lineWidth = LW;
-    ctx.beginPath();
-    PLANFORM.forEach(([x, y], i) => i ? ctx.lineTo(cx + x * sc, cy + y * sc) : ctx.moveTo(cx + x * sc, cy + y * sc));
-    for (let i = PLANFORM.length - 1; i >= 0; i--) ctx.lineTo(cx - PLANFORM[i][0] * sc, cy + PLANFORM[i][1] * sc);
-    ctx.closePath(); ctx.stroke();
-    // Control-surface deflection needles (exaggerated x3 for legibility).
-    const surf = (hx, hy, len, deg, dirSign) => {
-      const a = deg * 3 * D2R * dirSign;
-      glow(ctx, Math.abs(deg) > 0.5 ? GB : GD, 3);
-      ctx.beginPath(); ctx.moveTo(cx + hx * sc, cy + hy * sc);
-      ctx.lineTo(cx + hx * sc + Math.sin(a) * len, cy + hy * sc + Math.cos(a) * len); ctx.stroke();
-    };
-    surf(-0.42, 0.88, s * 0.06, fcs.stabL, 1); surf(0.42, 0.88, s * 0.06, fcs.stabR, -1);
-    surf(-0.74, 0.41, s * 0.045, fcs.ailL, 1); surf(0.74, 0.41, s * 0.045, fcs.ailR, -1);
-    glow(ctx, Math.abs(fcs.rud) > 0.5 ? GB : GD, 3);
-    for (const sx of [-0.2, 0.2]) {
-      const a = fcs.rud * 3 * D2R;
-      ctx.beginPath(); ctx.moveTo(cx + sx * sc, cy + 0.66 * sc); ctx.lineTo(cx + sx * sc + Math.sin(a) * s * 0.07, cy + 0.66 * sc + Math.cos(a) * s * 0.07); ctx.stroke();
+  /* ------------------- cockpit view: combiner HUD + screen-space clusters */
+  let alertState = 'NORMAL', alertOverride = null;
+  const HG = '#5cff9d';
+  const alertOn = () => alertState === 'MISSILE_ALERT';
+  const flashRed = () => alertOn() && Math.floor(performance.now() / 170) % 2 === 0;
+  let spdPrev = null, spdAcc = 0;
+
+  function combinerPath() {
+    const pts = A.getCombinerOutline && A.getCombinerOutline();
+    if (!pts || !pts.length) return null;
+    const path = new Path2D();
+    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (let i = 0; i < pts.length; i++) {
+      const s = toScreen(pts[i]);
+      if (!s.ok) return null;
+      if (i) path.lineTo(s.x, s.y); else path.moveTo(s.x, s.y);
+      minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x); minY = Math.min(minY, s.y); maxY = Math.max(maxY, s.y);
     }
-    glow(ctx, G, 1); ctx.font = f(fs); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sg = v => (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(1);
-    ctx.fillText('STAB ' + sg(fcs.stabL) + ' ' + sg(fcs.stabR), s * 0.04, s * 0.17);
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('AIL ' + sg(fcs.ailL) + '  RUD ' + sg(fcs.rud), s * 0.04, s * 0.90);
-    // Dual engine RPM / EGT gauges.
-    const gr = s * 0.075, gx1 = s * 0.64, gx2 = s * 0.85, gy1 = s * 0.37, gy2 = s * 0.67;
-    gauge(ctx, gx1, gy1, gr, eng.rpmL, 0, 110, 'RPM L', eng.rpmL.toFixed(0) + '%', S.afterburner > 0.3, fs);
-    gauge(ctx, gx2, gy1, gr, eng.rpmR, 0, 110, 'RPM R', eng.rpmR.toFixed(0) + '%', S.afterburner > 0.3, fs);
-    gauge(ctx, gx1, gy2, gr, eng.egtL, 0, 1100, 'EGT L', eng.egtL.toFixed(0), eng.egtL > 900, fs);
-    gauge(ctx, gx2, gy2, gr, eng.egtR, 0, 1100, 'EGT R', eng.egtR.toFixed(0), eng.egtR > 900, fs);
-    glow(ctx, G, 1); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('HULL ' + Math.round(hull) + '%', s * 0.96, s * 0.90);
-    if (S.afterburner > 0.3) { glow(ctx, AMBER, 4); ctx.textBaseline = 'top'; ctx.fillText('AB', s * 0.96, s * 0.17); }
-    ctx.restore();
+    path.closePath();
+    return { path, minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, boxW: maxX - minX, boxH: maxY - minY };
+  }
+  function camBank() {
+    const r = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion), u = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+    return Math.atan2(r.y, u.y);
   }
 
-  /* ---------------------------------------------------- cockpit frame */
-  const carbon = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 8;
-    const x = c.getContext('2d');
-    x.fillStyle = '#101418'; x.fillRect(0, 0, 8, 8);
-    x.fillStyle = '#1b2228'; x.fillRect(0, 0, 4, 4); x.fillRect(4, 4, 4, 4);
-    x.fillStyle = 'rgba(255,255,255,0.05)'; x.fillRect(0, 0, 4, 1); x.fillRect(4, 4, 4, 1);
-    return c;
-  })();
-  let carbonPattern = null;
-  function metal(ctx, x0, y0, x1, y1, stops) { const g = ctx.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
-  function fillCarbon(ctx, path, grad) {
-    ctx.fillStyle = grad; ctx.fill(path);
-    if (!carbonPattern) carbonPattern = ctx.createPattern(carbon, 'repeat');
-    ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = carbonPattern; ctx.fill(path); ctx.restore();
-  }
-  function rim(ctx, path, alpha = 0.5) {
-    ctx.save();
-    ctx.strokeStyle = `rgba(200,220,236,${alpha * 0.25})`; ctx.lineWidth = 4; ctx.stroke(path);
-    ctx.strokeStyle = `rgba(215,230,242,${alpha})`; ctx.lineWidth = 1.2; ctx.stroke(path);
-    ctx.restore();
-  }
-
-  function drawGlassEffects(ctx, mist) {
-    // Glass sheen: faint diagonal reflections that slide as the sun moves around the jet.
-    const sunRel = wrap180(A.sunAzimuth - S.heading);
-    const sx = HW * (0.5 + 0.45 * Math.sin(sunRel * D2R));
-    ctx.save(); noGlow(ctx);
-    const g = ctx.createLinearGradient(sx - HW * 0.25, 0, sx + HW * 0.1, HH * 0.7);
-    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.45, 'rgba(225,238,255,0.045)');
-    g.addColorStop(0.5, 'rgba(235,245,255,0.075)'); g.addColorStop(0.56, 'rgba(225,238,255,0.03)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, HW, HH * 0.75);
-    if (mist > 0.01) {
-      // Cloud fly-through: misted, tinted canopy with heavier condensation at the edges.
-      ctx.fillStyle = `rgba(226,233,240,${0.42 * mist})`; ctx.fillRect(0, 0, HW, HH);
-      const r = ctx.createRadialGradient(HW / 2, HH * 0.42, HH * 0.15, HW / 2, HH * 0.42, HW * 0.65);
-      r.addColorStop(0, 'rgba(255,255,255,0)'); r.addColorStop(1, `rgba(245,248,252,${0.55 * mist})`);
-      ctx.fillStyle = r; ctx.fillRect(0, 0, HW, HH);
-    }
-    ctx.restore();
-  }
-
-  function drawCockpit(ctx, ox, oy) {
-    const W = HW, H = HH, M = 24;                       // M: bleed so inertia shifts never expose edges
-    const top = H * 0.70;
-    ctx.save(); ctx.translate(ox, oy); noGlow(ctx);
-    // Canopy bow.
-    const bow = new Path2D();
-    bow.moveTo(-M, -M); bow.lineTo(W + M, -M); bow.lineTo(W + M, H * 0.075); bow.quadraticCurveTo(W / 2, H * 0.0, -M, H * 0.075); bow.closePath();
-    fillCarbon(ctx, bow, metal(ctx, 0, 0, 0, H * 0.1, [[0, '#05070a'], [0.6, '#1a2127'], [1, '#2b333a']]));
-    const bowEdge = new Path2D(); bowEdge.moveTo(W + M, H * 0.075); bowEdge.quadraticCurveTo(W / 2, H * 0.0, -M, H * 0.075);
-    rim(ctx, bowEdge, 0.45);
-    // Windscreen pillars and canopy side rails.
-    for (const sgn of [-1, 1]) {
-      const X = x => sgn < 0 ? x : W - x;
-      const pillar = new Path2D();
-      pillar.moveTo(X(W * 0.155), top + 4); pillar.lineTo(X(W * 0.205), top + 4); pillar.lineTo(X(W * 0.085), H * 0.04); pillar.lineTo(X(W * 0.035), H * 0.06); pillar.closePath();
-      fillCarbon(ctx, pillar, metal(ctx, X(0), 0, X(W * 0.2), 0, [[0, '#06080a'], [0.55, '#222a31'], [1, '#11151a']]));
-      const pe = new Path2D(); pe.moveTo(X(W * 0.205), top + 4); pe.lineTo(X(W * 0.085), H * 0.04);
-      rim(ctx, pe, 0.38);
-      const rail = new Path2D();
-      rail.moveTo(X(-M), H * 0.40); rail.lineTo(X(W * 0.05), H * 0.56); rail.lineTo(X(W * 0.12), H + M); rail.lineTo(X(-M), H + M); rail.closePath();
-      fillCarbon(ctx, rail, metal(ctx, X(0), H * 0.5, X(W * 0.12), H * 0.5, [[0, '#040506'], [1, '#1a2026']]));
-      const re = new Path2D(); re.moveTo(X(-M), H * 0.40); re.lineTo(X(W * 0.05), H * 0.56); re.lineTo(X(W * 0.12), H + M);
-      rim(ctx, re, 0.30);
-    }
-    // Glare shield + angled instrument console.
-    const shield = new Path2D();
-    shield.moveTo(-M, H * 0.83); shield.quadraticCurveTo(W * 0.06, top + 6, W * 0.17, top);
-    shield.quadraticCurveTo(W / 2, top - H * 0.035, W * 0.83, top);
-    shield.quadraticCurveTo(W * 0.94, top + 6, W + M, H * 0.83);
-    shield.lineTo(W + M, H + M); shield.lineTo(-M, H + M); shield.closePath();
-    fillCarbon(ctx, shield, metal(ctx, 0, top - 10, 0, H, [[0, '#2e363e'], [0.06, '#10151a'], [0.4, '#192026'], [1, '#06080a']]));
-    const lip = new Path2D(); lip.moveTo(W * 0.17, top); lip.quadraticCurveTo(W / 2, top - H * 0.035, W * 0.83, top);
-    rim(ctx, lip, 0.6);
-    // Rivets along the glare-shield lip (quadratic curve sampled).
-    for (let i = 0; i <= 40; i++) {
-      const t = i / 40, it = 1 - t;
-      const x = it * it * W * 0.17 + 2 * it * t * W / 2 + t * t * W * 0.83;
-      const y = it * it * top + 2 * it * t * (top - H * 0.035) + t * t * top + 7;
-      ctx.fillStyle = '#0a0d10'; ctx.beginPath(); ctx.arc(x, y, 1.9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(190,210,228,0.55)'; ctx.beginPath(); ctx.arc(x - 0.5, y - 0.6, 0.8, 0, Math.PI * 2); ctx.fill();
-    }
-    // Recessed MFD bay.
-    ctx.fillStyle = 'rgba(0,0,0,0.38)';
-    ctx.beginPath(); ctx.moveTo(W * 0.14, H + M); ctx.lineTo(W * 0.20, top + H * 0.03); ctx.lineTo(W * 0.80, top + H * 0.03); ctx.lineTo(W * 0.86, H + M); ctx.closePath(); ctx.fill();
-
-    // Three live MFDs with bezels and push-buttons matching the OSB labels.
-    const s = Math.floor(Math.min(W * 0.18, H * 0.235));
-    const gap = s * 0.22;
-    const y = top + H * 0.03 + (H - top - H * 0.03 - s) * 0.45;
-    const xs = [W / 2 - s * 1.5 - gap, W / 2 - s / 2, W / 2 + s / 2 + gap];
-    const set = [[mfdRadar, (c, z) => drawRadarMFD(c, z, false)], [mfdADI, drawADIMFD], [mfdTel, drawTelemetryMFD]];
-    set.forEach(([m, fn], i) => {
-      sizeMFD(m, s);
-      m.ctx.setTransform(m.dpr, 0, 0, m.dpr, 0, 0); m.ctx.clearRect(0, 0, s, s); fn(m.ctx, s);
-      const x = xs[i], b = Math.max(10, s * 0.08);
-      ctx.save(); noGlow(ctx);
-      ctx.fillStyle = metal(ctx, x - b, y - b, x - b, y + s + b, [[0, '#2c343b'], [0.5, '#161b20'], [1, '#090b0e']]);
-      roundRect(ctx, x - b, y - b, s + 2 * b, s + 2 * b, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(205,222,236,0.35)'; ctx.lineWidth = 1; roundRect(ctx, x - b + 0.5, y - b + 0.5, s + 2 * b - 1, s + 2 * b - 1, 7); ctx.stroke();
-      for (let k = 0; k < 5; k++) {
-        const t = (k + 0.5) / 5;
-        for (const [bx, by, bw, bh] of [[x + s * t - 6, y - b + 2, 12, b - 5], [x + s * t - 6, y + s + 3, 12, b - 5]]) {
-          ctx.fillStyle = metal(ctx, bx, by, bx, by + bh, [[0, '#4a545d'], [1, '#262c32']]); ctx.fillRect(bx, by, bw, bh);
-          ctx.fillStyle = 'rgba(230,240,248,0.25)'; ctx.fillRect(bx, by, bw, 1);
+  function drawCombinerLadder(ctx, g, col) {
+    // Conformal: each bar is projected from its true direction, so head-turn offsets keep it on the real horizon.
+    const h = S.heading * D2R, eye = cam.position, bank = camBank(), fl = focal();
+    const dir = new THREE.Vector3();
+    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(12); ctx.textBaseline = 'middle';
+    for (let m = -85; m <= 85; m += 5) {
+      const e = m * D2R;
+      dir.set(Math.sin(h) * Math.cos(e), Math.sin(e), -Math.cos(h) * Math.cos(e));
+      const p = toScreen(eye.clone().addScaledVector(dir, 5000));
+      if (!p.ok || p.y < g.minY - 60 || p.y > g.maxY + 60) continue;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(bank);
+      if (m === 0) {
+        const w = g.boxW * 0.75;
+        ctx.beginPath(); ctx.moveTo(-w, 0); ctx.lineTo(-26, 0); ctx.moveTo(26, 0); ctx.lineTo(w, 0); ctx.stroke();
+        ctx.font = f(11); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        for (const [deg, lab] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']]) {
+          const az = wrap180(deg - S.heading);
+          if (Math.abs(az) > 60) continue;
+          const x = Math.tan(az * D2R) * fl;
+          if (Math.abs(x) < 30) continue;
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, -7); ctx.stroke();
+          ctx.fillText(lab, x, -9);
         }
-        for (const [bx, by] of [[x - b + 2, y + s * t - 6], [x + s + 3, y + s * t - 6]]) {
-          ctx.fillStyle = metal(ctx, bx, by, bx + b - 5, by, [[0, '#4a545d'], [1, '#262c32']]); ctx.fillRect(bx, by, b - 5, 12);
-        }
+        ctx.restore(); continue;
       }
-      ctx.drawImage(m.c, x, y, s, s);
-      const sheen = ctx.createLinearGradient(x, y, x + s, y + s);
-      sheen.addColorStop(0, 'rgba(255,255,255,0.06)'); sheen.addColorStop(0.35, 'rgba(255,255,255,0)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sheen; ctx.fillRect(x, y, s, s);
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 2; ctx.strokeRect(x, y, s, s);
+      const major = m % 10 === 0, len = major ? 64 : 42, gap = 24, tick = m > 0 ? 7 : -7;
+      ctx.setLineDash(m < 0 ? [7, 5] : []);
+      ctx.beginPath();
+      ctx.moveTo(-gap - len, tick); ctx.lineTo(-gap - len, 0); ctx.lineTo(-gap, 0);
+      ctx.moveTo(gap, 0); ctx.lineTo(gap + len, 0); ctx.lineTo(gap + len, tick);
+      ctx.stroke(); ctx.setLineDash([]);
+      ctx.textAlign = 'right'; ctx.fillText(String(Math.abs(m)), -gap - len - 5, tick * 0.5);
+      ctx.textAlign = 'left'; ctx.fillText(String(Math.abs(m)), gap + len + 5, tick * 0.5);
       ctx.restore();
-    });
+    }
+  }
+
+  function drawCombinerCompass(ctx, g, col) {
+    const cx = g.cx, y = g.minY + 22, w = g.boxW * 0.56, ppd = w / 60;
+    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.save(); ctx.beginPath(); ctx.rect(cx - w / 2, y - 18, w, 30); ctx.clip();
+    const NAMES = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    for (let hd = Math.floor((S.heading - 34) / 5) * 5; hd <= S.heading + 34; hd += 5) {
+      const x = cx + (hd - S.heading) * ppd, n = ((hd % 360) + 360) % 360;
+      const named = NAMES[n] !== undefined;
+      ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y + (n % 15 === 0 || named ? 0 : 4)); ctx.stroke();
+      if (named) ctx.fillText(NAMES[n], x, y - 8);
+      else if (n % 30 === 0) ctx.fillText(String(n / 10).padStart(2, '0'), x, y - 8);
+    }
     ctx.restore();
+    ctx.font = f(13);
+    const t = String(Math.round(S.heading) % 360).padStart(3, '0');
+    backing(ctx, cx - 22, y + 11, 44, 18, BACK_BOX);
+    glow(ctx, col); ctx.strokeRect(cx - 22, y + 11, 44, 18); ctx.fillText(t, cx, y + 21);
+  }
+
+  function drawCombinerTape(ctx, o, col) {
+    const { x, top, bot, value, pxPerUnit, step, side, label, next } = o;
+    const cy = (top + bot) / 2, half = (bot - top) / 2, dir = side === 'left' ? 1 : -1;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x - 44, top, 88, bot - top); ctx.clip();
+    glow(ctx, col); ctx.lineWidth = LW; ctx.font = f(11); ctx.textBaseline = 'middle';
+    ctx.beginPath(); ctx.moveTo(x + dir * 8, top); ctx.lineTo(x + dir * 8, bot); ctx.stroke();
+    const first = Math.floor((value - half / pxPerUnit) / step) * step - step;
+    for (let v = first; v <= value + half / pxPerUnit + step; v += step) {
+      const y = cy - (v - value) * pxPerUnit, major = Math.round(v / step) % 2 === 0;
+      ctx.beginPath(); ctx.moveTo(x + dir * 8, y); ctx.lineTo(x + dir * (8 + (major ? 10 : 5)), y); ctx.stroke();
+      if (major && v >= 0 && Math.abs(y - cy) > 16) { ctx.textAlign = side === 'left' ? 'right' : 'left'; ctx.fillText(String(v), x + dir * 3, y); }
+    }
+    if (next !== undefined) {                       // NEXT caret: where the value will be in 5 s
+      const yn = clamp(cy - (next - value) * pxPerUnit, top + 6, bot - 6);
+      ctx.beginPath(); ctx.moveTo(x + dir * 22, yn); ctx.lineTo(x + dir * 30, yn - 5); ctx.lineTo(x + dir * 30, yn + 5); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    backing(ctx, x - 34, cy - 13, 68, 26, BACK_BOX);
+    glow(ctx, HG); ctx.lineWidth = LW; ctx.strokeRect(x - 34, cy - 13, 68, 26);
+    ctx.font = f(16); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(Math.round(value)), x, cy + 1);
+    glow(ctx, col); ctx.font = f(11);
+    ctx.fillText(label, x, top - 10);
+    if (next !== undefined) { ctx.font = f(10); ctx.fillText('NEXT ' + Math.round(next), x, bot + 10); }
+  }
+
+  function drawCombiner(ctx, g, dt) {
+    const col = flashRed() ? WARN : G;
+    // Speed trend for the NEXT caret (5 s look-ahead).
+    if (spdPrev !== null && dt > 0) spdAcc += (((S.speed - spdPrev) / dt) - spdAcc) * Math.min(1, dt * 2.5);
+    spdPrev = S.speed;
+    ctx.save();
+    ctx.clip(g.path);
+    drawCombinerLadder(ctx, g, col);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const bore = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
+    if (bore.ok) drawBoresight(ctx, bore);
+    drawFPV(ctx, { cx: g.cx, cy: g.cy, boxW: g.boxW - 120, boxH: g.boxH - 60 }, dt);
+    drawCombinerCompass(ctx, g, col);
+    const kts = S.speed * 1.94384;
+    drawCombinerTape(ctx, { x: g.minX + 50, top: g.minY + 62, bot: g.maxY - 30, value: kts, pxPerUnit: 1.3, step: 10, side: 'left',
+      label: 'SPEED', next: kts + spdAcc * 1.94384 * 5 }, col);
+    drawCombinerTape(ctx, { x: g.maxX - 50, top: g.minY + 62, bot: g.maxY - 30, value: S.position.y * 3.28084, pxPerUnit: 0.13, step: 100, side: 'right',
+      label: 'ALT' }, col);
+    if (S.afterburner > 0.3) {
+      backing(ctx, g.minX + 16, g.minY + 12, 40, 18, BACK_BOX);
+      glow(ctx, AMBER); ctx.lineWidth = LW; ctx.strokeRect(g.minX + 16, g.minY + 12, 40, 18);
+      ctx.font = f(12); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('A/B', g.minX + 36, g.minY + 22);
+    }
+    drawTargets(ctx);
+    ctx.restore();
+  }
+
+  function clusterBox(ctx, x, y, w, h) { backing(ctx, x, y, w, h, 'rgba(0, 20, 10, 0.34)'); }
+
+  function drawTopLeft(ctx) {
+    const x = 18, y = 16, w = 236;
+    clusterBox(ctx, x, y, w, 118);
+    ctx.save(); glow(ctx, HG); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = f(16); ctx.fillText('TIME  ' + A.missionClock(), x + 10, y + 8);
+    const score = C.kills * 1000;
+    ctx.fillText('SCORE ' + String(score).padStart(6, '0'), x + 10, y + 30);
+    const alive = A.getEnemies().filter(e => e.alive).length;
+    const tgt = C.lockTarget ? 'LOCK ' + (C.lockTarget.pos.distanceTo(S.position) / 1852).toFixed(1) + 'NM' : alive + ' BANDIT' + (alive === 1 ? '' : 'S');
+    ctx.fillText('TARGET ' + tgt, x + 10, y + 52);
+    // Team bars: ALPHA = our score, BRAVO = what the bandits have scored on us.
+    const alpha = score, bravo = (C.deaths || 0) * 1000 + Math.round((100 - C.health) * 10);
+    const top = Math.max(2000, alpha, bravo);
+    const bw = w - 92;
+    for (const [i, lab, val, colr] of [[0, 'ALPHA', alpha, '#3fa9ff'], [1, 'BRAVO', bravo, '#ff4d4d']]) {
+      const by = y + 80 + i * 18;
+      glow(ctx, colr, 4); ctx.font = f(12); ctx.fillText(lab, x + 10, by - 1);
+      noGlow(ctx); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(x + 62, by + 2, bw, 8);
+      glow(ctx, colr, 6); ctx.fillRect(x + 62, by + 2, bw * val / top, 8);
+    }
+    ctx.restore();
+  }
+
+  function drawSquareRadar(ctx) {
+    const s = Math.round(Math.min(230, HH * 0.32, HW * 0.24)), x0 = 18, y0 = HH - s - 18;
+    const cx = x0 + s / 2, cy = y0 + s * 0.56, half = s / 2;
+    const MAX_M = 20 * 1852, k = (half * 0.92) / MAX_M, hRad = S.heading * D2R;
+    const border = flashRed() ? WARN : G;
+    ctx.save();
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 32, 14, 0.5)'; ctx.fillRect(x0, y0, s, s);
+    ctx.beginPath(); ctx.rect(x0, y0, s, s); ctx.clip();
+    ctx.save();                                      // terrain contours, heading-up
+    ctx.translate(cx, cy); ctx.rotate(-hRad); ctx.scale(k, k); ctx.translate(-S.position.x, -S.position.z);
+    ctx.globalAlpha = 0.4; ctx.drawImage(topo.cv, topo.x0, topo.z0, topo.size, topo.size);
+    ctx.restore();
+    glow(ctx, GD, 0); ctx.lineWidth = 1;
+    for (const fr of [0.25, 0.5, 1.0]) { ctx.beginPath(); ctx.arc(cx, cy, half * 0.92 * fr, 0, Math.PI * 2); ctx.stroke(); }
+    // Forward field-of-view cone.
+    const hf = Math.atan(Math.tan(cam.fov / 2 * D2R) * cam.aspect);
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(-hf) * s, cy - Math.cos(hf) * s); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(hf) * s, cy - Math.cos(hf) * s); ctx.stroke();
+    // Cardinal letters orbit the ring as the jet turns.
+    glow(ctx, HG, 3); ctx.font = f(13); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [deg, lab] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']]) {
+      const a = (deg - S.heading) * D2R, r = half * 0.80;
+      ctx.save(); ctx.translate(cx + Math.sin(a) * r, cy - Math.cos(a) * r); ctx.rotate(a); ctx.fillText(lab, 0, 0); ctx.restore();
+    }
+    const blip = (pos, kind) => {
+      const rx = pos.x - S.position.x, rz = pos.z - S.position.z;
+      const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
+      if (Math.hypot(sx, sy) > MAX_M * 1.1) return;
+      const bx = cx + sx * k, by = cy + sy * k;
+      if (kind === 'msl') { glow(ctx, WARN, 4); ctx.fillRect(bx - 2, by - 2, 4, 4); return; }
+      glow(ctx, kind === 'lock' ? WARN : AMBER, 4);
+      ctx.beginPath(); ctx.moveTo(bx, by - 5); ctx.lineTo(bx + 4.5, by + 4); ctx.lineTo(bx - 4.5, by + 4); ctx.closePath(); ctx.fill();
+      if (kind === 'lock') { ctx.lineWidth = LW; ctx.strokeRect(bx - 8, by - 8, 16, 16); }
+    };
+    for (const e of A.getEnemies()) if (e.alive) blip(e.pos, C.lockTarget === e ? 'lock' : 'bogey');
+    for (const m of A.missiles) if (m.active && m.enemy) blip(m.mesh.position, 'msl');
+    glow(ctx, HG, 6);
+    ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 6, cy + 7); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 6, cy + 7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.save(); glow(ctx, border, flashRed() ? 10 : 4); ctx.lineWidth = 1.5; ctx.strokeRect(x0 + 0.5, y0 + 0.5, s - 1, s - 1);
+    glow(ctx, HG, 2); ctx.font = f(11); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('20NM', x0 + 6, y0 + 5);
+    ctx.restore();
+  }
+
+  function drawBottomRight(ctx) {
+    const w = 252, h = 176, x = HW - w - 18, y = HH - h - 18;
+    clusterBox(ctx, x, y, w, h);
+    ctx.save(); glow(ctx, HG); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = f(18); ctx.fillText(A.callsign, x + 12, y + 8);
+    ctx.font = f(15);
+    const lines = [
+      ['GUN', C.reload > 0 ? '---' : String(C.ammo)],
+      ['>MSL', C.missileReload > 0 ? '---' : String(C.missiles)]
+    ];
+    if (C.special) lines.push(['>' + C.special.name, String(C.special.count)]);
+    if (C.flares !== undefined) lines.push(['FLR', String(C.flares)]);
+    lines.push(['DMG', Math.round(100 - C.health) + '%']);
+    lines.forEach(([k, v], i) => {
+      const yy = y + 36 + i * 21;
+      if (k === 'DMG' && C.health < 60) glow(ctx, WARN); else glow(ctx, HG);
+      ctx.textAlign = 'left'; ctx.fillText(k, x + 12, yy);
+      ctx.textAlign = 'right'; ctx.fillText(v, x + 118, yy);
+    });
+    // Glowing F-15 silhouette flanked by missile-rail status bars.
+    const sx = x + 186, sy = y + 84, sc = 50;
+    const hull = C.health, colr = hull > 60 ? HG : hull > 30 ? AMBER : WARN;
+    glow(ctx, colr, 8); ctx.lineWidth = LW;
+    ctx.beginPath();
+    PLANFORM.forEach(([px, py], i) => i ? ctx.lineTo(sx + px * sc * 0.62, sy + py * sc) : ctx.moveTo(sx + px * sc * 0.62, sy + py * sc));
+    for (let i = PLANFORM.length - 1; i >= 0; i--) ctx.lineTo(sx - PLANFORM[i][0] * sc * 0.62, sy + PLANFORM[i][1] * sc);
+    ctx.closePath(); ctx.globalAlpha = 0.22; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+    const railL = Math.ceil(C.missiles / 2), railR = Math.floor(C.missiles / 2);
+    for (const [rx, n] of [[sx - 52, railL], [sx + 44, railR]]) {
+      for (let k = 0; k < 3; k++) {
+        const ry = sy + 30 - k * 24;
+        const on = k < n && C.missileReload <= 0;
+        glow(ctx, on ? HG : GD, on ? 6 : 0);
+        if (on) ctx.fillRect(rx, ry - 18, 8, 18); else ctx.strokeRect(rx + 0.5, ry - 17.5, 7, 17);
+      }
+    }
+    glow(ctx, S.gLoad > 7.5 ? WARN : HG); ctx.font = f(15); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(S.gLoad.toFixed(1) + 'G', sx - 4, y + h - 24);
+    ctx.restore();
+  }
+
+  function drawCockpitAlerts(ctx, g) {
+    const now = performance.now();
+    const cx = g ? g.cx : HW / 2;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (alertOn() && flashRed()) {
+      const y = (g ? g.minY : HH * 0.3) - 30, w = 220;
+      backing(ctx, cx - w / 2, y - 17, w, 34, 'rgba(60,0,0,0.45)');
+      glow(ctx, WARN, 14); ctx.lineWidth = 2; ctx.strokeRect(cx - w / 2, y - 17, w, 34);
+      ctx.font = f(22); ctx.fillText('MISSILE ALERT', cx, y + 1);
+    }
+    if (g && S.radalt * 3.28084 < 200 && S.velocity.y < -1.5 && !C.dead && Math.floor(now / 125) % 2 === 0) {
+      const y = g.cy + g.boxH * 0.22;
+      backing(ctx, cx - 74, y - 16, 148, 32, 'rgba(40,0,0,0.4)');
+      glow(ctx, WARN, 12); ctx.lineWidth = 2; ctx.strokeRect(cx - 74, y - 16, 148, 32);
+      ctx.font = f(20); ctx.fillText('PULL UP', cx, y + 1);
+    }
+    if (g && S.alpha > A.STALL_AOA && !C.dead) { glow(ctx, WARN, 6); ctx.font = f(15); ctx.fillText('STALL', cx, g.maxY - 14); }
+    if (C.dead) {
+      glow(ctx, WARN, 8); ctx.font = f(30); ctx.fillText('AIRCRAFT DESTROYED', HW / 2, HH * 0.38);
+      ctx.font = f(15); ctx.fillText('RESPAWNING...', HW / 2, HH * 0.38 + 30);
+    }
+    ctx.restore();
+  }
+
+  function drawCockpitHUD(dt) {
+    const g = combinerPath();
+    if (g && !C.dead) drawCombiner(hctx, g, dt);
+    drawTopLeft(hctx);
+    drawSquareRadar(hctx);
+    drawBottomRight(hctx);
+    drawCockpitAlerts(hctx, g);
   }
 
   function drawMiniRadar(ctx) {
@@ -701,19 +734,25 @@ export function createHUD(THREE, A) {
     hctx.clearRect(0, 0, HW, HH);
     if (!A.isReady()) return;
     updateDynamics(dt);
+    // hudAlertState: NORMAL (green) / MISSILE_ALERT (red). Driven by inbound missiles, or forced via setAlertState().
+    alertState = alertOverride || (C.missileWarning > 0 && !C.dead ? 'MISSILE_ALERT' : 'NORMAL');
     const fp = A.isFirstPerson();
     const mist = A.getMist();
+    if (mist > 0.01) {                               // cloud fly-through mists the canopy / lens
+      hctx.fillStyle = `rgba(228,235,242,${(fp ? 0.42 : 0.5) * mist})`; hctx.fillRect(0, 0, HW, HH);
+      if (fp) {
+        const r = hctx.createRadialGradient(HW / 2, HH * 0.42, HH * 0.15, HW / 2, HH * 0.42, HW * 0.65);
+        r.addColorStop(0, 'rgba(255,255,255,0)'); r.addColorStop(1, `rgba(245,248,252,${0.5 * mist})`);
+        hctx.fillStyle = r; hctx.fillRect(0, 0, HW, HH);
+      }
+    }
+    if (fp) { drawCockpitHUD(dt); if (!A.isModal()) drawStickCue(hctx); return; }
+    drawMiniRadar(hctx);
     const sh = shake();
     const ox = clamp(inertia.x + sh.x, -12, 12), oy = clamp(inertia.y + sh.y, -12, 12);
-    if (fp) { drawGlassEffects(hctx, mist); drawCockpit(hctx, ox * 0.8, oy * 0.8); }
-    else {
-      if (mist > 0.01) { hctx.fillStyle = `rgba(228,235,242,${0.5 * mist})`; hctx.fillRect(0, 0, HW, HH); }
-      drawMiniRadar(hctx);
-    }
-    const L = layout(fp);
+    const L = layout(false);
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
-    const origin = fp ? A.EYE.clone().applyQuaternion(S.quaternion).add(S.position) : S.position.clone();
-    let bore = toScreen(origin.addScaledVector(fwd, 5000));
+    let bore = toScreen(S.position.clone().addScaledVector(fwd, 5000));
     if (!bore.ok) bore = { x: L.cx, y: L.cy, ok: true };
     hctx.save();
     hctx.translate(ox, oy);
@@ -736,5 +775,11 @@ export function createHUD(THREE, A) {
     if (!A.isModal()) drawStickCue(hctx);
   }
 
-  return { draw, resize, resetMaxG() { maxG = 1; }, get inertia() { return { x: inertia.x, y: inertia.y }; } };
+  return {
+    draw, resize, resetMaxG() { maxG = 1; },
+    get inertia() { return { x: inertia.x, y: inertia.y }; },
+    get hudAlertState() { return alertState; },
+    // Force 'NORMAL' / 'MISSILE_ALERT' from combat code; pass null to return to automatic.
+    setAlertState(s) { alertOverride = s; }
+  };
 }

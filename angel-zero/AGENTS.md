@@ -27,7 +27,11 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   GLB loading (Three.js via CDN import map).
 - `src/vfx.js` — `createVFX`: afterburners, contrails, wing vapor, speed lines,
   Mach cone, sea spray, instanced cloud layer + canopy mist factor.
-- `src/hud.js` — `createHUD`: 2D HUD, cockpit frame, radar / ADI / telemetry MFDs.
+- `src/hud.js` — `createHUD`: chase HUD; in cockpit view the combiner-clipped
+  HUD, corner clusters and `hudAlertState` / `setAlertState()`.
+- `src/cockpit3d.js` — `createCockpit3D`: 3D cockpit rig (owns the cockpit
+  camera pose), combiner glass outline, live CanvasTexture panel screens, sun
+  shadows in cockpit view.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
 
 ## Conventions
@@ -41,6 +45,11 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
   strokes, backing `rgba(0,20,10,0.25)`, overlay canvas scaled by devicePixelRatio.
 - Custom ShaderMaterials must include the logdepthbuf chunks (the renderer uses
   `logarithmicDepthBuffer`). Prefer instancing over many Sprites (draw calls).
+- Canvases used as live textures: `getContext('2d', { willReadFrequently: true })`,
+  no `shadowBlur`, and repaint only on change (GPU canvas upload is ~10 ms).
+- Combat-dependent HUD lines read optional fields (`combat.special`,
+  `combat.flares`, `combat.chaff`, `combat.decoys`); leave them undefined until
+  the system exists rather than showing fake numbers.
 
 ## Workflow
 1. Edit `scripts/prep_f15.py` (never hand-edit the generated GLB).
