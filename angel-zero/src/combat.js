@@ -99,6 +99,7 @@ export function createCombat(THREE, env) {
   const flashes = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffa040, 0, 900, 1.6); scene.add(l); return { l, t: 0 }; });
   let flashNext = 0;
   function explosion(pos, scale = 1) {
+    if (env.onSfx) env.onSfx('explosion', pos, scale);
     const f = flashes[flashNext]; flashNext = (flashNext + 1) % flashes.length;
     f.l.position.copy(pos); f.t = 0.45 * scale; f.l.intensity = 0;
     const n = Math.round(46 * scale);
@@ -208,6 +209,7 @@ export function createCombat(THREE, env) {
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(fromQuat);
     m.vel.copy(fromVel).addScaledVector(down, 9);
     if (target) m.losPrev.copy(target.pos).sub(fromPos).normalize();
+    if (env.onSfx) env.onSfx('launch', fromPos, 1);
     return m;
   }
   function fireMissile() {

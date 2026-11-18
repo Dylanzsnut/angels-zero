@@ -810,7 +810,7 @@ export function createHUD(THREE, A) {
     const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
     hctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     hctx.clearRect(0, 0, HW, HH);
-    if (!A.isReady()) return;
+    if (!A.isReady() || (A.isHidden && A.isHidden())) return;     // title screen: no HUD
     updateDynamics(dt);
     // hudAlertState: NORMAL (green) / MISSILE_ALERT (red). Driven by inbound missiles, or forced via setAlertState().
     alertState = alertOverride || (C.missileWarning > 0 && !C.dead ? 'MISSILE_ALERT' : 'NORMAL');

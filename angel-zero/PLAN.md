@@ -192,13 +192,37 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       wave 2 spawn, eject -> chute -> impact 4.5 s -> respawn at 4,500 ft,
       zero page console errors; chase frame ~2.8 ms / 94 draw calls.
 
+## Step 5 — Sortie menu & procedural audio (2026-11-18) — COMPLETE
+- [x] Title briefing "ANGELS ZERO — OPERATION ARCHIPELAGO" holds until
+      [ LAUNCH SORTIE ] or Enter (no timer, mouse/keys do not dismiss it);
+      the F-15 orbits the archipelago behind the translucent panel (framed
+      right of the panel on wide screens). Full FLIGHT / COMBAT / SYSTEMS grid.
+- [x] App states MENU / PLAY / PAUSED. `[ H ] CONTROLS` badge in flight;
+      H or Esc pauses (sim frozen, audio suspended) and reopens the controls
+      with RESUME; master volume slider + mute (M in the menu), persisted in
+      localStorage.
+- [x] `src/audio.js` (no audio files): F100 engines (pink/brown noise through
+      throttle-scaled lowpass + detuned sawtooth whine, 30 % idle to full),
+      afterburner rumble + crackle, cockpit muffling in first person; M61
+      100 Hz pulse-train-gated bandpass noise + saw body; AIM-9 growl (SCAN)
+      and 950 Hz lock tone (LOCK); launch whoosh + thump; 1200/800 Hz alert
+      while hudAlertState is MISSILE_ALERT; 60 Hz pitch-drop sub + lowpassed
+      noise explosions, distance-attenuated (kills, wrecks, ejection).
+- [x] Verified: title persists 35 s headless and through synthetic input;
+      LAUNCH -> PLAY with AudioContext "running"; H pause freezes the sim,
+      M toggles mute, Esc resumes; zero console / Web Audio errors; menu fits
+      a 375 px phone viewport.
+- [x] Fixed: index.html em dashes had been mojibaked by a PowerShell rewrite
+      in Step 4; restored (edit files as UTF-8 only).
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`
 (fast-forwards the sim before the first frame); `?alt=metres`; `?spd=m/s`;
 `?force=cone,vapor,mist` (holds transient VFX on for stills); `?alert` (forces
 MISSILE_ALERT); `?bogey=metres` (bogey 1 dead ahead); `?fire` (hold trigger);
-`?msl` (launch at load); `?eject` (bail out at load). Flags other than
+`?msl` (launch at load); `?eject` (bail out at load). `?nointro` skips the
+briefing (no audio until a real LAUNCH click). Flags other than
 `nointro`/`cockpit`/`mouse`/`pose`/`ab`/`freeze` require `?debug`.
 
 ## Next (future)

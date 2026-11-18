@@ -9,14 +9,45 @@
   #gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
   #hud { position:fixed; inset:0; width:100vw; height:100vh; display:block; pointer-events:none; z-index:10; }
   #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#ffcf8a; font-size:12px; letter-spacing:2px; pointer-events:none; }
-  #intro { position:fixed; z-index:20; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(4,10,16,.84); border:1px solid rgba(0,255,102,.45); color:#9dffc4; padding:24px 34px; text-align:center; letter-spacing:1px; box-shadow:0 0 40px rgba(0,0,0,.8); transition:opacity .8s ease; pointer-events:none; }
-  #intro h1 { margin:0 0 6px; font-size:26px; letter-spacing:6px; color:#c8ffe0; }
-  #intro .sub { margin-bottom:16px; font-size:11px; color:#5fae86; letter-spacing:3px; }
-  #intro .row { font-size:12px; line-height:1.9; color:#8fe6b5; }
-  #intro .key { color:#e0fff0; font-weight:bold; }
-  #intro .go { margin-top:16px; font-size:12px; color:#eafff2; animation:pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity:.35; } 50% { opacity:1; } }
-  #patchButton { position:fixed; z-index:30; top:14px; right:18px; padding:7px 12px; background:rgba(4,12,18,.85); border:1px solid rgba(0,255,102,.5); color:#9dffc4; font:11px "Courier New",monospace; letter-spacing:2px; cursor:pointer; }
+  /* Title briefing / pause overlay */
+  #menu { position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;
+    background:radial-gradient(ellipse at center, rgba(2,10,8,.35) 0%, rgba(2,8,10,.72) 100%); font-family:'Share Tech Mono','Consolas',monospace; }
+  #menu.hidden { display:none; }
+  #menu .panel { width:min(940px, 100%); min-width:0; max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box; padding:26px 30px 22px;
+    background:linear-gradient(180deg, rgba(6,22,16,.58), rgba(3,12,10,.70)); border:1px solid rgba(77,255,145,.55);
+    box-shadow:0 0 0 1px rgba(77,255,145,.12) inset, 0 20px 60px rgba(0,0,0,.65); backdrop-filter:blur(2px); color:#bfffd6; }
+  #menu .col, #menu .bind, #menu .bind .a { min-width:0; }
+  #menu .bind { flex-wrap:wrap; column-gap:10px; row-gap:2px; }
+  #menu .bind .a { flex:1 1 110px; }
+  #menu .eyebrow { font-size:12px; letter-spacing:4px; color:#4dff91; opacity:.85; }
+  #menu h1 { margin:6px 0 2px; font-size:clamp(28px, 5vw, 46px); letter-spacing:8px; color:#e8fff1; font-weight:normal; text-shadow:0 0 18px rgba(77,255,145,.35); }
+  #menu .op { font-size:clamp(13px, 1.8vw, 16px); letter-spacing:5px; color:#7dffb0; margin-bottom:12px; }
+  #menu .brief { font-size:13px; line-height:1.6; color:#a9e8c4; border-left:2px solid rgba(77,255,145,.5); padding:4px 0 4px 12px; margin:0 0 16px; }
+  #menu .grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+  #menu .col { border:1px solid rgba(77,255,145,.28); background:rgba(0,20,10,.45); padding:10px 12px; }
+  #menu .col h2 { margin:0 0 8px; font-size:13px; letter-spacing:3px; color:#4dff91; font-weight:normal; border-bottom:1px solid rgba(77,255,145,.25); padding-bottom:6px; }
+  #menu .bind { display:flex; justify-content:space-between; gap:10px; font-size:13px; line-height:1.4; padding:4px 0; }
+  #menu .bind .k { color:#ffffff; white-space:nowrap; }
+  #menu .bind .k kbd { display:inline-block; min-width:16px; padding:1px 5px; margin:0 1px; border:1px solid rgba(220,255,235,.6); border-bottom-width:2px; border-radius:3px; background:rgba(255,255,255,.06); font:inherit; font-size:12px; text-align:center; }
+  #menu .bind .a { color:#a9e8c4; text-align:right; }
+  #menu .row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; }
+  #menu .audio { display:flex; align-items:center; gap:10px; font-size:13px; color:#a9e8c4; }
+  #menu input[type=range] { width:160px; accent-color:#4dff91; }
+  #menu button { font-family:inherit; cursor:pointer; letter-spacing:3px; }
+  #menu .mute { padding:6px 10px; background:rgba(0,20,10,.6); color:#bfffd6; border:1px solid rgba(77,255,145,.45); font-size:12px; }
+  #menu .launch { padding:12px 26px; font-size:18px; color:#03140a; background:#4dff91; border:none; box-shadow:0 0 22px rgba(77,255,145,.55); }
+  #menu .launch:hover, #menu .launch:focus-visible { background:#8dffb9; outline:2px solid #e8fff1; outline-offset:3px; }
+  #menu .hint { font-size:11px; letter-spacing:2px; color:#6fcf96; margin-top:10px; text-align:right; }
+  #menu .launch.pulse { animation:launchPulse 1.6s ease-in-out infinite; }
+  @keyframes launchPulse { 0%,100% { box-shadow:0 0 14px rgba(77,255,145,.45); } 50% { box-shadow:0 0 30px rgba(77,255,145,.85); } }
+  /* Wide screens: briefing on the left, the orbiting F-15 framed in the open space on the right. */
+  @media (min-width: 1150px) { #menu { justify-content:flex-start; padding-left:4vw; } #menu .panel { width:min(760px, 58vw); } }
+  @media (max-width: 760px) { #menu .grid { grid-template-columns:1fr; } #menu .panel { padding:18px 16px; } #menu h1 { letter-spacing:4px; } #menu .op { letter-spacing:3px; } }
+  #hBadge { position:fixed; z-index:30; top:14px; right:18px; padding:7px 12px; background:rgba(4,12,18,.85); border:1px solid rgba(77,255,145,.6); color:#bfffd6;
+    font:12px 'Share Tech Mono','Consolas',monospace; letter-spacing:2px; cursor:pointer; display:none; }
+  #hBadge kbd { font:inherit; color:#03140a; background:#4dff91; padding:0 5px; margin-right:6px; }
+  #hBadge:hover { background:rgba(20,60,42,.92); }
+  #patchButton { position:fixed; z-index:30; top:14px; right:170px; padding:7px 12px; background:rgba(4,12,18,.85); border:1px solid rgba(0,255,102,.5); color:#9dffc4; font:11px "Courier New",monospace; letter-spacing:2px; cursor:pointer; }
   #patchButton:hover { background:rgba(20,60,42,.92); }
   #patchPanel { position:fixed; z-index:29; top:52px; right:18px; width:min(344px, calc(100vw - 36px)); max-height:62vh; overflow-y:auto; display:none; box-sizing:border-box; background:rgba(4,12,18,.93); border:1px solid rgba(0,255,102,.45); color:#a8f7c8; font:12px "Courier New",monospace; line-height:1.6; padding:16px 18px; box-shadow:0 12px 40px rgba(0,0,0,.7); }
   #patchPanel.open { display:block; }
@@ -41,24 +72,66 @@
   <canvas id="gl"></canvas>
   <canvas id="hud"></canvas>
   <div id="status">LOADING F-15...</div>
-  <div id="intro">
-    <h1>ANGELS ZERO</h1>
-    <div class="sub">F-15 EAGLE // COMBAT FLIGHT SIMULATOR</div>
-    <div class="row">
-      <div><span class="key">MOUSE</span> &nbsp; PITCH / ROLL RATE (OFFSET FROM CENTRE)</div>
-      <div><span class="key">W / S</span> &nbsp; THROTTLE &nbsp; <span class="key">SHIFT</span> &nbsp; AFTERBURNER</div>
-      <div><span class="key">A / D</span> &nbsp; RUDDER &nbsp; <span class="key">DOUBLE-TAP A / D, Q</span> &nbsp; BARREL ROLL</div>
-      <div><span class="key">SPACE</span> &nbsp; COCKPIT / CHASE VIEW</div>
-      <div><span class="key">HOLD L-CLICK / F</span> &nbsp; M61 CANNON &nbsp; <span class="key">R-CLICK / M</span> &nbsp; AIM-9</div>
-      <div><span class="key">E</span> &nbsp; EJECT &nbsp; <span class="key">R</span> &nbsp; RESET AIRCRAFT</div>
+  <div id="menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <div class="panel">
+      <div class="eyebrow" id="menuEyebrow">TACTICAL BRIEFING // ALPHA FLIGHT</div>
+      <h1 id="menuTitle">ANGELS ZERO</h1>
+      <div class="op">OPERATION ARCHIPELAGO</div>
+      <p class="brief" id="menuBrief">Six aggressor fighters are patrolling the island chain between 1,800 and 6,500 ft.
+        Launch, lock them up inside 3.5&nbsp;NM and splash every bandit. Waves keep coming. If the jet is lost, punch out &mdash; rescue will put you back in the fight.</p>
+      <div class="grid">
+        <div class="col">
+          <h2>FLIGHT</h2>
+          <div class="bind"><span class="k"><kbd>MOUSE</kbd></span><span class="a">Pitch / roll</span></div>
+          <div class="bind"><span class="k"><kbd>W</kbd> <kbd>S</kbd></span><span class="a">Throttle up / down (airbrake)</span></div>
+          <div class="bind"><span class="k"><kbd>SHIFT</kbd></span><span class="a">Afterburner</span></div>
+          <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
+          <div class="bind"><span class="k"><kbd>A</kbd><kbd>A</kbd> / <kbd>D</kbd><kbd>D</kbd> <kbd>Q</kbd></span><span class="a">Evasive barrel roll</span></div>
+        </div>
+        <div class="col">
+          <h2>COMBAT</h2>
+          <div class="bind"><span class="k"><kbd>L-CLICK</kbd> <kbd>F</kbd></span><span class="a">M61 Vulcan cannon (hold)</span></div>
+          <div class="bind"><span class="k"><kbd>R-CLICK</kbd> <kbd>M</kbd></span><span class="a">AIM-9 Sidewinder</span></div>
+          <div class="bind"><span class="k">AUTO</span><span class="a">Lock: &lt;15&deg; off nose, &lt;3.5 NM</span></div>
+          <div class="bind"><span class="k">PIPPER</span><span class="a">Fly the boresight onto it, fire</span></div>
+        </div>
+        <div class="col">
+          <h2>SYSTEMS</h2>
+          <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
+          <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject (parachute bailout)</span></div>
+          <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Pause &amp; controls</span></div>
+          <div class="bind"><span class="k"><kbd>M</kbd></span><span class="a">Mute (in this menu)</span></div>
+          <div class="bind"><span class="k"><kbd>R</kbd></span><span class="a">Reset aircraft</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="audio">
+          <label for="vol">MASTER VOLUME</label>
+          <input type="range" id="vol" min="0" max="100" step="1" />
+          <span id="volVal">70</span>
+          <button class="mute" id="muteBtn" type="button">MUTE [M]</button>
+        </div>
+        <button class="launch pulse" id="launchBtn" type="button">[ LAUNCH SORTIE ]</button>
+      </div>
+      <div class="hint" id="menuHint">CLICK LAUNCH OR PRESS ENTER</div>
     </div>
-    <div class="go">MOVE MOUSE TO FLY</div>
   </div>
+  <button id="hBadge" type="button"><kbd>H</kbd>CONTROLS</button>
   <button id="patchButton">PATCH NOTES</button>
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
-    <h3>v1.2.0 â€” EAGLE UPDATE</h3>
+    <h3>v1.5.0 &mdash; SORTIE &amp; SOUND</h3>
+    <ul>
+      <li>Briefing screen with full controls; flight starts only on LAUNCH SORTIE.</li>
+      <li>H / Esc pause with controls reference, master volume and mute.</li>
+      <li>Procedural Web Audio: F100 engines, afterburner, M61, AIM-9 tones, alerts, explosions.</li>
+    </ul>
+    <h3>v1.4.0 &mdash; DOGFIGHT</h3>
+    <ul>
+      <li>Six-ship bogey waves, M61 + AIM-9, lock-on HUD, ejection and rescue.</li>
+    </ul>
+    <h3>v1.2.0 — EAGLE UPDATE</h3>
     <ul>
       <li>Flyable F-15 Eagle asset with gear struts stripped and a sealed skin.</li>
       <li>Cyan-to-orange mach-diamond afterburners and high-G wingtip vortices.</li>
@@ -66,11 +139,11 @@
       <li>Cockpit view with canopy frame and live radar, ADI and status MFDs.</li>
       <li>Ocean archipelago, clouds and rate-command 6-DOF flight model.</li>
     </ul>
-    <h3>v1.1.0 â€” DOGFIGHT UPDATE</h3>
+    <h3>v1.1.0 — DOGFIGHT UPDATE</h3>
     <ul>
       <li>Cannon, homing missiles and three respawning bandits.</li>
     </ul>
-    <h3>v1.0.0 â€” INITIAL FLIGHT MODEL</h3>
+    <h3>v1.0.0 — INITIAL FLIGHT MODEL</h3>
     <ul>
       <li>6-DOF physics with lift, drag, stall and a 9G limiter.</li>
     </ul>
@@ -81,11 +154,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s4b';
-import { createHUD } from './src/hud.js?v=s4b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s4b';
-import { createCombat } from './src/combat.js?v=s4b';
-import { createEjection } from './src/eject.js?v=s4b';
+import { createVFX } from './src/vfx.js?v=s5a';
+import { createHUD } from './src/hud.js?v=s5a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s5a';
+import { createCombat } from './src/combat.js?v=s5a';
+import { createEjection } from './src/eject.js?v=s5a';
+import { createAudio } from './src/audio.js?v=s5a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -499,6 +573,7 @@ function triggerEject(reason) {
   const eye = EYE.clone().applyQuaternion(state.quaternion).add(state.position);
   if (firstPerson) setView(false);
   eject.start({ eye, quat: state.quaternion.clone(), vel: state.velocity.clone(), crashed: reason === 'crash' });
+  onSfx('explosion', null, reason === 'crash' ? 1.2 : 0.5);   // canopy jettison / seat charge (or impact)
   if (DEBUG) console.log('[ANGELS_ZERO] eject:', reason);
 }
 function finishEject() {
@@ -525,14 +600,82 @@ function setView(fp) {
   if (!fp) { camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position); camVelocity.set(0, 0, 0); prevPlanePos.copy(state.position); }
 }
 
+// App state: MENU (title briefing, jet orbits in the background), PLAY, PAUSED.
+// Flight never starts until LAUNCH SORTIE is clicked or Enter is pressed.
+let appMode = 'MENU';
+const menuEl = document.getElementById('menu');
+const hBadge = document.getElementById('hBadge');
+const launchBtn = document.getElementById('launchBtn');
+const volSlider = document.getElementById('vol'), volVal = document.getElementById('volVal'), muteBtn = document.getElementById('muteBtn');
+function syncAudioUI() {
+  volSlider.value = String(Math.round(audio.volume * 100));
+  volVal.textContent = volSlider.value;
+  muteBtn.textContent = audio.muted ? 'UNMUTE [M]' : 'MUTE [M]';
+  muteBtn.setAttribute('aria-pressed', audio.muted ? 'true' : 'false');
+}
+function showMenu(kind) {
+  const pause = kind === 'pause';
+  document.getElementById('menuEyebrow').textContent = pause ? 'SIMULATION PAUSED // CONTROLS REFERENCE' : 'TACTICAL BRIEFING // ALPHA FLIGHT';
+  document.getElementById('menuBrief').style.display = pause ? 'none' : '';
+  launchBtn.textContent = pause ? '[ RESUME SORTIE ]' : '[ LAUNCH SORTIE ]';
+  launchBtn.classList.toggle('pulse', !pause);
+  document.getElementById('menuHint').textContent = pause ? 'H / ESC / ENTER TO RESUME' : 'CLICK LAUNCH OR PRESS ENTER';
+  menuEl.classList.remove('hidden');
+  hBadge.style.display = 'none';
+  syncAudioUI();
+  launchBtn.focus({ preventScroll: true });
+}
+function hideMenu() { menuEl.classList.add('hidden'); hBadge.style.display = 'block'; }
+function launchSortie() {
+  if (appMode !== 'MENU' || !modelReady) return;
+  audio.init();                                        // AudioContext is created/resumed inside this user gesture
+  appMode = 'PLAY';
+  for (const k in keys) keys[k] = false;
+  mouse.nx = 0; mouse.ny = 0;                          // centre the stick until the mouse moves
+  resetAircraft();
+  setView(Q.has('cockpit'));
+  hideMenu();
+  combatSys.say('ALPHA 1, CLEARED HOT — SPLASH THE BANDITS', 3);
+}
+function pauseSim() {
+  if (appMode !== 'PLAY') return;
+  appMode = 'PAUSED';
+  for (const k in keys) keys[k] = false;
+  audio.suspend();
+  showMenu('pause');
+}
+function resumeSim() {
+  if (appMode !== 'PAUSED') return;
+  appMode = 'PLAY';
+  lastTime = performance.now();
+  audio.resume();
+  hideMenu();
+}
+launchBtn.addEventListener('click', e => { e.stopPropagation(); if (appMode === 'MENU') launchSortie(); else resumeSim(); });
+hBadge.addEventListener('click', e => { e.stopPropagation(); pauseSim(); });
+volSlider.addEventListener('input', () => { audio.setVolume(Number(volSlider.value) / 100); syncAudioUI(); });
+muteBtn.addEventListener('click', e => { e.stopPropagation(); audio.toggleMute(); syncAudioUI(); });
+for (const el of [menuEl, hBadge]) el.addEventListener('mousedown', e => e.stopPropagation());
+
 addEventListener('mousemove', e => {
-  if (uiModal) return;
+  if (uiModal || appMode !== 'PLAY') return;
   mouse.nx = (e.clientX / innerWidth) * 2 - 1;
   mouse.ny = -((e.clientY / innerHeight) * 2 - 1);
 });
 addEventListener('keydown', e => {
-  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setView(!firstPerson); return; }
   const k = e.key.toLowerCase();
+  if (appMode === 'MENU' || appMode === 'PAUSED') {
+    if (k === 'enter') { e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim(); }
+    else if ((k === 'h' || k === 'escape') && appMode === 'PAUSED' && !e.repeat) resumeSim();
+    else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
+  if ((k === 'h' || k === 'escape') && !e.repeat) {
+    if (k === 'escape' && patchPanel.classList.contains('open')) { setPatchOpen(false); return; }
+    pauseSim(); return;
+  }
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setView(!firstPerson); return; }
   if ((k === 'a' || k === 'd') && !e.repeat) {
     const t = performance.now();
     if (t - lastTap[k] < 300) startRoll(k === 'a' ? -1 : 1);
@@ -548,7 +691,6 @@ addEventListener('keydown', e => {
   if (k === 'q' && !e.repeat) startRoll(-1);
   if (k === 'e' && !e.repeat) triggerEject('manual');
   if (k === 'r' && flightMode === 'FLY') resetAircraft();
-  if (k === 'escape') setPatchOpen(false);
 });
 addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
@@ -560,19 +702,13 @@ addEventListener('keyup', e => {
   if (k === 'f') keys.fire = false;
 });
 addEventListener('mousedown', e => {
-  if (uiModal) return;
+  if (uiModal || appMode !== 'PLAY') return;
   if (e.button === 0) keys.fire = true;
   if (e.button === 2) combatSys.fireMissile();
 });
 addEventListener('mouseup', e => { if (e.button === 0) keys.fire = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-
-const intro = document.getElementById('intro');
-let introFaded = false;
-function fadeIntro() { if (!introFaded) { introFaded = true; intro.style.opacity = '0'; setTimeout(() => intro.remove(), 900); } }
-if (Q.has('nointro')) { introFaded = true; intro.remove(); }
-else { addEventListener('mousemove', fadeIntro, { once: true }); addEventListener('keydown', fadeIntro, { once: true }); }
 
 const patchButton = document.getElementById('patchButton');
 const patchPanel = document.getElementById('patchPanel');
@@ -678,7 +814,16 @@ function updateCameraAndVisuals(dt, now) {
     jet.updateMatrixWorld();
   }
 
-  if (flightMode === 'EJECT') {
+  if (appMode === 'MENU') {
+    // Title screen: slow cinematic orbit around the jet circling the archipelago.
+    const ca = menuT * 0.11;
+    camera.up.set(0, 1, 0);
+    camera.position.copy(state.position).add(new THREE.Vector3(Math.sin(ca) * 30, 6 + 4 * Math.sin(menuT * 0.27), Math.cos(ca) * 30));
+    // On wide layouts aim left of the jet so it sits in the right-hand third, beside the briefing panel.
+    const toJet = state.position.clone().sub(camera.position).normalize();
+    const right = new THREE.Vector3().crossVectors(toJet, AX_Y).normalize();
+    camera.lookAt(state.position.clone().addScaledVector(right, innerWidth >= 1150 ? -13 : 0).add(new THREE.Vector3(0, -2, 0)));
+  } else if (flightMode === 'EJECT') {
     // camera owned by the ejection sequence
   } else if (firstPerson) {
     updateCockpitClip();
@@ -728,12 +873,35 @@ function updateCameraAndVisuals(dt, now) {
 /* ============================================================================
    8. VFX + HUD MODULES (src/vfx.js, src/hud.js)
    ============================================================================ */
+const audio = createAudio();
+// Seeker / alert / gun state -> procedural audio mix, once per frame.
+function updateAudio() {
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
+  let seeker = 'OFF';
+  if (flightMode === 'FLY' && combat.missiles > 0 && combat.missileReload <= 0) {
+    if (combat.lockTarget) seeker = 'LOCK';
+    else if (combatSys.enemies.some(e => e.alive && e.pos.distanceTo(state.position) < 6 * 1852 &&
+      e.pos.clone().sub(state.position).normalize().dot(fwd) > Math.cos(30 * Math.PI / 180))) seeker = 'SCAN';
+  }
+  audio.update({
+    throttle: state.throttle, afterburner: state.afterburner, engineOn: flightMode === 'FLY', cockpit: firstPerson,
+    firing: flightMode === 'FLY' && (keys.fire || DEBUG_FIRE) && combat.ammo > 0 && combat.reload <= 0,
+    seeker, alert: hud.hudAlertState === 'MISSILE_ALERT'
+  });
+}
+// Distance-attenuated combat sound effects raised by src/combat.js.
+function onSfx(type, pos, scale = 1) {
+  const d = pos ? pos.distanceTo(camera.position) : 0;
+  const near = 1 / (1 + d / 900);
+  if (type === 'explosion') audio.explosion(scale * near * 1.2);
+  else if (type === 'launch') audio.missileLaunch(near);
+}
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
 const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight,
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y },
-  isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason) });
+  isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx });
 const missiles = combatSys.missiles;
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
   fx: { explosion: combatSys.explosion, splash: combatSys.splash, emitFire: combatSys.emitFire, emitSmoke: combatSys.emitSmoke } });
@@ -744,7 +912,7 @@ const hud = createHUD(THREE, {
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE },
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
-  getMode: () => flightMode,
+  getMode: () => flightMode, isHidden: () => appMode === 'MENU',
   isReady: () => modelReady, getMist: () => vfx.mist,
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
@@ -812,9 +980,12 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     o.material.clippingPlanes = cockpitClip;
     o.material.clipIntersection = true;
   });
+  combatSys.update(0, 0, { playerActive: false, firing: false });   // place the wave before the first frame
   modelReady = true;
-  setView(firstPerson);
+  setView(appMode === 'PLAY' ? firstPerson : false);
   statusEl.remove();
+  launchBtn.disabled = false;
+  if (appMode === 'MENU') document.getElementById('menuHint').textContent = 'CLICK LAUNCH OR PRESS ENTER';
   if (DEBUG && Q.has('bogey')) combatSys.placeAhead(0, Number(Q.get('bogey')) || 1500);
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }
   if (DEBUG && Q.has('eject')) triggerEject('manual');
@@ -844,6 +1015,23 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
 const DEBUG_FIRE = DEBUG && Q.has('fire');            // headless test hook: hold the trigger
+// Title-screen flight path: a banked orbit over the island chain.
+let menuT = 0;
+function menuOrbit(dt) {
+  menuT += dt;
+  const R = 2600, w = 0.05, v = R * w, ang = menuT * w;
+  const cx = TERRAIN_CENTER.x, cz = TERRAIN_CENTER.y;
+  // 6,000 ft keeps the orbit (and the camera around it) clear of the island peaks.
+  state.position.set(cx + Math.cos(ang) * R, 1830 + 60 * Math.sin(menuT * 0.2), cz + Math.sin(ang) * R);
+  const fwd = new THREE.Vector3(-Math.sin(ang), 0, Math.cos(ang));
+  const bank = Math.atan(v * w / GRAVITY);
+  const m = new THREE.Matrix4().lookAt(new THREE.Vector3(), fwd, AX_Y);
+  const turnLeft = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(cx - state.position.x, 0, cz - state.position.z)).y > 0;
+  state.quaternion.setFromRotationMatrix(m).multiply(new THREE.Quaternion().setFromAxisAngle(AX_Z, turnLeft ? bank : -bank));
+  state.velocity.copy(fwd).multiplyScalar(v);
+  state.speed = v; state.throttle = 0.72; state.afterburner = 0; state.gLoad = 1 / Math.cos(bank);
+}
+
 function stepSim(dt) {
   if (flightMode === 'FLY') updatePhysics(dt);
   combatSys.update(dt, simTime, { playerActive: flightMode === 'FLY', firing: keys.fire || DEBUG_FIRE });
@@ -855,8 +1043,10 @@ function animate() {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
   simTime += dt;
-  if (modelReady && !FREEZE) stepSim(dt);
-  updateCameraAndVisuals(dt, simTime);
+  if (appMode === 'MENU') menuOrbit(dt);
+  else if (appMode === 'PLAY' && modelReady && !FREEZE) stepSim(dt);
+  if (appMode !== 'PAUSED') updateCameraAndVisuals(dt, simTime);
+  if (appMode === 'PLAY') updateAudio();
   oceanUniforms.uTime.value = simTime;
   renderer.render(scene, camera);
   hud.draw();
@@ -871,12 +1061,15 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
+    get appMode() { return appMode; },
     triggerEject, startRoll, stepSim,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
 resetAircraft();
 hud.resize();
+if (Q.has('nointro')) { appMode = 'PLAY'; hideMenu(); }        // test hook: skip the briefing
+else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 if (document.fonts && document.fonts.load) document.fonts.load("16px 'Share Tech Mono'").catch(() => {});
 animate();
 </script>

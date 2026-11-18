@@ -35,6 +35,8 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/combat.js` — `createCombat`: bogey wave AI, cannon, AIM-9 PN guidance,
   explosions / wrecks / smoke, lock-on, scoring, radio comms (`combat.comms`).
 - `src/eject.js` — `createEjection`: seat, parachute, burning jet, rescue respawn.
+- `src/audio.js` — `createAudio`: procedural Web Audio (engines, gun, seeker,
+  alert, explosions); the AudioContext starts only inside the LAUNCH click.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
 
 ## Conventions
@@ -67,6 +69,9 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 6. Commit and push to `main` (deploys `angel-zero/` to Cloudflare Pages).
 
 ## Rules
+- Never rewrite source files with PowerShell `Get-Content`/`Set-Content` (ANSI
+  default mangles UTF-8 such as em dashes); use the editor tools or Python with
+  explicit `encoding='utf-8'`.
 - Do not overwrite `assets/angels_zero_jet.glb` without regenerating from `prep_f15.py`.
 - Verify file existence and non-zero size after every export.
 - Keep the GLB under 20 MB (Cloudflare Pages per-file limit is 25 MB).
