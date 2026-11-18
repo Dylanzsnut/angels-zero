@@ -58,7 +58,10 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 3. Serve the folder locally and load `index.html?debug`; zero console errors.
 4. Headless check: Edge `--headless=new --use-angle=swiftshader` screenshots of
    `?nointro&debug`, `&cockpit`, and a `&pose=75,0&mouse=0,0.8&ab&warp=3` pull.
-5. Commit and push to `main` (deploys `angel-zero/` to Cloudflare Pages).
+5. Bump the `?v=` build tag on the `src/*.js` imports in `index.html` whenever a
+   module changes (Cloudflare edges can otherwise serve a stale module next to
+   a fresh `index.html`).
+6. Commit and push to `main` (deploys `angel-zero/` to Cloudflare Pages).
 
 ## Rules
 - Do not overwrite `assets/angels_zero_jet.glb` without regenerating from `prep_f15.py`.

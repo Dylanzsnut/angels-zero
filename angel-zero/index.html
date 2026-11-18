@@ -80,9 +80,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createVFX } from './src/vfx.js';
-import { createHUD } from './src/hud.js';
-import { createCockpit3D } from './src/cockpit3d.js';
+// Bump the ?v= build tag on every release so CDN edges never mix module versions.
+import { createVFX } from './src/vfx.js?v=0e0599b';
+import { createHUD } from './src/hud.js?v=0e0599b';
+import { createCockpit3D } from './src/cockpit3d.js?v=0e0599b';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
