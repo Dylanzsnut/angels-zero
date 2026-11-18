@@ -244,6 +244,21 @@ F-22/Su-57 style asset and verify pivots + cockpit interior in Three.js.
       a 0.55 s convolver air-echo tail. `?autolaunch` debug hook presses LAUNCH
       (headless needs `--autoplay-policy=no-user-gesture-required`).
 
+## Snappy flight handling (2026-11-18)
+- [x] Rates: roll 3.4 rad/s (lerp 14/s), pitch 1.85 rad/s (lerp 11/s, push-over
+      0.65x), rudder 1.1 rad/s; coordinated yaw = sin(bank) x pull.
+- [x] Velocity grip 6.5/s (9.5/s near 330 kt corner speed), faded below
+      ~135 m/s so slow jets still mush; induced bleed with turn G.
+- [x] High-G turn: (W+S or Shift) + |pull| > 0.6 -> 1.45x pitch rate, -60 kt/s
+      bleed above corner speed, vapor/contrail flare, chase FOV 62 -> 56.
+- [x] Mouse: 0.03 deadzone, 1.35 power curve. Chase spring 150 / damping 22,
+      9 m max lag.
+- [x] G readout is now the felt load factor (acceleration along the jet's up
+      axis). With these rates a full pull at speed reads ~25-35 G (arcade).
+- [x] Headless: 0.5 s full roll = 83 deg; 3 s banked full pull = 276 deg of turn
+      (202 -> 159 m/s); high-G = 247 deg in 2.2 s with FOV 56; hands-off 15 s
+      holds altitude. `?highg` debug flag forces the high-G state.
+
 ### Debug URL flags (all optional)
 `?debug` exposes `window.__az`; `?nointro`; `?cockpit`; `?freeze`;
 `?pose=bank,pitch`; `?mouse=x,y` (fixed stick); `?ab`; `?warp=seconds`

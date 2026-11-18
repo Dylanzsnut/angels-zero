@@ -481,14 +481,14 @@ export function createVFX(THREE, env) {
     // Contrails intensify with G (> 1.8 G) and with hard rolling pulls.
     const gPull = smooth(s.gLoad, 1.8, 5.5);
     const roll = 0.45 * smooth(Math.abs(s.rollRate), 1.0, 2.6) * smooth(s.gLoad, 1.2, 3.0);
-    const base = opts.visible ? Math.min(1, gPull + roll) * smooth(s.speed, 110, 190) : 0;
+    const base = opts.visible ? Math.min(1, gPull + roll + (s.highG ? 0.6 : 0)) * smooth(s.speed, 110, 190) : 0;
     trailL.emit(_w.copy(tipL).applyQuaternion(q).add(s.position), base, now);
     trailR.emit(_w.copy(tipR).applyQuaternion(q).add(s.position), base, now);
     trailL.update(camera.position, now);
     trailR.update(camera.position, now);
 
     // Over-wing condensation in hard, high-G turns.
-    const vTarget = force.vapor ? 1 : opts.visible ? smooth(s.gLoad, 4.2, 7.2) * smooth(s.speed, 120, 200) : 0;
+    const vTarget = force.vapor ? 1 : opts.visible ? Math.max(smooth(s.gLoad, 4.2, 7.2), s.highG ? 0.9 : 0) * smooth(s.speed, 120, 200) : 0;
     vaporLevel += (vTarget - vaporLevel) * Math.min(1, dt * (vTarget > vaporLevel ? 6 : 2.5));
     for (const v of vapor) {
       const flick = 0.72 + 0.28 * Math.sin(now * 13 + v.phase) * Math.sin(now * 5.3 + v.phase * 2);

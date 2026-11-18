@@ -154,12 +154,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s7a';
-import { createHUD } from './src/hud.js?v=s7a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s7a';
-import { createCombat } from './src/combat.js?v=s7a';
-import { createEjection } from './src/eject.js?v=s7a';
-import { createAudio } from './src/audio.js?v=s7a';
+import { createVFX } from './src/vfx.js?v=s8a';
+import { createHUD } from './src/hud.js?v=s8a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s8a';
+import { createCombat } from './src/combat.js?v=s8a';
+import { createEjection } from './src/eject.js?v=s8a';
+import { createAudio } from './src/audio.js?v=s8a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -514,7 +514,11 @@ const combat = {
 const MASS = 16000, WING_AREA = 56.5, GRAVITY = 9.81;
 const CL_ALPHA = 5.0, CL0 = 0.12, CD0 = 0.019, K_INDUCED = 0.10, STALL_AOA = 0.30;
 const THRUST_DRY = 130000, THRUST_AB = 105000;     // twin F100s: dry / additional AB (N)
-const MAX_PITCH_RATE = 1.15, MAX_ROLL_RATE = 3.0, MAX_YAW_RATE = 0.35;
+// Snappy arcade handling: ~195 deg/s roll, ~105 deg/s pitch, 1.1 rad/s rudder.
+const MAX_PITCH_RATE = 1.85, MAX_ROLL_RATE = 3.4, MAX_YAW_RATE = 1.1;
+const PUSH_FACTOR = 0.65;                 // negative-G push-over is slower than the pull
+const HIGH_G_BOOST = 1.45;                // W+S or Shift + hard pull
+const CORNER_SPEED = 330 * 0.514444;      // ~330 kt cornering speed (m/s)
 
 const SPAWN = new THREE.Vector3(0, 4500 * 0.3048, 7600);     // fresh jets enter at 4,500 ft
 const state = {
@@ -721,10 +725,11 @@ const AX_X = new THREE.Vector3(1, 0, 0), AX_Y = new THREE.Vector3(0, 1, 0), AX_Z
 const _dq = new THREE.Quaternion(), _fwd = new THREE.Vector3(), _up = new THREE.Vector3(), _right = new THREE.Vector3();
 const _vdir = new THREE.Vector3(), _force = new THREE.Vector3(), _lift = new THREE.Vector3();
 function rotateBody(axis, angle) { _dq.setFromAxisAngle(axis, angle); state.quaternion.multiply(_dq); }
-function shaped(v, dz = 0.04) {
+// Mouse response: tight 0.03 deadzone, 1.35 power curve (fine gun aim near centre, snap at full throw).
+function shaped(v, dz = 0.03) {
   const a = Math.abs(v); if (a <= dz) return 0;
   const n = Math.min(1, (a - dz) / (1 - dz));
-  return Math.sign(v) * (0.35 * n + 0.65 * n * n);
+  return Math.sign(v) * Math.pow(n, 1.35);
 }
 
 function updatePhysics(dt) {
@@ -736,12 +741,12 @@ function updatePhysics(dt) {
   // Mouse offset from screen centre commands pitch and roll RATES.
   const pitchIn = shaped(mouse.ny), rollIn = shaped(mouse.nx);
   const rudderIn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0);
-  // Bank-to-yaw coupling: a banked jet slices its nose round into the turn.
-  const coupledYaw = Math.sin(bank) * 0.16 * THREE.MathUtils.clamp(state.speed / 180, 0.3, 1.2);
-  // Fly-by-wire protection: never command more body rate than 9 G can turn the
-  // flight path at this speed, and fade pitch authority out near stall AoA.
-  const vNow = Math.max(state.velocity.length(), 40);
-  let targetPitch = pitchIn * Math.min(MAX_PITCH_RATE, (9.0 * GRAVITY) / vNow + 0.12);
+  // High-G turn: hold W+S (throttle + brake) or Shift while pulling hard.
+  state.highG = ((keys.w && keys.s) || keys.shift || (DEBUG && Q.has('highg'))) && Math.abs(pitchIn) > 0.6;
+  // Coordinated bank-to-turn yaw: bank x pull carves the arc without rudder work.
+  const coupledYaw = Math.sin(bank) * (0.10 + 0.38 * Math.max(0, pitchIn)) * THREE.MathUtils.clamp(state.speed / 180, 0.3, 1.2);
+  let targetPitch = pitchIn * MAX_PITCH_RATE * (pitchIn < 0 ? PUSH_FACTOR : 1) * (state.highG ? HIGH_G_BOOST : 1);
+  // Stall protection still fades pitch authority if AoA ever runs away (very slow flight).
   const aLim = STALL_AOA * 0.85;
   if (targetPitch > 0) targetPitch *= THREE.MathUtils.clamp((aLim - state.alpha) / (aLim * 0.35), 0, 1);
   else targetPitch *= THREE.MathUtils.clamp((state.alpha + 0.17) / 0.07, 0, 1);
@@ -749,10 +754,10 @@ function updatePhysics(dt) {
   const targetRoll = roll.left > 0 ? 0 : -rollIn * MAX_ROLL_RATE;
   const targetYaw = coupledYaw + rudderIn * MAX_YAW_RATE;
   const authority = THREE.MathUtils.smoothstep(state.speed, 45, 120);
-  const resp = Math.min(1, 6.0 * dt);
-  state.pitchRate += (targetPitch * authority - state.pitchRate) * resp;
-  state.rollRate += (targetRoll * authority - state.rollRate) * resp;
-  state.yawRate += (targetYaw - state.yawRate) * resp;
+  // Crisp response: roll 14/s, pitch 11/s, yaw 8/s (no mushy lerp lag or over-rotation).
+  state.pitchRate += (targetPitch * authority - state.pitchRate) * Math.min(1, 11 * dt);
+  state.rollRate += (targetRoll * authority - state.rollRate) * Math.min(1, 14 * dt);
+  state.yawRate += (targetYaw - state.yawRate) * Math.min(1, 8 * dt);
   rotateBody(AX_X, state.pitchRate * dt);
   if (roll.left > 0) {                                           // scripted 360 deg evasive roll
     const step = Math.min(roll.left, ROLL_RATE * dt);
@@ -786,14 +791,29 @@ function updatePhysics(dt) {
   if (state.mach > 0.85) CD += Math.min(0.045, (state.mach - 0.85) * (state.mach - 0.85) * 0.5);
   const liftLimit = 9.0 * MASS * GRAVITY;
   const liftMag = THREE.MathUtils.clamp(qBar * WING_AREA * CL, -liftLimit * 0.4, liftLimit);
-  state.gLoad = liftMag / (MASS * GRAVITY);
   _lift.crossVectors(_right, _vdir).normalize().multiplyScalar(liftMag);
   const thrust = (THRUST_DRY * state.throttle + THRUST_AB * state.afterburner) * (0.55 + 0.45 * rho / 1.225);
   _force.copy(_lift).addScaledVector(_vdir, -qBar * WING_AREA * CD).addScaledVector(_fwd, thrust);
   _force.y -= MASS * GRAVITY;
+  const vPrev = state.velocity.clone();
   state.velocity.addScaledVector(_force, dt / MASS);
-  // Weathervane: velocity slowly aligns with the nose (side-slip damping).
-  state.velocity.lerp(_fwd.clone().multiplyScalar(state.velocity.length()), Math.min(1, 0.35 * dt));
+  // Velocity-vector grip: the flight path tracks the nose quickly (no "flying brick"
+  // slide); grip peaks near cornering speed and fades when slow so a stalled jet still mushes.
+  const nearCorner = 1 - THREE.MathUtils.smoothstep(Math.abs(speed - CORNER_SPEED), 25, 90);
+  const grip = (6.5 + 3.0 * nearCorner) * THREE.MathUtils.smoothstep(speed, 55, 135);
+  const vMag = state.velocity.length();
+  state.velocity.lerp(_fwd.clone().multiplyScalar(vMag), Math.min(1, grip * dt)).setLength(vMag);
+  // Turning costs energy: induced bleed rises with G; a high-G turn bleeds ~60 kt/s down to corner speed.
+  const turnRate = vPrev.lengthSq() > 1 ? vPrev.angleTo(state.velocity) / Math.max(dt, 1e-4) : 0;
+  const gTurn = vMag * turnRate / GRAVITY;
+  let bleed = Math.min(14, 0.12 * Math.max(0, gTurn - 1) ** 2);
+  if (state.highG && vMag > CORNER_SPEED) bleed += 60 * 0.514444;
+  if (bleed > 0) state.velocity.setLength(Math.max(40, vMag - bleed * dt));
+  // Load factor actually felt (acceleration along the jet's up axis, gravity included):
+  // drives the HUD G readout, max-G memory, vapor and contrails.
+  const accel = state.velocity.clone().sub(vPrev).divideScalar(Math.max(dt, 1e-4)); accel.y += GRAVITY;
+  const gFelt = accel.dot(_up) / GRAVITY;
+  state.gLoad += (gFelt - state.gLoad) * Math.min(1, 12 * dt);
   state.position.addScaledVector(state.velocity, dt);
 
   const ground = groundLevel(state.position.x, state.position.z);
@@ -843,10 +863,14 @@ function updateCameraAndVisuals(dt, now) {
       .lerp(state.position.clone().add(new THREE.Vector3(0, 42, 0)).addScaledVector(horiz, -9), dive);
     const toDesired = desired.sub(camera.position);
     const lag = toDesired.length();
-    if (lag > 24) { camera.position.addScaledVector(toDesired, (lag - 24) / lag); camVelocity.multiplyScalar(0.5); }
-    camVelocity.addScaledVector(toDesired, 55 * dt);
-    camVelocity.addScaledVector(camVelocity, -11 * dt);
+    // Stiff, near-critically damped spring: stays locked behind the jet through fast rolls.
+    if (lag > 9) { camera.position.addScaledVector(toDesired, (lag - 9) / lag); camVelocity.multiplyScalar(0.4); }
+    camVelocity.addScaledVector(toDesired, 150 * dt);
+    camVelocity.addScaledVector(camVelocity, -Math.min(1, 22 * dt));
     camera.position.addScaledVector(camVelocity, dt);
+    // High-G turns tighten the chase FOV slightly.
+    const fovT = CHASE_FOV - (state.highG ? 6 : 0);
+    if (Math.abs(camera.fov - fovT) > 0.05) { camera.fov += (fovT - camera.fov) * Math.min(1, 4 * dt); camera.updateProjectionMatrix(); }
     const fromPlane = camera.position.clone().sub(state.position);
     const fd = fromPlane.length();
     if (fd < 14) camera.position.copy(state.position).add(fromPlane.multiplyScalar(14 / Math.max(fd, 0.001)));
@@ -1011,7 +1035,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'eject', JSON.stringify(eject.info));
     console.log('[ANGELS_ZERO] warp', Q.get('warp'), 's: speed', state.speed.toFixed(1), 'alt', state.position.y.toFixed(0),
       'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2),
-      'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead);
+      'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead,
+      'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
+      'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1));
   }
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));
 }, undefined, err => {
