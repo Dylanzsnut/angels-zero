@@ -567,6 +567,14 @@ export function createVFX(THREE, env) {
     get cloudCount() { return volumes.filter(v => v.on).length; },
     get puffCount() { return NP; },
     setCloudGain(k) { cloudMat.uniforms.uGain.value = k; },
+    setCloudColors(top, belly) { cloudMat.uniforms.uTop.value.copy(top); cloudMat.uniforms.uBelly.value.copy(belly); },
+    // New sortie: random wind heading (5-9 m/s) and drift phase so the decks never repeat.
+    reseedClouds() {
+      const a = Math.random() * Math.PI * 2, sp = 5 + Math.random() * 4;
+      WIND.set(Math.cos(a) * sp, 0, Math.sin(a) * sp);
+      cloudTime = Math.random() * 900;
+      updateWind(0); sortClouds(0, true);
+    },
     get trailPoints() { return trailL.points.filter(p => p.base > 0.01).length; },
     get vaporLevel() { return vaporLevel; },
     get coneOpacity() { return coneMat.uniforms.uOp.value; },

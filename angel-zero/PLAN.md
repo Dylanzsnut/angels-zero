@@ -501,5 +501,36 @@ briefing (no audio until a real LAUNCH click). Flags other than
 - [x] Headless chase + cockpit + MISSILE ALERT / A/B + LOCK + >BOMB CCIP
       under NVG: zero page console errors. Build tag `s17a`.
 
+## Randomised time-of-day engine (2026-11-18)
+- [x] `src/atmosphere.js` time-of-day controller: `applyTimeOfDay(name, {az,
+      instant})` + `randomize()`. Presets DAWN (#f5b895 horizon, #1f3f73
+      zenith, lavender bellies / pink rims), DAYLIGHT (#a8d4ff / #0f3b7a,
+      white tops / #6b88ab bellies), GOLDEN_HOUR (#ffbe6b sun, #f4d5a6 /
+      #4a6e99, cream-gold rims, wide glitter path), DUSK (sun -4 deg,
+      #d95b43 horizon -> #3b2d54 -> #0d152b, silhouetted clouds), NIGHT
+      (moon #bcd4f0 at 38 deg, moonlight 0.45, #0c172b -> #040812 sky,
+      procedural twinkling starfield, #111927 clouds). Each preset sets the
+      sky gradient / Mie glow / disc, sun-or-moon direction (random 0-360 deg
+      azimuth), directional + hemisphere + ambient light, tone-mapping
+      exposure, fog density, ocean glint colour / water level / glitter width,
+      cloud top + belly colours, F-15 env-map strength, nav-light level and NVG
+      tube gain; changes blend over ~1.5 s (instant on load / restart).
+- [x] `index.html`: `[ CYCLE TIME ]` briefing button (RANDOM / DAWN / DAY /
+      SUNSET / DUSK / NIGHT) + chip `TIME: 22:55 HRS // MOONLIT NIGHT
+      [NVG RECOMMENDED]`; new random roll (preset, azimuth, cloud wind heading
+      and drift phase via `vfx.reseedClouds()`) on page load and on
+      RESTART MISSION (a chosen preset keeps the preset, re-rolls azimuth).
+      F-15 nav lights (red / green wingtips, white tail strobe) glow at dawn,
+      dusk and night. Ocean shader gains `uLevel` / `uGlitter`.
+- [x] NVG synergy: the engine multiplies the *active* preset's fill by 2.4
+      while NVG is on and sets the tube gain per preset (day 2.1 -> night 15);
+      off restores the preset exactly (night: hemi 0.20 -> 0.48 -> 0.20).
+- [x] Headless: all five presets in chase view, night moon + stars, night
+      NVG, night cockpit (MFD / UFC backlights), DAYLIGHT -> NIGHT blend
+      (exposure 1.0 -> 0.88 -> 0.80, stars 0 -> 0.62 -> 1.0), 12 random rolls
+      spanning all presets, combat + flares + cloud regression at dusk; zero
+      page console errors. Hooks: `?tod=NAME&az=deg`, `?todto=NAME:t`,
+      `?todlog=t,..`, `?rolls=n`. Build tag `s18a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

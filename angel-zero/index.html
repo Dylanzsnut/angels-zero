@@ -126,6 +126,8 @@
   #patchButton:hover { background:rgba(16,48,38,.88); }
   #patchPanel { position:fixed; z-index:45; top:52px; right:18px; width:min(360px, calc(100vw - 36px)); max-height:64vh; overflow-y:auto; display:none; box-sizing:border-box; background:rgba(4,14,22,.92); backdrop-filter:blur(8px); border:1px solid rgba(82,255,156,.45); color:#b4f7d4; font:500 13px 'Rajdhani','Share Tech Mono',monospace; line-height:1.5; padding:16px 18px; box-shadow:0 14px 44px rgba(0,0,0,.72); }
   #patchPanel.open { display:block; }
+  .tod-btn { background:rgba(4,16,24,.6); border:1px solid rgba(82,255,156,.55); color:#9dffcc; font:600 11px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:1.6px; padding:3px 9px; cursor:pointer; }
+  .tod-btn:hover { background:rgba(16,48,38,.88); color:#e6fff2; }
   #patchPanel h2 { margin:0 0 10px; font-size:15px; font-weight:700; letter-spacing:2.5px; color:#ecfff5; }
   #patchPanel h3 { margin:12px 0 4px; font-size:13px; font-weight:700; color:#52ff9c; letter-spacing:1.4px; }
   #patchPanel ul { margin:0; padding-left:18px; }
@@ -157,7 +159,8 @@
         </div>
         <div class="tac-tags">
           <span class="hot">AIRSPACE: CONTESTED</span>
-          <span>WEATHER: CLEAR</span>
+          <span id="todChip">TIME: --:-- HRS</span>
+          <button class="tod-btn" id="todBtn" type="button">[ CYCLE TIME: RANDOM ]</button>
           <span>ROE: WEAPONS FREE</span>
         </div>
       </div>
@@ -283,15 +286,15 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s17a';
-import { createHUD } from './src/hud.js?v=s17a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s17a';
-import { createCombat } from './src/combat.js?v=s17a';
-import { createEjection } from './src/eject.js?v=s17a';
-import { createAudio } from './src/audio.js?v=s17a';
-import { createAtmosphere } from './src/atmosphere.js?v=s17a';
-import { createCanopyFX } from './src/canopy.js?v=s17a';
-import { createNVG } from './src/nvg.js?v=s17a';
+import { createVFX } from './src/vfx.js?v=s18a';
+import { createHUD } from './src/hud.js?v=s18a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s18a';
+import { createCombat } from './src/combat.js?v=s18a';
+import { createEjection } from './src/eject.js?v=s18a';
+import { createAudio } from './src/audio.js?v=s18a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s18a';
+import { createCanopyFX } from './src/canopy.js?v=s18a';
+import { createNVG } from './src/nvg.js?v=s18a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -324,7 +327,7 @@ scene.add(sunLight, sunLight.target);
 const hemiLight = new THREE.HemisphereLight(0xbdd6ee, 0x3b4a40, 1.5);
 const ambLight = new THREE.AmbientLight(0xa8bdd0, 0.35);
 scene.add(hemiLight, ambLight);
-const FILL_BASE = { hemi: hemiLight.intensity, amb: ambLight.intensity };
+// Fill / sun light values are driven per frame by the time-of-day engine (src/atmosphere.js).
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -525,7 +528,9 @@ const oceanUniforms = {
   uSky: { value: new THREE.Vector3(0.30, 0.44, 0.62) },
   uFog: { value: scene.fog.color },                 // same Color object as the fog and sky horizon
   uFogD: { value: FOG_DENSITY },
-  uCam: { value: new THREE.Vector3() }
+  uCam: { value: new THREE.Vector3() },
+  uLevel: { value: 1 },                              // time-of-day water / foam brightness
+  uGlitter: { value: 1 }                             // sun / moon glitter-path width & strength
 };
 const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new THREE.ShaderMaterial({
   uniforms: oceanUniforms,
@@ -541,7 +546,7 @@ const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new TH
     varying vec3 vWorldPos;
     uniform float uTime; uniform sampler2D uN1; uniform sampler2D uN2; uniform sampler2D uDepth;
     uniform vec3 uTerr; uniform vec3 uSun; uniform vec3 uSunColor; uniform vec3 uSky;
-    uniform vec3 uFog; uniform float uFogD; uniform vec3 uCam;
+    uniform vec3 uFog; uniform float uFogD; uniform vec3 uCam; uniform float uLevel; uniform float uGlitter;
     void main() {
       #include <logdepthbuf_fragment>
       vec2 p = vWorldPos.xz;
@@ -553,7 +558,7 @@ const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new TH
       vec3 L = normalize(uSun);
       vec3 H = normalize(L + V);
       float spec = pow(max(dot(N, H), 0.0), 190.0);
-      float glitter = pow(max(dot(N, H), 0.0), 48.0) * 0.22;          // broad sun path across the swell
+      float glitter = pow(max(dot(N, H), 0.0), 48.0 / uGlitter) * 0.22 * uGlitter;   // sun / moon path across the swell
       float sparkle = pow(max(dot(N, H), 0.0), 1400.0) * 1.5;
       float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
       vec3 deep = vec3(0.010, 0.045, 0.082);
@@ -566,7 +571,7 @@ const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000, 1, 1), new TH
       vec3 turq = mix(vec3(0.02, 0.26, 0.30), vec3(0.10, 0.55, 0.50), 1.0 - smoothstep(0.0, 0.25, depth));
       base = mix(base, turq, shallow);
       float surf = (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * sin(uTime * 1.6 + depth * 120.0 + n3.x * 4.0));
-      vec3 col = base + uSky * fres * 0.55 + uSunColor * (spec * 2.4 + sparkle * 1.3 + glitter) + vec3(0.75) * surf * 0.5;
+      vec3 col = (base + vec3(0.75) * surf * 0.5) * uLevel + uSky * fres * 0.55 + uSunColor * (spec * 2.4 + sparkle * 1.3 + glitter);
       float dist = length(uCam - vWorldPos);
       col = mix(col, uFog, 1.0 - exp(-uFogD * uFogD * dist * dist));
       gl_FragColor = vec4(col, 1.0);
@@ -826,6 +831,7 @@ function restartMission() {
   flightMode = 'FLY';
   eject.stop();
   resetAircraft();
+  rollSortieConditions(true);                          // fresh time of day / sun azimuth / cloud drift
   combatSys.update(4.1, 0, { playerActive: false, firing: false });
   resumeSim();
   combatSys.say('MISSION RESTARTED — WEAPONS FREE', 2.4);
@@ -1090,7 +1096,8 @@ function updateCameraAndVisuals(dt, now) {
 
   vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson });
   // Cloud fly-through: white-out fog + sky horizon around the camera (src/atmosphere.js).
-  atmosphere.update(dt, vfx.mist, false);
+  atmosphere.update(dt, vfx.mist, nvg.active);
+  updateNavLights(simTime);
   oceanUniforms.uFogD.value = scene.fog.density;
 }
 
@@ -1146,8 +1153,7 @@ const nvg = createNVG(THREE, renderer);
 function setNVG(on, silent) {
   nvg.active = on;
   document.body.classList.toggle('nvg', nvg.active);
-  hemiLight.intensity = FILL_BASE.hemi * (nvg.active ? 2.4 : 1);      // ~2.4x fill light through the tubes
-  ambLight.intensity = FILL_BASE.amb * (nvg.active ? 2.4 : 1);
+  atmosphere.update(0, vfx.mist, nvg.active);          // preset fill light x2.4 while on; exact preset when off
   if (!silent) { audio.nvg(nvg.active); combatSys.say(nvg.active ? 'NVG ON — AN/AVS-9' : 'NVG OFF', 1.0, '#52ff9c'); }
 }
 const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight,
@@ -1157,6 +1163,70 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
 const missiles = combatSys.missiles;
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
   fx: { explosion: combatSys.explosion, splash: combatSys.splash, emitFire: combatSys.emitFire, emitSmoke: combatSys.emitSmoke } });
+/* ---- time of day: presets, randomised every sortie, briefing selector ---- */
+const airframeMats = new Set();                        // F-15 materials: env-map strength follows the preset
+// Navigation lights: red port / green starboard wingtips, white tail strobe (dusk / night).
+const navTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.18, 'rgba(255,255,255,0.85)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const navLights = [];
+let navLevel = 0;
+function addNavLight(pos, color, strobe) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: navTex, color, blending: THREE.AdditiveBlending, transparent: true,
+    depthWrite: false, toneMapped: false, fog: false }));
+  sp.position.copy(pos); sp.visible = false; jet.add(sp);
+  navLights.push({ sp, strobe });
+}
+function updateNavLights(t) {
+  for (const n of navLights) {
+    const on = n.strobe ? (t % 1.25) < 0.09 : true;
+    n.sp.visible = navLevel > 0.02 && on && jet.visible;
+    n.sp.material.opacity = Math.min(1, navLevel);
+    n.sp.scale.setScalar(n.strobe ? 3.2 : 1.9);
+  }
+}
+atmosphere.bind({
+  sunLight, hemiLight, ambLight, renderer, ocean: oceanUniforms,
+  setCloudColors: (top, belly) => vfx.setCloudColors(top, belly),
+  setEnv: k => { for (const m of airframeMats) m.envMapIntensity = k; },
+  setNavLights: k => { navLevel = k; },
+  setNvgGain: k => nvg.setGain(k),
+  onChange: a => syncTimeUI(a)
+});
+const TOD_MODES = [['RANDOM', null], ['DAWN', 'DAWN'], ['DAY', 'DAYLIGHT'], ['SUNSET', 'GOLDEN_HOUR'], ['DUSK', 'DUSK'], ['NIGHT', 'NIGHT']];
+let todMode = 'RANDOM';
+const todChip = document.getElementById('todChip'), todBtn = document.getElementById('todBtn');
+function syncTimeUI(a) {
+  const night = a.name === 'NIGHT';
+  todChip.textContent = `TIME: ${a.clock} HRS // ${a.label}${night ? ' [NVG RECOMMENDED]' : ''}`;
+  todChip.classList.toggle('hot', night);
+  todBtn.textContent = `[ CYCLE TIME: ${todMode} ]`;
+}
+// New sortie conditions: random roll in RANDOM mode, otherwise the chosen preset at a fresh azimuth.
+function rollSortieConditions(instant) {
+  vfx.reseedClouds();
+  const fixed = TOD_MODES.find(m => m[0] === todMode)[1];
+  return fixed ? atmosphere.applyTimeOfDay(fixed, { instant, mode: todMode }) : atmosphere.randomize({ instant });
+}
+todBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const i = TOD_MODES.findIndex(m => m[0] === todMode);
+  todMode = TOD_MODES[(i + 1) % TOD_MODES.length][0];
+  rollSortieConditions(false);                        // smooth ~1.5 s blend so the briefing backdrop shows it
+});
+{
+  // Debug: ?tod=NIGHT|DAWN|DAYLIGHT|GOLDEN_HOUR|DUSK (&az=deg) forces the opening conditions.
+  const forced = DEBUG && Q.has('tod') ? Q.get('tod').toUpperCase() : null;
+  if (forced && PRESETS[forced]) {
+    todMode = (TOD_MODES.find(m => m[1] === forced) || ['RANDOM'])[0];   // (no cloud reseed: deterministic stills)
+    atmosphere.applyTimeOfDay(forced, { instant: true, mode: todMode, az: Q.has('az') ? Number(Q.get('az')) : undefined });
+  } else rollSortieConditions(true);
+}
+
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
   missiles, STALL_AOA, getEnemies: () => combatSys.enemies });
 const hud = createHUD(THREE, {
@@ -1191,7 +1261,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     for (const m of mats) {
       if (!m) continue;
       m.side = THREE.DoubleSide;
-      if (m.isMeshStandardMaterial) { m.envMap = envTex; m.envMapIntensity = 1.1; }
+      if (m.isMeshStandardMaterial) { m.envMap = envTex; m.envMapIntensity = atmosphere.current.env; airframeMats.add(m); }
       if (glass) { m.transparent = true; m.opacity = 0.25; m.depthWrite = false; }
       else { m.transparent = false; m.opacity = 1.0; m.depthWrite = true; }
       m.alphaTest = 0;
@@ -1215,6 +1285,11 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     }
   });
   if (tip) { WINGTIP_R.copy(tip); WINGTIP_L.set(-tip.x, tip.y, tip.z); vfx.setWingtips(WINGTIP_L, WINGTIP_R); }
+  if (tip) {
+    addNavLight(WINGTIP_L.clone().add(new THREE.Vector3(-0.1, 0, 0)), 0xff2a2a, false);   // port red
+    addNavLight(WINGTIP_R.clone().add(new THREE.Vector3(0.1, 0, 0)), 0x2aff5a, false);    // starboard green
+    addNavLight(new THREE.Vector3(0, 0.1, 9.55), 0xffffff, true);                          // tail strobe
+  }
 
   for (const n of ['Nozzle_L', 'Nozzle_R']) {
     const noz = model.getObjectByName(n);
@@ -1250,6 +1325,11 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('bomb')) { combatSys.update(0, 0, { playerActive: true, firing: false }); for (let i = 0; i < (Number(Q.get('bomb')) || 1); i++) { combatSys.update(0.25, 0, { playerActive: true, firing: false }); combatSys.dropBomb(); } }
   if (DEBUG && Q.has('flare')) combatSys.dispenseFlares();
   if (DEBUG && Q.has('nvg')) setNVG(true, true);
+  if (DEBUG && Q.has('rolls')) {                        // test hook: n sortie rolls (as RESTART MISSION does)
+    const out = [];
+    for (let i = 0; i < Number(Q.get('rolls')); i++) { const r = rollSortieConditions(true); out.push(r.name + '@' + Math.round(r.az) + ' ' + r.clock); }
+    console.log('[ANGELS_ZERO] rolls', out.join(' | '));
+  }
   if (DEBUG && Q.has('canopylog')) setTimeout(() => console.log('[ANGELS_ZERO] canopy wet', canopyFx.wetness.toFixed(2), 'drops', canopyFx.dropCount, 'streaks', canopyFx.streakCount, 'playerCloud', (combat.playerCloud || 0).toFixed(2), 'mist', vfx.mist.toFixed(2)), Number(Q.get('canopylog')) || 800);
   if (DEBUG && Q.has('cloudpos')) {                   // test hook: ?cloudpos=az:el:dist (deg off the nose, metres) -> debug cumulus
     const [az, el, d] = Q.get('cloudpos').split(':').map(Number), D = Math.PI / 180;
@@ -1278,7 +1358,13 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         const [ct, ci] = Q.get('cloudon').split(':').map(Number), e = combatSys.enemies[ci];
         if (e && ct >= t0 && ct < t1) { vfx.placeDebugCloud(e.pos.clone().addScaledVector(e.vel, 1.5)); console.log('[ANGELS_ZERO] cloud on', e.label, '@', t1.toFixed(2)); }
       }
-      if (Q.has('nvgat') && Number(Q.get('nvgat')) >= t0 && Number(Q.get('nvgat')) < t1) { setNVG(!nvg.active, true); console.log('[ANGELS_ZERO] N @', t1.toFixed(2), 'nvg', nvg.active, 'hemi', hemiLight.intensity.toFixed(2), 'amb', ambLight.intensity.toFixed(2)); }
+      if (Q.has('todto')) {                           // ?todto=NAME:t -> smooth blend to a preset at warp time t
+        const [tn, tt] = Q.get('todto').split(':');
+        if (Number(tt) >= t0 && Number(tt) < t1) atmosphere.applyTimeOfDay(tn.toUpperCase(), { az: 340 });
+      }
+      if (Q.has('todlog') && Q.get('todlog').split(',').map(Number).some(t => t >= t0 && t < t1))
+        console.log('[ANGELS_ZERO] tod', t1.toFixed(2), atmosphere.active.name, 'exp', renderer.toneMappingExposure.toFixed(3), 'sun', sunLight.intensity.toFixed(3), 'hemi', hemiLight.intensity.toFixed(3), 'stars', atmosphere.current.stars.toFixed(2));
+      if (Q.has('nvgat') && Number(Q.get('nvgat')) >= t0 && Number(Q.get('nvgat')) < t1) { setNVG(!nvg.active, true); console.log('[ANGELS_ZERO] N @', t1.toFixed(2), 'nvg', nvg.active, 'hemi', hemiLight.intensity.toFixed(3), 'amb', ambLight.intensity.toFixed(3), 'sun', sunLight.intensity.toFixed(3), 'exp', renderer.toneMappingExposure.toFixed(2), 'gain', nvg.gain.toFixed(1), 'tod', atmosphere.active.name); }
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }

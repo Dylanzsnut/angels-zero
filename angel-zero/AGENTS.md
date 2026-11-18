@@ -35,8 +35,10 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/combat.js` — `createCombat`: bogey wave AI, cannon, AIM-9 PN guidance,
   explosions / wrecks / smoke, lock-on, scoring, radio comms (`combat.comms`).
 - `src/eject.js` — `createEjection`: seat, parachute, burning jet, rescue respawn.
-- `src/atmosphere.js` — `createAtmosphere`: Rayleigh/Mie sky dome, sun corona +
-  lens ghosts, owns `scene.fog` (FogExp2) whose colour is the sky horizon.
+- `src/atmosphere.js` — `createAtmosphere`: Rayleigh/Mie sky dome + starfield,
+  sun / moon corona + lens ghosts, owns `scene.fog` (FogExp2, colour = sky
+  horizon) and the time-of-day engine (`PRESETS`, `applyTimeOfDay`,
+  `randomize`) that drives lights, exposure, ocean, clouds and NVG gain.
 - `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak 2D overlay.
 - `src/nvg.js` — `createNVG`: N-key night vision; owns the frame render
   (`nvg.render`), HDR target + bloom + green-phosphor composite when active.

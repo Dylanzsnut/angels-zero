@@ -1,35 +1,100 @@
-// ANGELS ZERO — atmosphere: scattering sky dome, sun disc + corona + lens ghosts,
-// and horizon-synced exponential fog.
+// ANGELS ZERO — atmosphere + time-of-day engine.
 //
-// The sky is a full-sphere BackSide ShaderMaterial: a Rayleigh-style altitude
-// gradient (cobalt zenith #0b2d63 -> cerulean #2c7be5 -> luminous horizon haze
-// #b8dcff) plus a Mie forward-scatter lobe in warm gold around the sun azimuth.
-// The sky's horizon colour IS `scene.fog.color` (the same THREE.Color object),
-// so the ocean / terrain fade into exactly the colour the sky meets them with.
-// Inside clouds the fog colour (and with it the sky horizon) whitens and the
-// density rises, giving a white-out.
+// Sky: full-sphere BackSide ShaderMaterial — Rayleigh-style altitude gradient
+// (horizon haze -> mid sky -> zenith), Mie forward-scatter lobe around the
+// sun (or moon), solar / lunar disc, and a procedural twinkling starfield.
+// The sky's horizon colour IS `scene.fog.color` (same THREE.Color), so the sea
+// and islands always fade into exactly the colour the sky meets them with.
+//
+// Time of day: five presets (DAWN, DAYLIGHT, GOLDEN_HOUR, DUSK, NIGHT) drive
+// the sky, the sun / moon direction (randomised azimuth), the directional,
+// hemisphere and ambient lights, exposure, fog, ocean glint + water level,
+// cloud top / belly colours, airframe env-map strength and NVG tube gain.
+// applyTimeOfDay() blends there smoothly (or instantly); randomize() rolls a
+// preset + azimuth for every sortie. NVG multiplies the active preset's fill
+// light each frame, so switching it off restores that preset exactly.
 
-const HORIZON = 0xb8dcff, MID = 0x2c7be5, ZENITH = 0x0b2d63, CLOUD_WHITE = 0xe9eef3;
+const CLOUD_WHITE = 0xe9eef3;
+const D2R = Math.PI / 180;
+
+// Colours are sRGB hex; scalars are linear multipliers.
+export const PRESETS = {
+  DAWN: {
+    label: 'DAWN BREAK', sunEl: 6, lightEl: 6, moon: false, window: [5 * 60 + 35, 6 * 60 + 25],
+    horizon: 0xf5b895, mid: 0x7d86b8, zenith: 0x1f3f73, mie: 0xff9f78, mieK: 1.25, disc: 0xffd2a8, discK: 1.0, discSize: 0.99990,
+    light: 0xffb88e, lightI: 2.0, hemiSky: 0xc8b4d6, hemiGround: 0x3a3442, hemiI: 0.95, amb: 0xb7a6cc, ambI: 0.24,
+    exposure: 0.95, fogK: 1.15, stars: 0.12, corona: 0.85,
+    oceanSun: 0xffb08a, oceanSunK: 1.0, oceanSky: 0x6f7aa6, oceanLevel: 0.8, glitter: 1.4,
+    cloudTop: 0xffcdbd, cloudBelly: 0x8a83aa, env: 0.75, nvgGain: 3.2, nav: 0.45
+  },
+  DAYLIGHT: {
+    label: 'CLEAR DAYLIGHT', sunEl: 58, lightEl: 58, moon: false, window: [11 * 60 + 20, 14 * 60 + 10],
+    horizon: 0xa8d4ff, mid: 0x2c7be5, zenith: 0x0f3b7a, mie: 0xffc98a, mieK: 0.8, disc: 0xfff1d8, discK: 1.0, discSize: 0.99990,
+    light: 0xfff0d6, lightI: 3.4, hemiSky: 0xbdd6ee, hemiGround: 0x3b4a40, hemiI: 1.5, amb: 0xa8bdd0, ambI: 0.35,
+    exposure: 1.0, fogK: 1.0, stars: 0, corona: 1.0,
+    oceanSun: 0xffe0b3, oceanSunK: 1.0, oceanSky: 0x4d70a0, oceanLevel: 1.0, glitter: 1.0,
+    cloudTop: 0xffffff, cloudBelly: 0x6b88ab, env: 1.1, nvgGain: 2.1, nav: 0.0
+  },
+  GOLDEN_HOUR: {
+    label: 'GOLDEN HOUR', sunEl: 9, lightEl: 9, moon: false, window: [17 * 60, 17 * 60 + 55],
+    horizon: 0xf4d5a6, mid: 0x8ea5c4, zenith: 0x4a6e99, mie: 0xffb35c, mieK: 1.6, disc: 0xffd79a, discK: 1.0, discSize: 0.99989,
+    light: 0xffbe6b, lightI: 2.9, hemiSky: 0xf0d2a8, hemiGround: 0x4a3a2a, hemiI: 1.1, amb: 0xdec08e, ambI: 0.3,
+    exposure: 1.0, fogK: 1.05, stars: 0, corona: 1.0,
+    oceanSun: 0xffbe6b, oceanSunK: 1.25, oceanSky: 0x8a8ea8, oceanLevel: 0.9, glitter: 2.6,
+    cloudTop: 0xfff0cf, cloudBelly: 0x7d7a92, env: 0.95, nvgGain: 2.4, nav: 0.2
+  },
+  DUSK: {
+    label: 'CIVIL TWILIGHT', sunEl: -4, lightEl: 4, moon: false, window: [18 * 60 + 50, 19 * 60 + 30],
+    horizon: 0xd95b43, mid: 0x3b2d54, zenith: 0x0d152b, mie: 0xff6a3a, mieK: 1.4, disc: 0xff8a5a, discK: 0.0, discSize: 0.99990,
+    light: 0xff8a5c, lightI: 0.6, hemiSky: 0x5d4f80, hemiGround: 0x17131f, hemiI: 0.5, amb: 0x453f68, ambI: 0.12,
+    exposure: 0.85, fogK: 1.2, stars: 0.35, corona: 0.0,
+    oceanSun: 0xff7a4a, oceanSunK: 0.7, oceanSky: 0x3a2a48, oceanLevel: 0.35, glitter: 1.6,
+    cloudTop: 0x4a3a52, cloudBelly: 0x1b1828, env: 0.35, nvgGain: 6.5, nav: 0.9
+  },
+  NIGHT: {
+    label: 'MOONLIT NIGHT', sunEl: 38, lightEl: 38, moon: true, window: [22 * 60 + 30, 26 * 60 + 30],
+    horizon: 0x0c172b, mid: 0x081022, zenith: 0x040812, mie: 0x34507a, mieK: 0.55, disc: 0xdfe9f8, discK: 0.55, discSize: 0.99984,
+    light: 0xbcd4f0, lightI: 0.45, hemiSky: 0x23324e, hemiGround: 0x040609, hemiI: 0.2, amb: 0x18223a, ambI: 0.05,
+    exposure: 0.8, fogK: 1.3, stars: 1.0, corona: 0.28,
+    oceanSun: 0x9fb8d8, oceanSunK: 0.42, oceanSky: 0x0a1222, oceanLevel: 0.12, glitter: 0.9,
+    cloudTop: 0x2a3447, cloudBelly: 0x111927, env: 0.12, nvgGain: 15, nav: 1.0
+  }
+};
+export const PRESET_ORDER = ['DAWN', 'DAYLIGHT', 'GOLDEN_HOUR', 'DUSK', 'NIGHT'];
+const COLOR_KEYS = ['horizon', 'mid', 'zenith', 'mie', 'disc', 'light', 'hemiSky', 'hemiGround', 'amb', 'oceanSun', 'oceanSky', 'cloudTop', 'cloudBelly'];
+const NUM_KEYS = ['mieK', 'discK', 'discSize', 'lightI', 'hemiI', 'ambI', 'exposure', 'fogK', 'stars', 'corona', 'oceanSunK', 'oceanLevel', 'glitter', 'env', 'nvgGain', 'nav'];
 
 export function createAtmosphere(THREE, env) {
-  const { scene, camera, sunDir, terrainHeight } = env;
-  const horizon = new THREE.Color(HORIZON);
+  const { scene, camera, sunDir, terrainHeight } = env;    // sunDir: shared light direction (sun or moon)
   const cloudWhite = new THREE.Color(CLOUD_WHITE);
   const BASE_DENSITY = env.fogDensity;
-  scene.fog = new THREE.FogExp2(horizon.clone(), BASE_DENSITY);
+  scene.fog = new THREE.FogExp2(new THREE.Color(PRESETS.DAYLIGHT.horizon), BASE_DENSITY);
   const fogColor = scene.fog.color;                      // shared by sky + ocean shaders
+  const skyDir = sunDir.clone();                         // true sun / moon direction (can sit below the horizon)
+
+  // Current (blended) and target values.
+  const mkState = () => {
+    const o = {};
+    for (const k of COLOR_KEYS) o[k] = new THREE.Color();
+    for (const k of NUM_KEYS) o[k] = 0;
+    o.skyDir = new THREE.Vector3(0, 1, 0); o.lightDir = new THREE.Vector3(0, 1, 0);
+    return o;
+  };
+  const cur = mkState(), tgt = mkState();
+  let blend = 1;                                         // 1 = settled
+  let active = { name: 'DAYLIGHT', az: 0, clock: '12:00', mode: 'RANDOM' };
 
   /* ------------------------------------------------------------ sky dome */
   const skyUniforms = {
-    uSun: { value: sunDir },
+    uSun: { value: skyDir },
     uHorizon: { value: fogColor },
-    uMid: { value: new THREE.Color(MID) },
-    uZenith: { value: new THREE.Color(ZENITH) },
-    uSunColor: { value: new THREE.Color(0xfff1d8) },
-    uMie: { value: new THREE.Color(0xffc98a) },
+    uMid: { value: cur.mid }, uZenith: { value: cur.zenith },
+    uSunColor: { value: cur.disc }, uMie: { value: cur.mie },
+    uMieK: { value: 1 }, uDiscK: { value: 1 }, uDiscSize: { value: 0.9999 },
+    uStars: { value: 0 }, uTime: { value: 0 }, uMoon: { value: 0 },
     uWhite: { value: 0 }                                 // in-cloud white-out 0..1
   };
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(45000, 48, 24), new THREE.ShaderMaterial({
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(45000, 64, 32), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: skyUniforms,
     vertexShader: `
@@ -43,24 +108,43 @@ export function createAtmosphere(THREE, env) {
       #include <logdepthbuf_pars_fragment>
       varying vec3 vDir;
       uniform vec3 uSun; uniform vec3 uHorizon; uniform vec3 uMid; uniform vec3 uZenith;
-      uniform vec3 uSunColor; uniform vec3 uMie; uniform float uWhite;
+      uniform vec3 uSunColor; uniform vec3 uMie; uniform float uMieK; uniform float uDiscK; uniform float uDiscSize;
+      uniform float uStars; uniform float uTime; uniform float uMoon; uniform float uWhite;
+      float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
       void main() {
         #include <logdepthbuf_fragment>
         vec3 d = normalize(vDir);
         vec3 L = normalize(uSun);
         float h = clamp(d.y, 0.0, 1.0);
-        // Rayleigh-style optical depth: thick, bright haze at the horizon, thinning upward.
-        float tMid = 1.0 - exp(-h * 9.0);                // horizon -> cerulean in the first ~10 deg
-        float tZen = smoothstep(0.18, 1.0, h);            // cerulean -> deep cobalt at the zenith
+        // Rayleigh-style optical depth: thick haze at the horizon, thinning upward.
+        float tMid = 1.0 - exp(-h * 9.0);
+        float tZen = smoothstep(0.18, 1.0, h);
         vec3 col = mix(uHorizon, uMid, tMid);
         col = mix(col, uZenith, tZen * tZen * (3.0 - 2.0 * tZen));
-        float mu = max(dot(d, L), 0.0);
-        // Mie forward scattering: broad warm-gold glow, tighter bright aureole near the sun.
+        float mu = dot(d, L);
+        float mup = max(mu, 0.0);
+        // Mie forward scatter around the sun azimuth; strongest near the horizon
+        // (also lights the twilight band when the sun is just below it).
         float horizonBias = 1.0 - smoothstep(0.0, 0.45, h);
-        col += uMie * (pow(mu, 6.0) * 0.30 * (0.35 + 0.65 * horizonBias) + pow(mu, 48.0) * 0.55);
-        col += uSunColor * pow(mu, 600.0) * 3.0;
-        // Solar disc (~0.6 deg).
-        col += uSunColor * smoothstep(0.99990, 0.99996, mu) * 26.0;
+        vec3 az = normalize(vec3(L.x, 0.0, L.z) + 1e-5);
+        float azGlow = max(dot(normalize(vec3(d.x, 0.0, d.z) + 1e-5), az), 0.0);
+        col += uMie * uMieK * (pow(mup, 6.0) * 0.30 * (0.35 + 0.65 * horizonBias) + pow(mup, 48.0) * 0.55
+                               + pow(azGlow, 4.0) * horizonBias * 0.22);
+        // Sun or moon disc + aureole.
+        float disc = smoothstep(uDiscSize, uDiscSize + 0.00006, mu);
+        col += uSunColor * uDiscK * (pow(mup, 600.0) * (uMoon > 0.5 ? 0.6 : 3.0) + disc * (uMoon > 0.5 ? 2.2 : 26.0));
+        // Procedural starfield (twinkling), fading toward the horizon haze.
+        if (uStars > 0.001) {
+          vec3 sp = d * 260.0, cell = floor(sp);
+          float hs = hash3(cell);
+          if (hs > 0.9962) {
+            vec3 f = fract(sp) - 0.5;
+            float core = smoothstep(0.34, 0.0, length(f));
+            float tw = 0.6 + 0.4 * sin(uTime * (1.5 + hs * 7.0) + hs * 91.0);
+            float mag = 0.45 + 2.6 * (hs - 0.9962) / 0.0038;
+            col += vec3(0.82, 0.88, 1.0) * core * tw * mag * uStars * smoothstep(0.02, 0.28, d.y) * (1.0 - disc);
+          }
+        }
         // Below the horizon: pure horizon haze (the ocean fog fades into it).
         col = mix(col, uHorizon, smoothstep(0.015, -0.06, d.y));
         col = mix(col, uHorizon, uWhite);
@@ -77,17 +161,15 @@ export function createAtmosphere(THREE, env) {
   function coronaTexture() {
     const S = 512, cv = document.createElement('canvas'); cv.width = cv.height = S;
     const x = cv.getContext('2d'), c = S / 2;
-    let g = x.createRadialGradient(c, c, 0, c, c, c);
+    const g = x.createRadialGradient(c, c, 0, c, c, c);
     g.addColorStop(0, 'rgba(255,255,248,1)'); g.addColorStop(0.035, 'rgba(255,250,232,0.95)');
     g.addColorStop(0.09, 'rgba(255,226,170,0.45)'); g.addColorStop(0.3, 'rgba(255,196,120,0.12)');
     g.addColorStop(1, 'rgba(255,180,100,0)');
     x.fillStyle = g; x.fillRect(0, 0, S, S);
-    // Thin iridescent corona rings.
     for (const [r, a, col] of [[0.20, 0.10, '255,214,150'], [0.34, 0.06, '180,220,255'], [0.47, 0.04, '255,200,170']]) {
       x.strokeStyle = `rgba(${col},${a})`; x.lineWidth = S * 0.012;
       x.beginPath(); x.arc(c, c, c * r, 0, Math.PI * 2); x.stroke();
     }
-    // Faint diffraction spokes.
     x.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 12; i++) {
       const a = i * Math.PI / 6 + 0.13, len = c * (i % 3 ? 0.55 : 0.95);
@@ -114,7 +196,6 @@ export function createAtmosphere(THREE, env) {
   corona.renderOrder = -900; corona.frustumCulled = false;
   scene.add(corona);
   const SUN_DIST = 30000;
-  // Lens ghosts live in camera space, strung along the sun -> screen-centre line.
   const ghosts = [
     { k: 0.45, size: 0.4, tex: ghostTexture('255,190,120', true) },
     { k: 0.85, size: 0.28, tex: ghostTexture('140,220,255', true) },
@@ -128,41 +209,117 @@ export function createAtmosphere(THREE, env) {
   });
   if (!camera.parent) scene.add(camera);
 
+  /* ------------------------------------------------- time-of-day engine */
+  const bound = {};                                      // lights, ocean uniforms, clouds, callbacks
+  function bind(o) { Object.assign(bound, o); }
+  const dirFrom = (el, az, out) => out.set(Math.sin(az * D2R) * Math.cos(el * D2R), Math.sin(el * D2R), -Math.cos(az * D2R) * Math.cos(el * D2R)).normalize();
+  function fillTarget(name, az) {
+    const p = PRESETS[name];
+    for (const k of COLOR_KEYS) tgt[k].setHex(p[k]);
+    for (const k of NUM_KEYS) tgt[k] = p[k];
+    dirFrom(p.sunEl, az, tgt.skyDir);
+    dirFrom(p.lightEl, az, tgt.lightDir);
+  }
+  function clockFor(name) {
+    const [a, b] = PRESETS[name].window;
+    const m = Math.floor(a + Math.random() * (b - a)) % (24 * 60);
+    return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60 / 5) * 5).padStart(2, '0');
+  }
+  // Configure a preset. instant: snap (load / restart) instead of the ~1.5 s blend.
+  function applyTimeOfDay(name, opts = {}) {
+    if (!PRESETS[name]) name = 'DAYLIGHT';
+    const az = opts.az ?? Math.random() * 360;
+    active = { name, az, clock: opts.clock || clockFor(name), mode: opts.mode || active.mode, label: PRESETS[name].label };
+    fillTarget(name, az);
+    skyUniforms.uMoon.value = PRESETS[name].moon ? 1 : 0;
+    if (opts.instant) {
+      for (const k of COLOR_KEYS) cur[k].copy(tgt[k]);
+      for (const k of NUM_KEYS) cur[k] = tgt[k];
+      cur.skyDir.copy(tgt.skyDir); cur.lightDir.copy(tgt.lightDir);
+      blend = 1; applyToScene(false);
+    } else blend = 0;
+    if (bound.onChange) bound.onChange(active);
+    return active;
+  }
+  function randomize(opts = {}) {
+    const name = PRESET_ORDER[Math.floor(Math.random() * PRESET_ORDER.length)];
+    return applyTimeOfDay(name, { ...opts, mode: 'RANDOM' });
+  }
+
+  let nvgOn = false;
+  function applyToScene() {
+    skyDir.copy(cur.skyDir);
+    sunDir.copy(cur.lightDir);
+    skyUniforms.uMieK.value = cur.mieK; skyUniforms.uDiscK.value = cur.discK;
+    skyUniforms.uDiscSize.value = cur.discSize; skyUniforms.uStars.value = cur.stars;
+    const L = bound;
+    if (L.sunLight) {
+      L.sunLight.color.copy(cur.light); L.sunLight.intensity = cur.lightI;
+      if (!L.sunLight.castShadow) { L.sunLight.position.copy(sunDir).multiplyScalar(1000); L.sunLight.target.position.set(0, 0, 0); L.sunLight.target.updateMatrixWorld(); }
+    }
+    const fill = nvgOn ? 2.4 : 1;                        // NVG light intensification on top of the preset
+    if (L.hemiLight) { L.hemiLight.color.copy(cur.hemiSky); L.hemiLight.groundColor.copy(cur.hemiGround); L.hemiLight.intensity = cur.hemiI * fill; }
+    if (L.ambLight) { L.ambLight.color.copy(cur.amb); L.ambLight.intensity = cur.ambI * fill; }
+    if (L.renderer) L.renderer.toneMappingExposure = cur.exposure;
+    if (L.ocean) {
+      const u = L.ocean;
+      u.uSunColor.value.set(cur.oceanSun.r, cur.oceanSun.g, cur.oceanSun.b).multiplyScalar(cur.oceanSunK);
+      u.uSky.value.set(cur.oceanSky.r, cur.oceanSky.g, cur.oceanSky.b);
+      if (u.uLevel) u.uLevel.value = cur.oceanLevel;
+      if (u.uGlitter) u.uGlitter.value = cur.glitter;
+    }
+    if (L.setCloudColors) L.setCloudColors(cur.cloudTop, cur.cloudBelly);
+    if (L.setEnv) L.setEnv(cur.env);
+    if (L.setNavLights) L.setNavLights(cur.nav);
+    if (L.setNvgGain) L.setNvgGain(cur.nvgGain);
+  }
+
   const _p = new THREE.Vector3(), _n = new THREE.Vector3();
-  let sunVis = 1;
-  // Terrain occlusion: march the sun ray over the islands.
+  let sunVis = 1, time = 0;
   function sunOccluded() {
     const o = camera.position;
     for (let d = 60; d < 12000; d *= 1.55) {
-      _p.copy(sunDir).multiplyScalar(d).add(o);
+      _p.copy(skyDir).multiplyScalar(d).add(o);
       if (terrainHeight(_p.x, _p.z) > _p.y) return true;
     }
     return false;
   }
 
   /* ---------------------------------------------------------------- frame */
-  // mist: camera-in-cloud factor 0..1 (white-out); boost: extra fog multiplier.
+  // mist: camera-in-cloud factor 0..1 (white-out); nvg: night-vision active.
   function update(dt, mist, nvg) {
+    time += dt;
+    nvgOn = !!nvg;
+    if (blend < 1) {
+      blend = Math.min(1, blend + dt / 1.5);
+      const k = blend >= 1 ? 1 : 1 - Math.exp(-dt * 3.2);
+      for (const key of COLOR_KEYS) cur[key].lerp(tgt[key], k);
+      for (const key of NUM_KEYS) cur[key] += (tgt[key] - cur[key]) * k;
+      cur.skyDir.lerp(tgt.skyDir, k).normalize(); cur.lightDir.lerp(tgt.lightDir, k).normalize();
+    }
+    applyToScene();
+    skyUniforms.uTime.value = time;
     sky.position.copy(camera.position);
-    fogColor.copy(horizon).lerp(cloudWhite, Math.min(1, mist * 1.15));
+    fogColor.copy(cur.horizon).lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel)), Math.min(1, mist * 1.15));
     skyUniforms.uWhite.value = Math.min(1, mist * 1.1);
-    scene.fog.density = BASE_DENSITY * (1 + mist * 28);
+    scene.fog.density = BASE_DENSITY * cur.fogK * (1 + mist * 28);
 
-    corona.position.copy(sunDir).multiplyScalar(SUN_DIST).add(camera.position);
-    corona.scale.setScalar(SUN_DIST * 0.34);
-    const target = sunOccluded() ? 0 : 1 - Math.min(1, mist * 1.4);
+    corona.position.copy(skyDir).multiplyScalar(SUN_DIST).add(camera.position);
+    const moon = skyUniforms.uMoon.value > 0.5;
+    corona.scale.setScalar(SUN_DIST * (moon ? 0.16 : 0.34));
+    corona.material.color.copy(moon ? cur.disc : cur.light.clone().lerp(new THREE.Color(1, 1, 1), 0.5));
+    const target = (sunOccluded() || skyDir.y < -0.01 ? 0 : 1 - Math.min(1, mist * 1.4)) * cur.corona;
     sunVis += (target - sunVis) * Math.min(1, dt * 6);
     corona.material.opacity = 0.95 * sunVis;
     corona.visible = sunVis > 0.01;
 
-    // Lens ghosts: only while the sun is in front and inside the frame.
     _n.copy(corona.position).project(camera);
-    const inFront = _n.z < 1 && sunDir.dot(camera.getWorldDirection(_p)) > 0;
+    const inFront = _n.z < 1 && skyDir.dot(camera.getWorldDirection(_p)) > 0;
     const edge = Math.max(Math.abs(_n.x), Math.abs(_n.y));
-    const gv = inFront ? sunVis * (1 - THREE.MathUtils.smoothstep(edge, 0.85, 1.25)) : 0;
+    const gv = inFront && !moon ? sunVis * (1 - THREE.MathUtils.smoothstep(edge, 0.85, 1.25)) : 0;
     const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), D = 10;
     for (const g of ghosts) {
-      const gx = _n.x * (1 - 2 * g.k), gy = _n.y * (1 - 2 * g.k);   // k = 0 at the sun, 1 at its mirror image
+      const gx = _n.x * (1 - 2 * g.k), gy = _n.y * (1 - 2 * g.k);
       g.sp.position.set(gx * tanY * camera.aspect * D, gy * tanY * D, -D);
       g.sp.scale.setScalar(g.size * D * tanY * 0.35);
       g.sp.material.opacity = gv * 0.32 * (nvg ? 0.4 : 1);
@@ -172,8 +329,10 @@ export function createAtmosphere(THREE, env) {
   }
 
   return {
-    sky, corona, fogColor, horizon, update,
-    get sunVisible() { return sunVis; },
-    setIntensify(k) { skyUniforms.uSunColor.value.setHex(0xfff1d8).multiplyScalar(k); }
+    sky, corona, fogColor, update, bind, applyTimeOfDay, randomize,
+    get active() { return active; },
+    get current() { return cur; },
+    get settled() { return blend >= 1; },
+    get sunVisible() { return sunVis; }
   };
 }
