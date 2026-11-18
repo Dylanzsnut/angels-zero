@@ -8,6 +8,8 @@
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; font-family:'Rajdhani','Share Tech Mono',monospace; }
   #gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
   #hud { position:fixed; inset:0; width:100vw; height:100vh; display:block; pointer-events:none; z-index:10; }
+  /* NVG: dark halo + slight lift keeps green symbology crisp over the green tube image. */
+  body.nvg #hud { filter: drop-shadow(0 0 1.2px rgba(0,0,0,.95)) drop-shadow(0 0 2.5px rgba(0,8,3,.85)) brightness(1.12); }
   #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#52ff9c; font-size:13px; font-weight:600; letter-spacing:3px; pointer-events:none; text-shadow:0 0 10px rgba(0,255,110,.55); }
 
   /* AC7 Tactical OS Briefing & Pause HUD */
@@ -198,6 +200,7 @@
             <div class="bind"><span class="k"><kbd>R</kbd> <kbd>1</kbd> <kbd>2</kbd></span><span class="a">Switch weapon</span></div>
             <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
             <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Target in Sight</span></div>
+            <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
             <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
             <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Deploy flares</span></div>
             <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
@@ -280,14 +283,15 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s15a';
-import { createHUD } from './src/hud.js?v=s15a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s15a';
-import { createCombat } from './src/combat.js?v=s15a';
-import { createEjection } from './src/eject.js?v=s15a';
-import { createAudio } from './src/audio.js?v=s15a';
-import { createAtmosphere } from './src/atmosphere.js?v=s15a';
-import { createCanopyFX } from './src/canopy.js?v=s15a';
+import { createVFX } from './src/vfx.js?v=s16a';
+import { createHUD } from './src/hud.js?v=s16a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s16a';
+import { createCombat } from './src/combat.js?v=s16a';
+import { createEjection } from './src/eject.js?v=s16a';
+import { createAudio } from './src/audio.js?v=s16a';
+import { createAtmosphere } from './src/atmosphere.js?v=s16a';
+import { createCanopyFX } from './src/canopy.js?v=s16a';
+import { createNVG } from './src/nvg.js?v=s16a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -317,8 +321,10 @@ const SUN_COLOR = new THREE.Color(0xfff0d6);
 const sunLight = new THREE.DirectionalLight(SUN_COLOR, 3.4);
 sunLight.position.copy(SUN_DIR).multiplyScalar(1000);
 scene.add(sunLight, sunLight.target);
-scene.add(new THREE.HemisphereLight(0xbdd6ee, 0x3b4a40, 1.5));
-scene.add(new THREE.AmbientLight(0xa8bdd0, 0.35));
+const hemiLight = new THREE.HemisphereLight(0xbdd6ee, 0x3b4a40, 1.5);
+const ambLight = new THREE.AmbientLight(0xa8bdd0, 0.35);
+scene.add(hemiLight, ambLight);
+const FILL_BASE = { hemi: hemiLight.intensity, amb: ambLight.intensity };
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -871,6 +877,7 @@ addEventListener('keydown', e => {
   if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
   if ((k === 'x' || k === 'g') && !e.repeat) combatSys.dispenseFlares();
   if (k === 'c' && !e.repeat) combatSys.designateInSight();
+  if (k === 'n' && !e.repeat) setNVG(!nvg.active);
   if (k === 'q' && !e.repeat) startRoll(-1);
   if (k === 'e' && !e.repeat) triggerEject('manual');
   if (k === 'backspace' && flightMode === 'FLY') { e.preventDefault(); resetAircraft(); }
@@ -1134,6 +1141,15 @@ const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunD
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
 const canopyFx = createCanopyFX();
+// AN/AVS-9 night vision (N): light intensification + green-phosphor tube composite.
+const nvg = createNVG(THREE, renderer);
+function setNVG(on, silent) {
+  nvg.active = on;
+  document.body.classList.toggle('nvg', nvg.active);
+  hemiLight.intensity = FILL_BASE.hemi * (nvg.active ? 2.4 : 1);      // ~2.4x fill light through the tubes
+  ambLight.intensity = FILL_BASE.amb * (nvg.active ? 2.4 : 1);
+  if (!silent) { audio.nvg(nvg.active); combatSys.say(nvg.active ? 'NVG ON — AN/AVS-9' : 'NVG OFF', 1.0, '#52ff9c'); }
+}
 const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight,
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y },
@@ -1148,7 +1164,7 @@ const hud = createHUD(THREE, {
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE },
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
-  getMode: () => flightMode, isHidden: () => appMode === 'MENU',
+  getMode: () => flightMode, isHidden: () => appMode === 'MENU', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist,
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
@@ -1233,6 +1249,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('wpn')) combatSys.setWeapon(Q.get('wpn').toUpperCase());
   if (DEBUG && Q.has('bomb')) { combatSys.update(0, 0, { playerActive: true, firing: false }); for (let i = 0; i < (Number(Q.get('bomb')) || 1); i++) { combatSys.update(0.25, 0, { playerActive: true, firing: false }); combatSys.dropBomb(); } }
   if (DEBUG && Q.has('flare')) combatSys.dispenseFlares();
+  if (DEBUG && Q.has('nvg')) setNVG(true, true);
   if (DEBUG && Q.has('canopylog')) setTimeout(() => console.log('[ANGELS_ZERO] canopy wet', canopyFx.wetness.toFixed(2), 'drops', canopyFx.dropCount, 'streaks', canopyFx.streakCount, 'playerCloud', (combat.playerCloud || 0).toFixed(2), 'mist', vfx.mist.toFixed(2)), Number(Q.get('canopylog')) || 800);
   if (DEBUG && Q.has('cloudpos')) {                   // test hook: ?cloudpos=az:el:dist (deg off the nose, metres) -> debug cumulus
     const [az, el, d] = Q.get('cloudpos').split(':').map(Number), D = Math.PI / 180;
@@ -1261,6 +1278,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         const [ct, ci] = Q.get('cloudon').split(':').map(Number), e = combatSys.enemies[ci];
         if (e && ct >= t0 && ct < t1) { vfx.placeDebugCloud(e.pos.clone().addScaledVector(e.vel, 1.5)); console.log('[ANGELS_ZERO] cloud on', e.label, '@', t1.toFixed(2)); }
       }
+      if (Q.has('nvgat') && Number(Q.get('nvgat')) >= t0 && Number(Q.get('nvgat')) < t1) { setNVG(!nvg.active, true); console.log('[ANGELS_ZERO] N @', t1.toFixed(2), 'nvg', nvg.active, 'hemi', hemiLight.intensity.toFixed(2), 'amb', ambLight.intensity.toFixed(2)); }
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
@@ -1329,7 +1347,7 @@ function animate() {
   if (appMode !== 'PAUSED') updateCameraAndVisuals(dt, simTime);
   if (appMode === 'PLAY') updateAudio();
   oceanUniforms.uTime.value = simTime;
-  renderer.render(scene, camera);
+  nvg.render(scene, camera, simTime, firstPerson);
   canopyFx.update(dt, appMode === 'PLAY' && flightMode === 'FLY' ? combat.playerCloud || 0 : 0, state.speed, firstPerson, appMode !== 'MENU');
   hud.draw();
   if (dt > 0) perf.fps += ((1 / Math.max(dt, 1e-3)) - perf.fps) * 0.05;
@@ -1338,6 +1356,7 @@ function animate() {
 const perf = { fps: 60, frames: 0 };
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight, false);
+  nvg.setSize();
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   hud.resize();

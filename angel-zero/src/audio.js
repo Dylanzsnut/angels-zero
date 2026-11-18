@@ -222,6 +222,32 @@ export function createAudio() {
     }
   }
 
+  // NVG flip-down: mechanical click + capacitor charge whine (1.8 -> 6.5 kHz, 0.35 s).
+  // Flip-up: a single crisp click.
+  function nvg(on) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const click = (at, f, a) => {
+      const n = ctx.createBufferSource(); n.buffer = N.white;
+      const bp = filt('bandpass', f, 2.5);
+      const g = gain(0); g.gain.setValueAtTime(a, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.025);
+      n.connect(bp).connect(g).connect(master); n.start(at, Math.random()); n.stop(at + 0.03);
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(220, at); o.frequency.exponentialRampToValueAtTime(90, at + 0.04);
+      const og = gain(0); og.gain.setValueAtTime(a * 0.6, at); og.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+      o.connect(og).connect(master); o.start(at); o.stop(at + 0.06);
+    };
+    if (on) {
+      click(t, 3200, 0.22); click(t + 0.045, 2400, 0.14);              // mount detent + tube flip-down
+      const w = ctx.createOscillator(); w.type = 'sine';
+      w.frequency.setValueAtTime(1800, t + 0.05); w.frequency.exponentialRampToValueAtTime(6500, t + 0.40);
+      const wg = gain(0); wg.gain.setValueAtTime(0, t + 0.05); wg.gain.linearRampToValueAtTime(0.022, t + 0.12);
+      wg.gain.setValueAtTime(0.022, t + 0.34); wg.gain.exponentialRampToValueAtTime(0.0008, t + 0.52);
+      w.connect(wg).connect(master); w.start(t + 0.05); w.stop(t + 0.55);
+    } else {
+      click(t, 3800, 0.2);
+    }
+  }
+
   // C-key designation chirp: two quick rising sine blips (target in sight), or a
   // single low blip when nothing is in the sight cone.
   function designate(ok = true) {
@@ -351,7 +377,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, setVolume, setMuted,
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }

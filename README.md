@@ -86,6 +86,7 @@ No external MP3/WAV files are downloaded or played. `src/audio.js` synthesizes e
 | **R / 1 / 2** | Switch `>MSL` / `>BOMB` (CCIP) |
 | **X / G** | Dispense flares + chaff salvo (`FLR`) |
 | **C** | Lock Target in Sight (closest to the boresight `W`, inside the 22° cone) |
+| **N** | Toggle Night Vision (NVG) |
 
 ### Systems
 | Input | Action |

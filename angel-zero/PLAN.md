@@ -450,5 +450,27 @@ briefing (no audio until a real LAUNCH click). Flags other than
       droplets; zero page console errors. Hooks: `?cloudpos=az:el:dist`,
       `?cloudon=t:i`, `?canopylog=ms`. Build tag `s15a`.
 
+## AN/AVS-9 night vision toggle (`N`) (2026-11-18)
+- [x] `src/nvg.js`: with NVG on the scene renders into a half-float HDR
+      target; a 1/4-res bright pass (knee 1.25) collects afterburner plumes,
+      flares, tracers, explosions and the sun into a halo buffer; the
+      composite applies high gain (2.1) with an automatic-brightness
+      shoulder, luminance edge enhancement (terrain contours, wave crests,
+      cloud edges, aircraft silhouettes), a Gen-3 green phosphor ramp
+      (#021208 -> #1aff66 -> #39ff88 -> white-green), wide tube halos,
+      animated grain + scintillation and a round tube vignette (dual-tube
+      binocular mask in the cockpit view). Daylight path is unchanged.
+- [x] `index.html`: `N` toggles `nvg.active`; hemisphere + ambient fill
+      x2.4 while on; `body.nvg #hud` dark drop-shadow halo + slight lift so
+      HUD symbology stays crisp over the green image; controls overlay
+      `N — Toggle Night Vision (NVG)`. `src/hud.js`: `[ NVG ]` badge under
+      the heading box; cloud white-out wash turns phosphor green under NVG.
+      `src/audio.js`: flip-down clicks + 1.8 -> 6.5 kHz capacitor whine
+      (0.35 s) on, single click off.
+- [x] Headless (`?nvg`, `?nvgat=s`): chase + cockpit + in-cloud NVG render
+      with zero page console errors; on -> hemi 1.5 -> 3.6, amb 0.35 -> 0.84,
+      frame mean RGB 97/239/165; off -> lights restored and the frame matches
+      a daylight reference (mean |diff| 0.13/255). Build tag `s16a`.
+
 ## Next (future)
 - Mobile/touch controls, sound, mission structure, enemy AI variety.

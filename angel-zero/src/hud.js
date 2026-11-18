@@ -1120,13 +1120,15 @@ export function createHUD(THREE, A) {
 
     const fp = A.isFirstPerson();
     const mist = A.getMist();
+    const nvgOn = A.isNVG && A.isNVG();
     if (mist > 0.01) {
-      hctx.fillStyle = `rgba(228,235,242,${(fp ? 0.40 : 0.48) * mist})`;
+      // Through NVG tubes the cloud wash is phosphor green and thinner (the tubes already render it).
+      hctx.fillStyle = nvgOn ? `rgba(70,190,120,${(fp ? 0.16 : 0.2) * mist})` : `rgba(228,235,242,${(fp ? 0.40 : 0.48) * mist})`;
       hctx.fillRect(0, 0, HW, HH);
       if (fp) {
         const r = hctx.createRadialGradient(HW / 2, HH * 0.42, HH * 0.15, HW / 2, HH * 0.42, HW * 0.65);
         r.addColorStop(0, 'rgba(255,255,255,0)');
-        r.addColorStop(1, `rgba(245,248,252,${0.48 * mist})`);
+        r.addColorStop(1, nvgOn ? `rgba(60,170,105,${0.2 * mist})` : `rgba(245,248,252,${0.48 * mist})`);
         hctx.fillStyle = r; hctx.fillRect(0, 0, HW, HH);
       }
     }
@@ -1157,7 +1159,22 @@ export function createHUD(THREE, A) {
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
     drawComms(hctx, fp ? HH * 0.62 : HH * 0.84);
+    if (A.isNVG && A.isNVG()) drawNVGBadge(hctx, fp);
     if (!A.isModal()) drawStickCue(hctx);
+  }
+
+  // [ NVG ] status badge just under the heading tape / heading box.
+  function drawNVGBadge(ctx, fp) {
+    const x = HW / 2, y = fp ? 30 : 84;
+    ctx.save();
+    ctx.font = f(13, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText('[ NVG ]').width + 14;
+    ctx.fillStyle = 'rgba(0, 10, 4, 0.72)';
+    ctx.fillRect(x - w / 2, y - 10, w, 20);
+    glow(ctx, '#52ff9c', 3); ctx.lineWidth = 1;
+    ctx.strokeRect(x - w / 2 + 0.5, y - 9.5, w - 1, 19);
+    labelText(ctx, '[ NVG ]', x, y + 1, '#52ff9c', 3);
+    ctx.restore();
   }
 
   return {

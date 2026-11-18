@@ -38,6 +38,8 @@ procedural ocean archipelago with a 2D HUD, cockpit MFDs and combat.
 - `src/atmosphere.js` — `createAtmosphere`: Rayleigh/Mie sky dome, sun corona +
   lens ghosts, owns `scene.fog` (FogExp2) whose colour is the sky horizon.
 - `src/canopy.js` — `createCanopyFX`: canopy droplets / mist-streak 2D overlay.
+- `src/nvg.js` — `createNVG`: N-key night vision; owns the frame render
+  (`nvg.render`), HDR target + bloom + green-phosphor composite when active.
 - `src/audio.js` — `createAudio`: procedural Web Audio (engines, gun, seeker,
   alert, explosions); the AudioContext starts only inside the LAUNCH click.
 - `prototype_flight_index.html` — preserved v1.1 prototype (do not delete).
