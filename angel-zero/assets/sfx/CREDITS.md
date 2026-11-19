@@ -10,6 +10,7 @@ with `decodeAudioData` and falls back to procedural DSP if any file is missing.
 | `gloc_breathing_heartbeat.mp3` | [Breathing Tired](https://opengameart.org/content/breathing-tired) mixed over the fast loop of [Heartbeat sounds](https://opengameart.org/content/heartbeat-sounds) (low-passed) | mikeask; bart | CC0; CC0 |
 | `gloc_warning_chime.mp3` | [Short alarm](https://opengameart.org/content/short-alarm) (trimmed to 1.5 s) | yd | CC0 |
 
-`jet_turbine_loop.mp3` is not included yet: the intended source, a Saab J 35D
-Draken engine run / taxi recording on Wikimedia Commons, could not be downloaded
-(rate-limited). The engine uses the procedural F100 synthesis until it is added.
+The F100 engine sound is fully synthesized in `src/audio.js` (detuned turbine
+core oscillators, compressor whine, filtered exhaust noise, afterburner sub-bass);
+no turbine recording is shipped. The synthesized airframe groan, buffet, anti-G
+breathing and heartbeat layers always play; the recordings above add texture.

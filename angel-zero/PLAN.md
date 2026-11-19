@@ -229,6 +229,30 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   fire particles, explosions, water geysers, shockwave rings.
 - [x] **Procedural Web Audio** — engines, BRRRT gun, seeker tones, alerts,
   bomb / flare / NVG / cloud / designation DSP.
+- [x] **Audio audit & fix: F100 strain, airframe buffet, pilot G-LOC breathing**
+  *(build `s30e`, `src/audio.js`)*
+  - Root cause of silence: `M` on the menu persisted `az_muted` in
+    localStorage, which muted every later session; the context was unlocked
+    only by the Launch click. Now mute always starts OFF, volume < 0.05 resets
+    to default, and `pointerdown` / `mousedown` / `keydown` / `touchstart`
+    (capture) all call `audio.init()` + `resume()`. Missing
+    `jet_turbine_loop.mp3` (404) dropped from the SFX map.
+  - Chain: cockpit LP -> master -> G-LOC tunnel LP -> compressor -> analyser
+    -> destination; pilot body sounds + chime bypass the tunnel.
+  - Deterministic DSP layers (no file dependency): F100 core 82 / 84.5 Hz
+    saw+tri rising to ~165 Hz at MIL, 1.4-2.6 kHz compressor whine, pink
+    exhaust LP 320 Hz -> 1.8 kHz in AB, 55 Hz sub; airframe groan resonators
+    110 / 185 / 270 Hz with LFO warble (3.2-9 G); turbine lug 70-130 Hz at
+    AoA > 10 deg; buffet 220-680 Hz band-pass with 14 Hz flutter (AoA > 9 deg,
+    > 520 kt or high G); anti-G breathing cycle (inhale / strain hold / exhale)
+    at gStrain > 0.15 or > 5 G; heartbeat 52 -> 38 Hz, 95 -> 155 BPM from
+    gStrain > 0.35; tunnel muffling 14 kHz -> 480 Hz from gStrain > 0.45.
+  - Debug: `window.__audioDebug()` (state, analyser RMS, mute, volume, layer
+    gains, G), `__step(n)` / `__dbgInput(nx, ny, keys)` with `?debug`.
+  - Verified (real Launch click): `running`, cruise RMS 0.09-0.15; 4 s High-G
+    pull RMS 0.22-0.30 with groan 0.95 + lug + buffet + breathing; sustained
+    9 G AB pull brings the heartbeat (0.93) and tunnel LP to ~2.6 kHz; all
+    layers return to 0 on release; zero page console errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

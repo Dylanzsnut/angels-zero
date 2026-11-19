@@ -12,7 +12,10 @@
 export function createAudio() {
   let ctx = null, master = null, cockpitLP = null, ready = false;
   let volume = 0.7, muted = false;
-  try { const v = parseFloat(localStorage.getItem('az_volume')); if (!Number.isNaN(v)) volume = Math.min(1, Math.max(0, v)); muted = localStorage.getItem('az_muted') === '1'; } catch (e) { /* storage unavailable */ }
+  // Volume persists; MUTE does not -- a mute pressed in an earlier session (M on the
+  // briefing) used to silence every later sortie. Every session starts unmuted, and
+  // a stored volume of ~0 falls back to the default.
+  try { const v = parseFloat(localStorage.getItem('az_volume')); if (!Number.isNaN(v) && v >= 0.05) volume = Math.min(1, v); localStorage.removeItem('az_muted'); } catch (e) { /* storage unavailable */ }
 
   const N = {};                                            // live nodes
   const tc = 0.06;                                         // param smoothing time-constant
@@ -41,7 +44,8 @@ export function createAudio() {
   /* ------------------------------------------------- recorded samples */
   // Fetched + decoded at page load (OfflineAudioContext), so they are ready the
   // moment the LAUNCH click creates the live AudioContext.
-  const SFX = { turbine: 'jet_turbine_loop.mp3', buffet: 'airframe_buffet.mp3', breath: 'gloc_breathing_heartbeat.mp3', chime: 'gloc_warning_chime.mp3' };
+  // (the F100 engine is fully synthesized -- no turbine file is requested)
+  const SFX = { buffet: 'airframe_buffet.mp3', breath: 'gloc_breathing_heartbeat.mp3', chime: 'gloc_warning_chime.mp3' };
   const samples = {}, sfxState = {};
   function preload(base = 'assets/sfx/') {
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -72,7 +76,9 @@ export function createAudio() {
     cockpitLP = filt('lowpass', 18000, 0.5);                // canopy muffles the outside world in first person
     // G-LOC hearing tunnel: master low-pass, 12 kHz open -> 550 Hz near blackout.
     N.tunnel = filt('lowpass', 12000, 0.6);
-    cockpitLP.connect(master); master.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(ctx.destination);
+    // master -> hearing tunnel -> compressor -> analyser -> speakers (one clean bus).
+    N.analyser = ctx.createAnalyser(); N.analyser.fftSize = 2048; N.anaBuf = new Float32Array(N.analyser.fftSize);
+    cockpitLP.connect(master); master.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
     // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
     N.body = gain(muted ? 0 : volume); N.body.connect(comp);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
@@ -157,6 +163,33 @@ export function createAudio() {
     N.rain.connect(N.rainBP).connect(N.rainGain).connect(cockpitLP);
     N.rainLow = loopNoise(brown); N.rainLowLP = filt('lowpass', 380, 0.7); N.rainLowGain = gain(0);
     N.rainLow.connect(N.rainLowLP).connect(N.rainLowGain).connect(master);
+
+    // Twin F100-PW-220 core: detuned saw + triangle (82 / 84.5 Hz idle -> ~165 Hz MIL),
+    // compressor whine (1.4-2.6 kHz sine), sub-bass 55 Hz afterburner rumble.
+    N.coreA = osc('sawtooth', 82); N.coreB = osc('triangle', 84.5); N.coreLP = filt('lowpass', 520, 1.1); N.coreGain = gain(0);
+    N.coreA.connect(N.coreLP); N.coreB.connect(N.coreLP); N.coreLP.connect(N.coreGain).connect(cockpitLP);
+    N.comp = osc('sine', 1400); N.compGain = gain(0); N.comp.connect(N.compGain).connect(cockpitLP);
+    N.sub = osc('sine', 55); N.subGain = gain(0); N.sub.connect(N.subGain).connect(master);
+    // Airframe groan: band-passed brown noise + three metallic resonators (110 / 185 / 270 Hz)
+    // with a slow LFO warble, swelling from 3.2 G to 9 G.
+    N.groanNoise = loopNoise(brown); N.groanBP = filt('bandpass', 200, 2.2); N.groanGain = gain(0);
+    N.groanNoise.connect(N.groanBP).connect(N.groanGain).connect(cockpitLP);
+    N.groanLFO = osc('sine', 0.45); N.groanLFOd = gain(5);
+    N.groanLFO.connect(N.groanLFOd);
+    N.res = [110, 185, 270].map((f, i) => {
+      const o = osc(i === 1 ? 'sawtooth' : 'triangle', f); N.groanLFOd.connect(o.frequency);
+      const bp = filt('bandpass', f, 12), g = gain(0); o.connect(bp).connect(g).connect(cockpitLP); return { o, g, f };
+    });
+    N.creakLFO = osc('sine', 0.7); N.creakAmt = gain(0); N.creakLFO.connect(N.creakAmt);
+    // Turbine airflow lug: deep 70-130 Hz compressor rumble in high-AoA turns.
+    N.lug = osc('sine', 120); N.lugNoise = loopNoise(brown); N.lugLP = filt('lowpass', 130, 1.4); N.lugGain = gain(0);
+    N.lug.connect(N.lugGain); N.lugNoise.connect(N.lugLP).connect(N.lugGain); N.lugGain.connect(cockpitLP);
+    // Wing buffet / wind rush: swept band-pass noise (220-680 Hz) with 14 Hz flutter.
+    N.buffN = loopNoise(pink); N.buffSweep = filt('bandpass', 300, 1.6); N.buffVCA = gain(0); N.buffGain2 = gain(0);
+    N.buffN.connect(N.buffSweep).connect(N.buffVCA).connect(N.buffGain2).connect(cockpitLP);
+    N.flutter = osc('sine', 14); N.flutterAmt = gain(0.45); N.flutter.connect(N.flutterAmt).connect(N.buffVCA.gain);
+    N.buffVCA.gain.value = 0.55;
+    N.nextBreath = 0;
 
     // Procedural fallbacks for the sampled layers.
     N.buffNoise = loopNoise(brown); N.buffBP = filt('bandpass', 75, 1.1); N.buffFGain = gain(0);
@@ -364,12 +397,30 @@ export function createAudio() {
       o.connect(lp).connect(g).connect(N.body); o.start(t + dt); o.stop(t + dt + 0.16);
     }
   }
+  // Anti-G straining breath (hook maneuver): sharp inhale, pressurised hold with a
+  // faint strain grunt, forceful exhale -- shaped band-passed noise on the body bus.
+  function breathCycle(k, period) {
+    const t = ctx.currentTime;
+    const burst = (at, dur, f0, f1, amp, q = 1.6) => {
+      const n = ctx.createBufferSource(); n.buffer = N.white;
+      const bp = filt('bandpass', f0, q); bp.frequency.setValueAtTime(f0, at); bp.frequency.linearRampToValueAtTime(f1, at + dur);
+      const g = gain(0); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(amp, at + dur * 0.25); g.gain.linearRampToValueAtTime(amp * 0.8, at + dur * 0.7); g.gain.linearRampToValueAtTime(0, at + dur);
+      n.connect(bp).connect(g).connect(N.body); n.start(at, Math.random() * 2); n.stop(at + dur + 0.05);
+    };
+    const inh = 0.22 + 0.1 * (1 - k), hold = period * 0.35, exh = 0.32 + 0.12 * k;
+    burst(t, inh, 700, 1100, 0.16 * k);                                   // sharp "hik" inhale
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 95 + 30 * k;   // strain grunt under the hold
+    const lp = filt('lowpass', 420, 0.8), g = gain(0);
+    g.gain.setValueAtTime(0, t + inh); g.gain.linearRampToValueAtTime(0.03 * k, t + inh + 0.08); g.gain.linearRampToValueAtTime(0, t + inh + hold);
+    o.connect(lp).connect(g).connect(N.body); o.start(t + inh); o.stop(t + inh + hold + 0.05);
+    burst(t + inh + hold, exh, 620, 450, 0.22 * k, 1.2);                 // forceful exhale
+  }
   // Procedural heartbeat fallback: a muffled lub-dub pair.
   function heartbeat(k) {
     const t = ctx.currentTime;
     for (const [dt, a] of [[0, 1], [0.16, 0.7]]) {
       const o = ctx.createOscillator(); o.type = 'sine';
-      o.frequency.setValueAtTime(62, t + dt); o.frequency.exponentialRampToValueAtTime(38, t + dt + 0.12);
+      o.frequency.setValueAtTime(52, t + dt); o.frequency.exponentialRampToValueAtTime(38, t + dt + 0.12);
       const g = gain(0); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(0.4 * a * k, t + dt + 0.012); g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.16);
       o.connect(g).connect(N.body); o.start(t + dt); o.stop(t + dt + 0.18);
     }
@@ -514,15 +565,37 @@ export function createAudio() {
     }
     const sampleK = N.turb ? 0.5 : 1;                     // procedural body thins out under the real recording
     set(N.engGain.gain, live * (0.10 + 0.22 * t + 0.20 * ab) * sampleK);
-    // Airframe buffet: high AoA (> 12 deg) or > 5 G.
-    const buffK = live * Math.max(sm(aoa, 12, 22), sm(gl, 5, 8.5));
-    if (N.buff) { set(N.buffGain.gain, 0.55 * buffK, 0.12); set(N.buff.playbackRate, 0.9 + 0.3 * buffK, 0.2); set(N.buffFGain.gain, 0, 0.1); }
-    else set(N.buffFGain.gain, 0.5 * buffK * (0.7 + 0.3 * Math.random()), 0.05);
-    // G-LOC: hearing tunnel + strained breathing / heartbeat.
-    set(N.tunnel.frequency, 12000 * Math.pow(550 / 12000, sm(gs, 0.45, 1.0)), 0.12);
-    const breathK = sm(gs, 0.4, 0.85);
-    if (N.breath) { set(N.breathGain.gain, 0.6 * breathK, 0.2); set(N.breath.playbackRate, 1 + 0.25 * gs, 0.3); }
-    else if (breathK > 0.02 && ctx.currentTime >= N.nextBeat) { heartbeat(breathK); N.nextBeat = ctx.currentTime + 60 / (110 + 60 * gs); }
+    // F100 core: 82 / 84.5 Hz at idle -> ~165 Hz MIL; pitch sags ~8 % while lugging.
+    const kts = p.kts || 0;
+    const lugK = live * Math.max(sm(aoa, 10, 22), 0.6 * sm(gl, 3.2, 9));
+    const coreF = (82 + 83 * th + 12 * ab) * (1 - 0.08 * lugK);
+    set(N.coreA.frequency, coreF, 0.12); set(N.coreB.frequency, coreF * 1.03, 0.12);
+    set(N.coreLP.frequency, 420 + 900 * th + 600 * ab, 0.12); set(N.coreGain.gain, live * (0.05 + 0.07 * th + 0.04 * ab), 0.1);
+    set(N.comp.frequency, 1400 + 1200 * th, 0.15); set(N.compGain.gain, live * (0.004 + 0.012 * th) * (1 - 0.5 * ab), 0.12);
+    set(N.subGain.gain, live * 0.22 * ab, 0.15);
+    set(N.engLP.frequency, 320 + 900 * t + 1500 * ab);                    // exhaust roar LP 320 Hz -> 1.8 kHz in AB
+    // Airframe metal groan + creak: 3.2 G -> 9 G.
+    const groanK = live * sm(gl, 3.2, 9.0);
+    set(N.groanGain.gain, 0.32 * groanK, 0.12); set(N.groanBP.frequency, 160 + 120 * groanK, 0.2);
+    set(N.groanLFO.frequency, 0.35 + 0.6 * groanK, 0.3);
+    N.res.forEach((r, i) => set(r.g.gain, groanK * (0.05 - i * 0.012) * (0.75 + 0.25 * Math.sin(ctx.currentTime * (1.3 + i) + i)), 0.08));
+    // Turbine lug: 70-130 Hz rumble that deepens as the intakes fight the airflow.
+    set(N.lug.frequency, 130 - 60 * lugK, 0.15); set(N.lugGain.gain, 0.22 * lugK, 0.12);
+    // Wing buffet / wind rush: AoA > 9 deg or very high speed.
+    const buffK = live * Math.max(sm(aoa, 9, 20), 0.45 * sm(kts, 520, 680), 0.5 * sm(gl, 3.2, 8));
+    set(N.buffSweep.frequency, 220 + 460 * buffK, 0.1); set(N.buffGain2.gain, 0.42 * buffK, 0.1);
+    if (N.buff) { set(N.buffGain.gain, 0.25 * buffK, 0.12); set(N.buff.playbackRate, 0.9 + 0.3 * buffK, 0.2); }
+    set(N.buffFGain.gain, 0.25 * buffK * (0.7 + 0.3 * Math.random()), 0.05);
+    // G-LOC: hearing tunnel (14 kHz -> 480 Hz above 0.45) on the outside world only.
+    set(N.tunnel.frequency, 14000 * Math.pow(480 / 14000, sm(gs, 0.45, 1.0)), 0.12);
+    // Pilot anti-G breathing from 5 G / strain 0.15; heartbeat from strain 0.35 (95 -> 155 BPM).
+    const breathK = Math.max(sm(gs, 0.15, 0.7), 0.7 * sm(gl, 5.0, 7.5)) * live;
+    const tNow = ctx.currentTime;
+    if (breathK > 0.03 && tNow >= N.nextBreath) { const period = 2.6 - 1.1 * breathK; breathCycle(breathK, period); N.nextBreath = tNow + period; }
+    if (N.breath) { set(N.breathGain.gain, 0.22 * breathK, 0.2); set(N.breath.playbackRate, 1 + 0.25 * gs, 0.3); }
+    const heartK = sm(gs, 0.35, 0.8) * live;
+    if (heartK > 0.02 && tNow >= N.nextBeat) { heartbeat(0.5 + 0.5 * heartK); N.nextBeat = tNow + 60 / (95 + 60 * sm(gs, 0.35, 1.0)); }
+    N.dbg = { groanK: +groanK.toFixed(2), lugK: +lugK.toFixed(2), buffK: +buffK.toFixed(2), breathK: +breathK.toFixed(2), heartK: +heartK.toFixed(2), tunnel: Math.round(N.tunnel.frequency.value) };
     if (p.glocWarn && (!N.chimeT || ctx.currentTime - N.chimeT > 2.4)) { glocChime(); N.chimeT = ctx.currentTime; }
     if (!p.glocWarn) N.chimeT = 0;
 
@@ -588,6 +661,14 @@ export function createAudio() {
     get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
-    get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }
+    get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; },
+    // Output level after the compressor (for the headless audio check / debugging).
+    get rms() {
+      if (!N.analyser) return 0;
+      N.analyser.getFloatTimeDomainData(N.anaBuf);
+      let s = 0; for (let i = 0; i < N.anaBuf.length; i++) s += N.anaBuf[i] * N.anaBuf[i];
+      return Math.sqrt(s / N.anaBuf.length);
+    },
+    get layers() { return N.dbg || null; }
   };
 }

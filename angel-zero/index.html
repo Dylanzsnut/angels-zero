@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s30a';
-import { createHUD } from './src/hud.js?v=s30a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s30a';
-import { createCombat } from './src/combat.js?v=s30a';
-import { createEjection } from './src/eject.js?v=s30a';
-import { createAudio } from './src/audio.js?v=s30a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s30a';
-import { createCanopyFX } from './src/canopy.js?v=s30a';
-import { createNVG } from './src/nvg.js?v=s30a';
-import { createWorld, WORLD } from './src/world.js?v=s30a';
-import { createSurfaces } from './src/surfaces.js?v=s30a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s30a';
+import { createVFX } from './src/vfx.js?v=s30e';
+import { createHUD } from './src/hud.js?v=s30e';
+import { createCockpit3D } from './src/cockpit3d.js?v=s30e';
+import { createCombat } from './src/combat.js?v=s30e';
+import { createEjection } from './src/eject.js?v=s30e';
+import { createAudio } from './src/audio.js?v=s30e';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s30e';
+import { createCanopyFX } from './src/canopy.js?v=s30e';
+import { createNVG } from './src/nvg.js?v=s30e';
+import { createWorld, WORLD } from './src/world.js?v=s30e';
+import { createSurfaces } from './src/surfaces.js?v=s30e';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s30e';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1214,6 +1214,14 @@ let glFilter = '';
 const audio = createAudio();
 // Recorded SFX (assets/sfx/): fetch + decode now so they are ready at LAUNCH; failures fall back to procedural DSP.
 audio.preload().then(st => console.log('[ANGELS_ZERO] sfx', JSON.stringify(st)));
+// Unlock / resume the AudioContext inside every user gesture (browsers keep it
+// suspended until one); the LAUNCH click still creates it as well.
+for (const ev of ['pointerdown', 'mousedown', 'keydown', 'touchstart']) addEventListener(ev, () => { audio.init(); audio.resume(); }, { capture: true, passive: true });
+if (DEBUG) window.__dbgInput = (nx, ny, k = {}) => { mouse.nx = nx; mouse.ny = ny; Object.assign(keys, k); };   // debug: hold stick / keys
+// debug: advance the sim + audio mix n frames (for checks in a throttled / hidden tab)
+if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
+window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
+  gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 function updateAudio() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
@@ -1233,7 +1241,8 @@ function updateAudio() {
     cloud: flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0,
     rain: weather.rainHere,
     gLoad: flightMode === 'FLY' ? state.gLoad : 1, aoa: flightMode === 'FLY' ? state.alpha * 180 / Math.PI : 0,
-    gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72
+    gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72,
+    kts: state.speed * 1.94384
   });
 }
 // Loudest falling bomb: level by distance to the listener, fall = fraction of its time of fall.
