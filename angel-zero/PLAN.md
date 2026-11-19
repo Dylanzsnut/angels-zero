@@ -52,6 +52,16 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     red `#ff2233` / green `#22ff66` wingtips, white 1.2 Hz double-flash strobes
     (wingtips, fin tips, belly), pulsing red dorsal + belly beacons (faint by
     day, full at DAWN / DUSK / NIGHT and through NVG).
+  - [x] **Pilot G-LOC physiology** *(build `s26a`)* — `state.gStrain` builds
+    above 6.2 G (faster beyond 8 G) and drains below 4.5 G, `negGStrain` under
+    < -2.2 G; greyout = desaturated / dimmed 3D view plus a radial tunnel
+    vignette closing to 0.92 opacity, heartbeat-synced dimming and
+    `[ G-LOC WARNING ]` + chime above 0.72, softened stick above 0.95, crimson
+    redout vignette. Audio: recorded buffet / breathing-heartbeat / chime
+    (`assets/sfx/`, CC0, see `CREDITS.md`) decoded via `decodeAudioData` with
+    procedural fallback, turbine pitch-dip + low-end swell under G / AoA,
+    master hearing-tunnel low-pass 12 kHz -> 550 Hz. Verified headless: samples
+    decode, strain build / release curve, greyout + warning screenshots.
   - **Gap:** flight model and chase camera live in `index.html`
     (`updatePhysics`, `updateCameraAndVisuals`) — no `flight.js` / `camera.js`.
   - **Gap:** no chase-camera FOV *speed* kick (only the High-G tighten).

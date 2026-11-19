@@ -1302,6 +1302,42 @@ export function createHUD(THREE, A) {
     drawCenterBanners(hctx, fp ? g : null);
     drawComms(hctx, fp ? HH * 0.62 : HH * 0.84);
     if (!A.isModal()) drawStickCue(hctx);
+    drawGLoc(hctx);
+  }
+
+  // G-LOC greyout / blackout tunnel: a radial vignette closing from the edges
+  // toward the reticle (inner radius + opacity up to 0.92 at strain 1.0), a grey
+  // peripheral haze, heartbeat-synced dimming above 0.72, crimson redout tint
+  // under sustained negative G.
+  function drawGLoc(ctx) {
+    const st = S.gStrain || 0, ng = S.negGStrain || 0;
+    const k = smooth(st, 0.25, 1.0), r = smooth(ng, 0.3, 1.0);
+    if (k < 0.002 && r < 0.002) return;
+    const t = performance.now() / 1000;
+    const beat = st > 0.72 ? Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 2.3)), 6) : 0;
+    const cx = HW / 2, cy = HH / 2, R = Math.hypot(HW, HH) / 2;
+    ctx.save();
+    if (k > 0.002) {
+      const inner = R * Math.max(0.06, 0.92 - 0.8 * k - 0.05 * beat);
+      const op = Math.min(0.92, 0.92 * k + 0.08 * beat * k);
+      const g = ctx.createRadialGradient(cx, cy, inner, cx, cy, R);
+      g.addColorStop(0, 'rgba(20,22,24,0)');
+      g.addColorStop(0.35, `rgba(62,64,68,${(0.45 * k).toFixed(3)})`);        // desaturated grey haze
+      g.addColorStop(1, `rgba(0,0,0,${op.toFixed(3)})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, HW, HH);
+      if (st > 0.85) { ctx.fillStyle = `rgba(0,0,0,${(0.5 * smooth(st, 0.85, 1.0) * (0.6 + 0.4 * beat)).toFixed(3)})`; ctx.fillRect(0, 0, HW, HH); }
+    }
+    if (r > 0.002) {
+      const g = ctx.createRadialGradient(cx, cy, R * (0.85 - 0.55 * r), cx, cy, R);
+      g.addColorStop(0, 'rgba(140,0,12,0)');
+      g.addColorStop(1, `rgba(150,8,20,${(0.62 * r).toFixed(3)})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, HW, HH);
+    }
+    ctx.restore();
+    if (st > 0.72 && !C.dead) {
+      const a = 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI * 2.3));
+      drawBanner(ctx, HW / 2, HH * 0.32, '[ G-LOC WARNING ]', WARN, 240, a);
+    }
   }
 
   // Generic bracketed status badge (weather etc.).

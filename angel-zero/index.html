@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s25a';
-import { createHUD } from './src/hud.js?v=s25a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s25a';
-import { createCombat } from './src/combat.js?v=s25a';
-import { createEjection } from './src/eject.js?v=s25a';
-import { createAudio } from './src/audio.js?v=s25a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s25a';
-import { createCanopyFX } from './src/canopy.js?v=s25a';
-import { createNVG } from './src/nvg.js?v=s25a';
-import { createWorld, WORLD } from './src/world.js?v=s25a';
-import { createSurfaces } from './src/surfaces.js?v=s25a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s25a';
+import { createVFX } from './src/vfx.js?v=s26a';
+import { createHUD } from './src/hud.js?v=s26a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s26a';
+import { createCombat } from './src/combat.js?v=s26a';
+import { createEjection } from './src/eject.js?v=s26a';
+import { createAudio } from './src/audio.js?v=s26a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s26a';
+import { createCanopyFX } from './src/canopy.js?v=s26a';
+import { createNVG } from './src/nvg.js?v=s26a';
+import { createWorld, WORLD } from './src/world.js?v=s26a';
+import { createSurfaces } from './src/surfaces.js?v=s26a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s26a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -581,6 +581,7 @@ const state = {
   position: SPAWN.clone(), velocity: new THREE.Vector3(0, 0, -200), quaternion: new THREE.Quaternion(),
   throttle: 0.65, afterburner: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
   gLoad: 1, alpha: 0, speed: 200, mach: 0.6, heading: 0, pitch: 0, bank: 0, radalt: 1500,
+  gStrain: 0, negGStrain: 0,                        // pilot G physiology: 0 fresh .. 1 G-LOC / redout
   ctl: { pitch: 0, roll: 0, yaw: 0, airbrake: 0 }
 };
 
@@ -609,7 +610,7 @@ function resetAircraft() {
   state.quaternion.identity();
   state.throttle = 0.65; state.afterburner = 0;
   state.pitchRate = state.rollRate = state.yawRate = 0;
-  state.gLoad = 1; state.speed = 200;
+  state.gLoad = 1; state.speed = 200; state.gStrain = 0; state.negGStrain = 0;
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
   applyPose();
@@ -900,7 +901,10 @@ function updatePhysics(dt) {
   if (targetPitch > 0) targetPitch *= THREE.MathUtils.clamp((aLim - state.alpha) / (aLim * 0.35), 0, 1);
   else targetPitch *= THREE.MathUtils.clamp((state.alpha + 0.17) / 0.07, 0, 1);
   if (roll.left > 0) targetPitch = Math.max(targetPitch, 0.32);   // slight pull keeps the roll on a barrel arc
-  const targetRoll = roll.left > 0 ? 0 : -rollIn * MAX_ROLL_RATE;
+  // Near G-LOC (strain > 0.95) the pilot's inputs go soft until the G comes off.
+  const pilotK = 1 - 0.55 * THREE.MathUtils.smoothstep(state.gStrain, 0.95, 1.0);
+  targetPitch *= pilotK;
+  const targetRoll = (roll.left > 0 ? 0 : -rollIn * MAX_ROLL_RATE) * pilotK;
   const targetYaw = coupledYaw + rudderIn * MAX_YAW_RATE;
   const authority = THREE.MathUtils.smoothstep(state.speed, 45, 120);
   // Crisp response: roll 14/s, pitch 11/s, yaw 8/s (no mushy lerp lag or over-rotation).
@@ -975,6 +979,19 @@ function updatePhysics(dt) {
   const accel = state.velocity.clone().sub(vPrev).divideScalar(Math.max(dt, 1e-4)); accel.y += GRAVITY;
   const gFelt = accel.dot(_up) / GRAVITY;
   state.gLoad += (gFelt - state.gLoad) * Math.min(1, 12 * dt);
+  // Pilot physiology: cumulative G-strain above 6.2 G (faster beyond 8 G) drains
+  // below 4.5 G; hard negative G (< -2.2 G) builds the redout strain.
+  {
+    const gl = THREE.MathUtils.clamp(state.gLoad, -6, 11);
+    // (this rate-command model reaches 10+ G in a full pull: max pull greys out in ~1.5 s,
+    //  G-LOC WARNING at ~4 s, blackout at ~6 s; a 7 G turn takes about a minute)
+    if (gl > 6.2) state.gStrain += (gl - 6.2) * (gl > 8 ? 0.035 : 0.02) * dt;
+    else if (gl < 4.5) state.gStrain -= (0.16 + 0.05 * (4.5 - Math.max(gl, 0))) * dt;
+    else state.gStrain -= 0.02 * dt;
+    state.gStrain = THREE.MathUtils.clamp(state.gStrain, 0, 1);
+    if (gl < -2.2) state.negGStrain += (-2.2 - gl) * 0.3 * dt; else state.negGStrain -= 0.35 * dt;
+    state.negGStrain = THREE.MathUtils.clamp(state.negGStrain, 0, 1);
+  }
   state.position.addScaledVector(state.velocity, dt);
 
   const ground = groundLevel(state.position.x, state.position.z);
@@ -1091,12 +1108,22 @@ function updateCameraAndVisuals(dt, now) {
     scene.fog.density = 0.000004; oceanUniforms.uFogD.value = 0.000004; oceanUniforms.uCam.value.copy(camera.position);
   }
   oceanUniforms.uFogD.value = scene.fog.density;
+  // Greyout: desaturate + dim the 3D view as G-strain builds (HUD draws the tunnel vignette).
+  const gk = flightMode === 'FLY' ? THREE.MathUtils.smoothstep(state.gStrain, 0.25, 1.0) : 0;
+  const filt = gk > 0.01 ? `saturate(${(1 - 0.85 * gk).toFixed(2)}) brightness(${(1 - 0.3 * gk).toFixed(2)})` : '';
+  if (filt !== glFilter) { glFilter = filt; renderer.domElement.style.filter = filt; }
+  // High-AoA / high-G airframe buffet: camera micro-vibration.
+  const buf = flightMode === 'FLY' ? Math.max(THREE.MathUtils.smoothstep(state.alpha * 57.3, 12, 22), THREE.MathUtils.smoothstep(state.gLoad, 5, 8.5)) : 0;
+  if (buf > 0.02) { const a = 0.0011 * buf; camera.rotateX((Math.random() - 0.5) * a); camera.rotateY((Math.random() - 0.5) * a); camera.updateMatrixWorld(); }
 }
+let glFilter = '';
 
 /* ============================================================================
    8. VFX + HUD MODULES (src/vfx.js, src/hud.js)
    ============================================================================ */
 const audio = createAudio();
+// Recorded SFX (assets/sfx/): fetch + decode now so they are ready at LAUNCH; failures fall back to procedural DSP.
+audio.preload().then(st => console.log('[ANGELS_ZERO] sfx', JSON.stringify(st)));
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 function updateAudio() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(state.quaternion);
@@ -1114,7 +1141,9 @@ function updateAudio() {
     firing: flightMode === 'FLY' && (keys.fire || DEBUG_FIRE) && combat.ammo > 0 && combat.reload <= 0,
     seeker, alert: flightMode === 'FLY' && (combat.incoming || 0) > 0, rwr: flightMode === 'FLY' ? combat.rwrLevel || 0 : 0, whistle: bombWhistle(),
     cloud: flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0,
-    rain: weather.rainHere
+    rain: weather.rainHere,
+    gLoad: flightMode === 'FLY' ? state.gLoad : 1, aoa: flightMode === 'FLY' ? state.alpha * 180 / Math.PI : 0,
+    gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72
   });
 }
 // Loudest falling bomb: level by distance to the listener, fall = fraction of its time of fall.
@@ -1420,6 +1449,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
+      if (Q.has('mouseoff') && Number(Q.get('mouseoff')) >= t0 && Number(Q.get('mouseoff')) < t1) { mouse.nx = 0; mouse.ny = 0; console.log('[ANGELS_ZERO] stick released @', t1.toFixed(2)); }
       if (Q.has('ecmat') && Number(Q.get('ecmat')) >= t0 && Number(Q.get('ecmat')) < t1) { console.log('[ANGELS_ZERO] Z @', t1.toFixed(2), combatSys.activateECM()); }
       if (Q.has('fireat') && Number(Q.get('fireat')) >= t0 && Number(Q.get('fireat')) < t1) { console.log('[ANGELS_ZERO] RMB @', t1.toFixed(2), combat.weapon, JSON.stringify(combatSys.stats().tgt), combatSys.fireSelected()); }
       if (Q.has('flareat') && Number(Q.get('flareat')) >= t0 && Number(Q.get('flareat')) < t1) { console.log('[ANGELS_ZERO] flares @', t1.toFixed(2)); combatSys.dispenseFlares(); }
@@ -1429,7 +1459,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       stepSim(h);
       updateCameraAndVisuals(h, simTime);
       canopyFx.update(h, combat.playerCloud || 0, state.speed, firstPerson, true, weather.rainHere);
-      for (const t of logAt) if (t >= t0 && t < t1) console.log('[ANGELS_ZERO] t', t1.toFixed(2), JSON.stringify(combatSys.stats()), 'alert', hud.hudAlertState, 'hp', combat.health);
+      for (const t of logAt) if (t >= t0 && t < t1) console.log('[ANGELS_ZERO] t', t1.toFixed(2), JSON.stringify(combatSys.stats()), 'alert', hud.hudAlertState, 'hp', combat.health, 'gs', state.gStrain.toFixed(2), 'G', state.gLoad.toFixed(1));
     }
     console.log('[ANGELS_ZERO] combat', JSON.stringify(combatSys.stats()), 'lock', combat.lockTarget ? combat.lockTarget.label : '-',
       'score', combat.score, 'kills', combat.kills, 'gun', combat.ammo, 'msl', combat.missiles, 'hp', combat.health, 'mode', flightMode,
@@ -1440,6 +1470,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
       'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head), 'hotas', JSON.stringify(cockpit.hotas),
       'ctl', JSON.stringify(surfaces ? Object.fromEntries(Object.entries(surfaces.angles).map(([k, v]) => [k.replace('Ctrl_', ''), typeof v === 'number' ? +v.toFixed(1) : v])) : null),
+      'gloc', JSON.stringify({ strain: +state.gStrain.toFixed(2), neg: +state.negGStrain.toFixed(2), filter: glFilter, sfx: audio.sfxStatus }),
       'wx', JSON.stringify({ name: weather.active.name, rain: +weather.rainHere.toFixed(2), rainVis: weather.rainVisible, flashes: weather.lightningCount,
         gust: +weather.gust.g.toFixed(2), fog: +scene.fog.density.toFixed(6), layers: vfx.cloudLayers, cov: vfx.cloudCoverage,
         canopy: { wet: +canopyFx.wetness.toFixed(2), drops: canopyFx.dropCount, riv: canopyFx.rivuletCount } }),

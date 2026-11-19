@@ -3,7 +3,11 @@
 // tone, missile launch whoosh, ALR-56C RWR chirps + launch warble, ALQ-135 ECM
 // buzz, sub-bass explosions,
 // bomb-rack clunk, falling-bomb whistle, detonation rumble, flare pop / sizzle.
-// Everything is generated from oscillators, noise buffers and filters.
+// Engines, buffet, G-strain breathing / heartbeat and the over-G chime also use
+// real recorded samples from assets/sfx/ (see CREDITS.md), decoded with
+// decodeAudioData and modulated live; any file that fails to load falls back
+// to the procedural layers below. A master "hearing tunnel" low-pass sweeps
+// 12 kHz -> 550 Hz as the pilot approaches G-LOC.
 
 export function createAudio() {
   let ctx = null, master = null, cockpitLP = null, ready = false;
@@ -32,6 +36,25 @@ export function createAudio() {
   const filt = (type, f, q = 0.7) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
   const osc = (type, f) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; o.start(); return o; };
   const set = (p, v, t = tc) => p.setTargetAtTime(v, ctx.currentTime, t);
+  const sm = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  /* ------------------------------------------------- recorded samples */
+  // Fetched + decoded at page load (OfflineAudioContext), so they are ready the
+  // moment the LAUNCH click creates the live AudioContext.
+  const SFX = { turbine: 'jet_turbine_loop.mp3', buffet: 'airframe_buffet.mp3', breath: 'gloc_breathing_heartbeat.mp3', chime: 'gloc_warning_chime.mp3' };
+  const samples = {}, sfxState = {};
+  function preload(base = 'assets/sfx/') {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC) { for (const k in SFX) sfxState[k] = 'no-decoder'; return Promise.resolve(sfxState); }
+    const dec = new OAC(1, 1, 44100);
+    return Promise.all(Object.entries(SFX).map(([k, file]) => {
+      sfxState[k] = 'loading';
+      return fetch(base + file).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+        .then(ab => new Promise((res, rej) => dec.decodeAudioData(ab, res, rej)))
+        .then(buf => { samples[k] = buf; sfxState[k] = 'ok ' + buf.duration.toFixed(1) + 's'; })
+        .catch(e => { sfxState[k] = 'fallback (' + (e && e.message ? e.message : 'decode error') + ')'; });
+    })).then(() => sfxState);
+  }
 
   function init() {
     if (ready) { resume(); return true; }
@@ -42,7 +65,11 @@ export function createAudio() {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.25;
     cockpitLP = filt('lowpass', 18000, 0.5);                // canopy muffles the outside world in first person
-    cockpitLP.connect(master); master.connect(comp); comp.connect(ctx.destination);
+    // G-LOC hearing tunnel: master low-pass, 12 kHz open -> 550 Hz near blackout.
+    N.tunnel = filt('lowpass', 12000, 0.6);
+    cockpitLP.connect(master); master.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(ctx.destination);
+    // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
+    N.body = gain(muted ? 0 : volume); N.body.connect(comp);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
 
     // F100 turbines: filtered pink/brown body + sawtooth whine + afterburner rumble.
@@ -125,6 +152,11 @@ export function createAudio() {
     N.rain.connect(N.rainBP).connect(N.rainGain).connect(cockpitLP);
     N.rainLow = loopNoise(brown); N.rainLowLP = filt('lowpass', 380, 0.7); N.rainLowGain = gain(0);
     N.rainLow.connect(N.rainLowLP).connect(N.rainLowGain).connect(master);
+
+    // Procedural fallbacks for the sampled layers.
+    N.buffNoise = loopNoise(brown); N.buffBP = filt('bandpass', 75, 1.1); N.buffFGain = gain(0);
+    N.buffNoise.connect(N.buffBP).connect(N.buffFGain).connect(cockpitLP);
+    N.nextBeat = 0;
 
     N.white = white; N.brown = brown;
     ready = true;
@@ -299,6 +331,45 @@ export function createAudio() {
     o.connect(lp).connect(og).connect(master); o.start(t); o.stop(t + 0.5);
   }
 
+  // Sample voices are built lazily once both the context and the decoded buffer exist.
+  function loopVoice(buf) { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.start(0, Math.random() * Math.max(0.01, buf.duration - 0.05)); return s; }
+  function ensureSampleVoices() {
+    if (samples.turbine && !N.turb) {
+      N.turb = loopVoice(samples.turbine);
+      N.turbPeak = ctx.createBiquadFilter(); N.turbPeak.type = 'peaking'; N.turbPeak.frequency.value = 90; N.turbPeak.Q.value = 0.9; N.turbPeak.gain.value = 0;
+      N.turbLP = filt('lowpass', 4000, 0.7); N.turbGain = gain(0);
+      N.turb.connect(N.turbPeak).connect(N.turbLP).connect(N.turbGain).connect(cockpitLP);
+    }
+    if (samples.buffet && !N.buff) { N.buff = loopVoice(samples.buffet); N.buffGain = gain(0); N.buff.connect(N.buffGain).connect(cockpitLP); }
+    if (samples.breath && !N.breath) { N.breath = loopVoice(samples.breath); N.breathGain = gain(0); N.breath.connect(N.breathGain).connect(N.body); }
+  }
+  // Over-G / G-LOC warning chime (sample, or a two-tone avionics fallback).
+  function glocChime() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    if (samples.chime) {
+      const s = ctx.createBufferSource(); s.buffer = samples.chime; const g = gain(0.5);
+      s.connect(g).connect(N.body); s.start(t); s.stop(t + Math.min(2, samples.chime.duration));
+      return;
+    }
+    for (const [f0, dt] of [[1250, 0], [940, 0.16]]) {
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f0;
+      const lp = filt('lowpass', 3000, 0.7), g = gain(0);
+      g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(0.06, t + dt + 0.01); g.gain.setValueAtTime(0.06, t + dt + 0.12); g.gain.linearRampToValueAtTime(0, t + dt + 0.15);
+      o.connect(lp).connect(g).connect(N.body); o.start(t + dt); o.stop(t + dt + 0.16);
+    }
+  }
+  // Procedural heartbeat fallback: a muffled lub-dub pair.
+  function heartbeat(k) {
+    const t = ctx.currentTime;
+    for (const [dt, a] of [[0, 1], [0.16, 0.7]]) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(62, t + dt); o.frequency.exponentialRampToValueAtTime(38, t + dt + 0.12);
+      const g = gain(0); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(0.4 * a * k, t + dt + 0.012); g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.16);
+      o.connect(g).connect(N.body); o.start(t + dt); o.stop(t + dt + 0.18);
+    }
+  }
+
   // Thunder: a sharp crack (nearby) into a long rolling low rumble of brown noise
   // with random amplitude swells, k 0..1.2 by distance.
   function thunder(k = 1) {
@@ -381,7 +452,7 @@ export function createAudio() {
     const th = p.throttle, ab = p.afterburner, live = p.engineOn ? 1 : 0;
     const t = 0.30 + 0.70 * th;                           // 30 % idle hum -> 100 % military
     set(N.engLP.frequency, 260 + 1500 * t + 1400 * ab);
-    set(N.engGain.gain, live * (0.10 + 0.22 * t + 0.20 * ab));
+    // (engine body gain is set below, scaled when the recorded turbine is playing)
     set(N.engLowGain.gain, live * (0.18 + 0.20 * t + 0.45 * ab));
     const whine = 160 + 640 * t + 80 * ab;
     set(N.whineA.frequency, whine); set(N.whineB.frequency, whine * 1.013);
@@ -391,6 +462,31 @@ export function createAudio() {
     set(N.abGain.gain, live * 0.75 * ab, 0.12);
     set(N.abCrackleGain.gain, live * 0.09 * ab * (0.7 + 0.3 * Math.random()), 0.03);
     set(cockpitLP.frequency, p.cockpit ? 2600 : 18000, 0.15);
+
+    // Recorded turbine: pitch rides throttle / burner; under sustained G (> 4.8 G)
+    // or high AoA (> 14 deg) it dips and the low compressor rumble swells.
+    ensureSampleVoices();
+    const gl = p.gLoad || 1, aoa = p.aoa || 0, gs = p.gStrain || 0;
+    const strainK = Math.max(sm(gl, 4.8, 8.5), sm(aoa, 14, 24));
+    if (N.turb) {
+      set(N.turb.playbackRate, (0.78 + 0.32 * th + 0.12 * ab) * (1 - 0.07 * strainK), 0.15);
+      set(N.turbPeak.gain, 8 * strainK, 0.2);
+      set(N.turbLP.frequency, 1500 + 5000 * th + 3500 * ab, 0.12);
+      set(N.turbGain.gain, live * (0.22 + 0.32 * th + 0.22 * ab), 0.1);
+    }
+    const sampleK = N.turb ? 0.5 : 1;                     // procedural body thins out under the real recording
+    set(N.engGain.gain, live * (0.10 + 0.22 * t + 0.20 * ab) * sampleK);
+    // Airframe buffet: high AoA (> 12 deg) or > 5 G.
+    const buffK = live * Math.max(sm(aoa, 12, 22), sm(gl, 5, 8.5));
+    if (N.buff) { set(N.buffGain.gain, 0.55 * buffK, 0.12); set(N.buff.playbackRate, 0.9 + 0.3 * buffK, 0.2); set(N.buffFGain.gain, 0, 0.1); }
+    else set(N.buffFGain.gain, 0.5 * buffK * (0.7 + 0.3 * Math.random()), 0.05);
+    // G-LOC: hearing tunnel + strained breathing / heartbeat.
+    set(N.tunnel.frequency, 12000 * Math.pow(550 / 12000, sm(gs, 0.45, 1.0)), 0.12);
+    const breathK = sm(gs, 0.4, 0.85);
+    if (N.breath) { set(N.breathGain.gain, 0.6 * breathK, 0.2); set(N.breath.playbackRate, 1 + 0.25 * gs, 0.3); }
+    else if (breathK > 0.02 && ctx.currentTime >= N.nextBeat) { heartbeat(breathK); N.nextBeat = ctx.currentTime + 60 / (110 + 60 * gs); }
+    if (p.glocWarn && (!N.chimeT || ctx.currentTime - N.chimeT > 2.4)) { glocChime(); N.chimeT = ctx.currentTime; }
+    if (!p.glocWarn) N.chimeT = 0;
 
     const firing = !!p.firing;
     if (firing && !N.wasFiring) gunTriggerOn();
@@ -440,15 +536,18 @@ export function createAudio() {
     volume = Math.min(1, Math.max(0, v));
     try { localStorage.setItem('az_volume', String(volume)); } catch (e) { /* ignore */ }
     if (master) set(master.gain, muted ? 0 : volume, 0.05);
+    if (N.body) set(N.body.gain, muted ? 0 : volume, 0.05);
   }
   function setMuted(m) {
     muted = !!m;
     try { localStorage.setItem('az_muted', muted ? '1' : '0'); } catch (e) { /* ignore */ }
     if (master) set(master.gain, muted ? 0 : volume, 0.05);
+    if (N.body) set(N.body.gain, muted ? 0 : volume, 0.05);
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, preload, setVolume, setMuted,
+    get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'uninitialised'; }, get ready() { return ready; }
