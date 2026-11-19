@@ -486,7 +486,7 @@ export function createCombat(THREE, env) {
   const LOOK = [150, 350, 650], SAFE_WATER = 35, SAFE_TERRAIN = 55, AVOID_BAND = 140, HARD_FLOOR = 12;
   const MERGE_R = 95, MERGE_CLEAR = 32, SEP_R = 65, RAM_R = 14, REACT_RANGE = 1800;
   const AI_FLR_CD = 10, AI_FLR_P = 0.45;
-  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X', RECOVER: 'V', CRIPPLED: 'C' };
+  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X', RECOVER: 'V', DISENGAGE_ORBIT: 'O', CRIPPLED: 'C' };
   const ai = { minClear: Infinity, clamps: 0, avoid: 0, merges: 0, minSep: Infinity, minWing: Infinity, breaks: 0, rolls: 0, splitS: 0,
     extends: 0, flares: 0, spoofs: 0, rams: 0, impacts: 0, maxBank: 0, maxG: 0, abT: 0, trails: 0 };
   let aiFlareSalvo = 0, aiPassive = false;                     // aiPassive: debug terrain test (no engaging)
@@ -713,6 +713,10 @@ export function createCombat(THREE, env) {
       e.reactT = null;
     }
     if (e.tac === 'EXTEND_CLIMB' && e.tacT <= 0) e.tac = 'PATROL';
+    // AI disengage: player in the low-altitude clutter / base safe zone -> break off and orbit high.
+    if (C.playerSafe && (e.tac === 'PATROL' || e.tac === 'ENGAGE' || e.tac === 'EXTEND_CLIMB')) {
+      e.tac = 'DISENGAGE_ORBIT'; e.bLock = 0; e.burst = 0; e.reactT = null; ai.disengages = (ai.disengages || 0) + 1;
+    } else if (e.tac === 'DISENGAGE_ORBIT' && !C.playerSafe) e.tac = 'PATROL';   // player back up: re-engage via PATROL -> ENGAGE
     if (e.tac === 'PATROL' || e.tac === 'ENGAGE') {
       e.tac = playerActive && (dist < PURSUE_RANGE || e.ace) && !aiPassive ? 'ENGAGE' : 'PATROL';   // the Ace hunts from any range
       // Overshoot: the bandit has flown past the player inside 250 m -> extend and come back.
@@ -770,6 +774,9 @@ export function createCombat(THREE, env) {
       const vBias = e.splitS ? -0.55 : clamp((deck - e.pos.y) * 0.0015, -0.45, 0.3);
       desired.copy(e.fwd).addScaledVector(L, 0.65).addScaledVector(UP, vBias);
       maxG = 7; useAB = !e.splitS;
+    } else if (e.tac === 'DISENGAGE_ORBIT') {
+      disengageDesired(e, desired);
+      maxG = 4; useAB = e.pos.y < ORBIT_ALT - 80 || Math.hypot(e.pos.x - S.position.x, e.pos.z - S.position.z) < ORBIT_R * 0.75;
     } else if (e.tac === 'RECOVER') {
       // Unload: wings level along the current heading, 7 deg shallow dive (15 deg
       // below 240 kt; held above the cruise floor), full afterburner, <= 2 G,
@@ -2323,8 +2330,58 @@ export function createCombat(THREE, env) {
     mslCooldown = 0; gunAcc = 0;
   }
 
+  /* ---------------------- AI disengage: low-altitude clutter / base safe zone */
+  // C.playerSafe (playerSafeFromAI) is true while the player is
+  //   LOW-ALT  below 350 ft AGL (hysteresis: armed again only above 450 ft), or
+  //   BASE     gear down below 1,000 ft AGL within 4.5 km of ARCHIPELAGO AFB's runway,
+  //            or on the runway (ON_GROUND / rearming).
+  // While safe: bandit locks / bursts / launches stop, RWR + warnings clear,
+  // enemy tracers in flight are removed, every bandit missile aimed at the
+  // player loses track into ground clutter and self-destructs 1.0 s later, and
+  // bandits fly DISENGAGE_ORBIT: climb above 2,200 ft, orbit 3.2 km from the
+  // player until the safe state ends (then PATROL -> ENGAGE as usual).
+  const SAFE_IN_FT = 350, SAFE_OUT_FT = 450, BASE_FT = 1000, BASE_R = 4500, ORBIT_R = 3200, ORBIT_ALT = 900;
+  let lowSafe = false, baseWas = false;
+  Object.assign(C, { playerSafe: false, safeKind: null });
+  function updateSafe(playerActive) {
+    const aglFt = S.radalt * 3.28084, R = env.runway;
+    if (!lowSafe && aglFt < SAFE_IN_FT) lowSafe = true; else if (lowSafe && aglFt > SAFE_OUT_FT) lowSafe = false;
+    // Distance to the nearest point of the runway centreline (z0..z1), so a 3 deg final
+    // that starts 4.5 km out from either threshold counts as "at the base".
+    const base = R ? Math.hypot(S.position.x - R.x, S.position.z - clamp(S.position.z, R.z0, R.z1)) : Infinity;
+    const approach = !!S.gearDown && aglFt < BASE_FT && base < BASE_R;
+    const ground = !!S.onGround || !!(S.pit && S.pit.active);
+    const safe = playerActive && !C.dead && (lowSafe || approach || ground);
+    if (safe && !C.playerSafe) {                                          // onset: break everything off at once
+      enemyTracers.clear();
+      for (const e of enemies) { e.bLock = 0; e.burst = 0; }
+      C.missileWarning = 0;
+    }
+    if (approach && !baseWas && env.onRadio) env.onRadio('SAFE_APPROACH');
+    baseWas = approach;
+    C.playerSafe = safe;
+    C.safeKind = !safe ? null : approach || ground ? 'BASE' : 'LOWALT';
+    if (!safe) return;
+    // Missiles already in the air lose the player in ground clutter and fuze out 1.0 s later.
+    for (const m of missiles) {
+      if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.clutterLost) continue;
+      m.lostTrack = true; m.clutterLost = true; m.life = Math.min(m.life, m.age + 1.0);
+      ai.clutterBreaks = (ai.clutterBreaks || 0) + 1;
+      pushEvent('EVADED', 'GROUND CLUTTER // MISSILE LOST', 0, '#52ff9c');
+    }
+  }
+  // DISENGAGE_ORBIT steering: climb above 2,200 ft, hold a 3.2 km orbit around the player.
+  function disengageDesired(e, desired) {
+    const rx = e.pos.x - S.position.x, rz = e.pos.z - S.position.z, rl = Math.max(1, Math.hypot(rx, rz));
+    const ux = rx / rl, uz = rz / rl;
+    desired.set(-uz * e.dir, 0, ux * e.dir).addScaledVector(_s.set(ux, 0, uz), clamp((ORBIT_R - rl) / ORBIT_R, -0.8, 1.2));
+    const alt = Math.max(ORBIT_ALT, groundLevel(e.pos.x, e.pos.z) + 450);
+    desired.y = clamp((alt - e.pos.y) * 0.004, -0.25, 0.45);
+  }
+
   function update(dt, now, opts) {
     const playerActive = opts.playerActive;
+    updateSafe(playerActive);
     C.hitFlash = Math.max(0, C.hitFlash - dt);
     C.missileWarning = Math.max(0, C.missileWarning - dt);
     mslCooldown = Math.max(0, mslCooldown - dt);
@@ -2360,9 +2417,9 @@ export function createCombat(THREE, env) {
     // Bandit seeker state, aggregated for the RWR / alert systems.
     let bl = 0;
     for (const e of enemies) if (e.alive) bl = Math.max(bl, e.bLock || 0);
-    C.banditLock = playerActive ? bl : 0;
+    C.banditLock = playerActive && !C.playerSafe ? bl : 0;
     C.rwrTrack = C.banditLock >= B_SOFT && C.banditLock < 1;
-    C.incoming = playerActive ? missiles.filter(m => m.active && m.enemy && m.target?.isPlayer && !m.lostTrack).length : 0;
+    C.incoming = playerActive && !C.playerSafe ? missiles.filter(m => m.active && m.enemy && m.target?.isPlayer && !m.lostTrack).length : 0;
     if ((C.banditLock >= 1 && cloudClear <= 0) || C.incoming) C.missileWarning = Math.max(C.missileWarning, 0.4);
     if (playerActive) {
       updateLock(dt);
@@ -2403,7 +2460,7 @@ export function createCombat(THREE, env) {
     });
     updateMissiles(dt, playerActive);
     updateBombs(dt); updateRings(dt); updateFlares(dt);
-    updateRipple(dt); updateECM(dt); updateRWR(playerActive);
+    updateRipple(dt); updateECM(dt); updateRWR(playerActive && !C.playerSafe);   // safe: RWR scope clears
     if (playerActive) updateCCIP(); else C.ccip = null;
     updateStyle(dt, playerActive);
 

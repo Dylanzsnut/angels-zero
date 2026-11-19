@@ -69,6 +69,9 @@ export function createRadio(env) {
       case 'SWEEP':
         enemy(LEAD, 'Multiple missiles in the air—scatter!', 3, 'sweep', 6);
         break;
+      case 'SAFE_APPROACH':
+        awacs('Base air defenses covering your final, Eagle. Bandits are breaking off—cleared to land.', 3, 'safeapp', 25);
+        break;
       case 'REARM':
         awacs('Welcome home, Eagle. Fresh missiles and fuel—get back up there!', 3, 'rearm', 20);
         break;

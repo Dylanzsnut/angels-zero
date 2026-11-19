@@ -1594,6 +1594,17 @@ export function createHUD(THREE, A) {
         ctx.restore();
       }
     }
+    // AI disengage status (combat.playerSafe): subtle emerald tag under the radio box.
+    if (C.playerSafe) {
+      const txt = C.safeKind === 'BASE' ? '[ BASE SAFE ZONE // CLEAR TO LAND ]' : '[ LOW-ALT CLUTTER // NO LOCK ]';
+      const ty = Math.max(HH * 0.165, radioBottom ? radioBottom + 16 : 0);
+      ctx.save(); ctx.font = f(13, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(txt).width + 24;
+      noGlow(ctx); ctx.fillStyle = 'rgba(0,16,9,0.42)'; ctx.fillRect(HW / 2 - w / 2, ty - 11, w, 22);
+      glow(ctx, G, 0); ctx.lineWidth = 1; ctx.globalAlpha = 0.55; ctx.strokeRect(HW / 2 - w / 2 + 0.5, ty - 10.5, w - 1, 21); ctx.globalAlpha = 1;
+      labelText(ctx, txt, HW / 2, ty + 1, G, 5);
+      ctx.restore();
+    }
     // Runway pit stop progress.
     if (S.pit && S.pit.active) {
       const k = clamp(S.pit.t / 4, 0, 1), w = 300, x0 = HW / 2 - w / 2, y0 = HH * 0.3;

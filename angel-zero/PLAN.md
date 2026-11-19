@@ -562,6 +562,33 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     through, crisp sky); bandit full-lock AIM shot at a player inside a pillar
     -> CLOUD COVER // MISSILE LOST, no damage; 69-80 fps in the pane; zero page
     console errors (headless 400 / 4,000 / 12,000 ft, cockpit, menu).
+- [x] **AI disengage below 350 ft and during landing / rearming** *(build `s36a`, `src/combat.js`)*
+  - `combat.playerSafe` (playerSafeFromAI) every frame: LOW-ALT below 350 ft
+    AGL (re-armed only above 450 ft, no flicker), or BASE: gear down below
+    1,000 ft AGL within 4.5 km of the runway centreline (z0..z1, so a 3 deg
+    final from 4.2 km out qualifies), or ON_GROUND / rearming.
+  - Onset: bandit locks + bursts zeroed, enemy tracers in flight cleared,
+    missile warning cleared; while safe the RWR scope, banditLock and
+    incoming count read 0, no bandit fires (no ENGAGE), and every bandit
+    missile aimed at the player loses track in ground clutter and fuzes out
+    1.0 s later (`GROUND CLUTTER // MISSILE LOST`). There are no SAM / flak
+    shooters in the game (ground targets are passive), so nothing else to stop.
+  - New DISENGAGE_ORBIT state (TAC code `O`): bandits climb above 2,200 ft
+    (orbit 900 m / 2,950 ft, terrain + 450 m minimum), 4 G max, and circle
+    3.2 km from the player; when the safe state ends they drop to PATROL and
+    re-engage on the next frame. Defensive states still react to player shots.
+  - HUD: emerald `[ LOW-ALT CLUTTER // NO LOCK ]` / `[ BASE SAFE ZONE //
+    CLEAR TO LAND ]` tag under the radio box. AWACS once per gear-down
+    approach (25 s cooldown): "Base air defenses covering your final, Eagle.
+    Bandits are breaking off—cleared to land."
+  - Verified in the pane: locked bandit + full-lock missile at 600 ft, descend
+    -> safe at 348 ft: lock / incoming / RWR / warning 0 that frame, missile
+    LOST 1.0 s later, no damage; all six bandits DISENGAGE_ORBIT at 2,953 ft,
+    >= 2.5 km away; gear down 4.2 km out at 764 ft -> BASE immediately, AWACS
+    call, landed with 0 damage, rearm done with the nearest bandit 2.9 km
+    away; take-off, gear up, past 453 ft -> safe clears and bandits re-engage
+    the same frame; headless: on-runway all `O` + pit stop, merge at altitude
+    still engages, zero page console errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

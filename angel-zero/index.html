@@ -426,22 +426,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s35c';
-import { createHUD } from './src/hud.js?v=s35c';
-import { createCockpit3D } from './src/cockpit3d.js?v=s35c';
-import { createCombat } from './src/combat.js?v=s35c';
-import { createEjection } from './src/eject.js?v=s35c';
-import { createAudio } from './src/audio.js?v=s35c';
-import { createRadio } from './src/radio.js?v=s35c';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s35c';
-import { createLivery } from './src/livery.js?v=s35c';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s35c';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s35c';
-import { createCanopyFX } from './src/canopy.js?v=s35c';
-import { createNVG } from './src/nvg.js?v=s35c';
-import { createWorld, WORLD } from './src/world.js?v=s35c';
-import { createSurfaces } from './src/surfaces.js?v=s35c';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s35c';
+import { createVFX } from './src/vfx.js?v=s36a';
+import { createHUD } from './src/hud.js?v=s36a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s36a';
+import { createCombat } from './src/combat.js?v=s36a';
+import { createEjection } from './src/eject.js?v=s36a';
+import { createAudio } from './src/audio.js?v=s36a';
+import { createRadio } from './src/radio.js?v=s36a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s36a';
+import { createLivery } from './src/livery.js?v=s36a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s36a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s36a';
+import { createCanopyFX } from './src/canopy.js?v=s36a';
+import { createNVG } from './src/nvg.js?v=s36a';
+import { createWorld, WORLD } from './src/world.js?v=s36a';
+import { createSurfaces } from './src/surfaces.js?v=s36a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s36a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1799,7 +1799,7 @@ function setNVG(on, silent) {
 // Reactive AWACS / enemy radio comms (src/radio.js), fed by combat events.
 let radioSys = null;
 function onRadio(kind, d) { if (radioSys) radioSys.event(kind, d); }
-const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio,
+const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio, runway: world.runway,
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx });
