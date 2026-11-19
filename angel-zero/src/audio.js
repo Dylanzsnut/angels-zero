@@ -49,8 +49,13 @@ export function createAudio() {
     const dec = new OAC(1, 1, 44100);
     return Promise.all(Object.entries(SFX).map(([k, file]) => {
       sfxState[k] = 'loading';
-      return fetch(base + file).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-        .then(ab => new Promise((res, rej) => dec.decodeAudioData(ab, res, rej)))
+      return fetch(base + file).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        // Static hosts may answer a missing file with the HTML index page (200): treat it as missing.
+        if (/text\/html/i.test(r.headers.get('content-type') || '')) throw new Error('missing (html)');
+        return r.arrayBuffer();
+      })
+        .then(ab => new Promise((res, rej) => { const pr = dec.decodeAudioData(ab, res, rej); if (pr && pr.catch) pr.catch(() => {}); }))
         .then(buf => { samples[k] = buf; sfxState[k] = 'ok ' + buf.duration.toFixed(1) + 's'; })
         .catch(e => { sfxState[k] = 'fallback (' + (e && e.message ? e.message : 'decode error') + ')'; });
     })).then(() => sfxState);
