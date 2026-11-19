@@ -127,6 +127,7 @@ export function createNVG(THREE, renderer) {
   }
   return {
     render, setSize,
+    target: sceneRT,                                   // pre-allocated HDR target (shader warm-up compiles against it)
     setGain(k) { compMat.uniforms.uGain.value = k; },
     get gain() { return compMat.uniforms.uGain.value; },
     get active() { return active; },

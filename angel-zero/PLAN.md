@@ -784,6 +784,38 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     500 kt (stretched streaks) and 110 kt (round beads); pane: audio running,
     bus 0.84 cockpit / ramping to 0.35 chase, taps ~100/s, wash 3.4 kHz at
     500 kt; zero page / shader errors.
+- [x] **Zero-freeze view / NVG toggles + cockpit texture throttling** *(build `s43a`, `index.html`, `src/cockpit3d.js`, `src/nvg.js`, `src/canopyglass.js`)*
+  - Root cause measured (pane, real GPU): the first cockpit switch froze 8.6 s
+    and the first NVG toggle 5.4 s -- shader programs compiled on demand (the
+    cockpit turns on the sun shadow map + airframe clipping planes; the NVG
+    half-float target uses separate tone-mapping variants).
+  - GPU warm-up before flight: all view x NVG states, walked in both toggle
+    orders through the real `setView` / `setNVG` (rain streaks and canopy glass
+    forced visible): `renderer.compileAsync` per state while the briefing shows
+    "PREPARING COCKPIT SYSTEMS..." (KHR_parallel_shader_compile), then one
+    synchronous render of each state (shadow depth programs, clip variants,
+    render-target / atlas allocation); LAUNCH unlocks after it (timer-driven,
+    12 s safety cap; `?nointro` warms synchronously at load).
+  - Cockpit textures: dial faces (bands, ticks, numerals, titles) cached once;
+    a round-robin scheduler repaints at most 2 dials per frame and only when a
+    quantised needle / window signature changed; the 3 CRTs repaint one per
+    frame (~20 Hz each) at 384 px; every repaint is copied into its atlas cell
+    with texSubImage2D (`renderer.copyTextureToTexture`) instead of re-uploading
+    a 1024^2 atlas; nothing paints in chase view (rig inactive).
+  - Renderer pixel ratio capped at 1.5; canopy glass skips all droplet math
+    unless rain > 0.01 or moisture > 0.05; chase-camera / cockpit-eye / audio
+    per-frame `new Vector3` / `clone()` replaced by scratch vectors.
+  - NVG toggle audited: no traversals, material swaps, light or render-target
+    creation (targets pre-allocated; the toggle flips flags, colours and light
+    intensities only).
+  - Draw calls: the cockpit adds only ~20 (already instanced / atlas-shared),
+    so no geometry merge was needed.
+  - Benchmark (`window.__frame()` = one GPU-finished frame; pane, 1280x720,
+    OVERCAST // RAIN), after LAUNCH from the briefing: 6 view toggles 9-38 ms,
+    12 NVG toggles (chase + cockpit) 9-22 ms, max toggle frame 37.5 ms, zero new
+    shader programs after warm-up (258 -> 258); cockpit median 9.8 ms vs chase
+    8.6 ms (was 14.4 ms with 29 ms spikes); briefing warm-up 1.6 s async + 1.6 s
+    sync. Headless: live gauges / CRTs, NVG phosphor, zero page errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

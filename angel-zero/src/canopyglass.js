@@ -175,7 +175,8 @@ export function createCanopyGlass(THREE, env) {
 
         // ---- water on the glass ----
         float wetK = clamp(uRain + uMoist * 0.6, 0.0, 1.0);
-        if (wetK > 0.002) {
+        // Fast path: dry glass skips all droplet / streak math (Fresnel + glare only).
+        if (uRain > 0.01 || uMoist > 0.05) {
           vec2 P = vMet;
           float fadeEdge = smoothstep(0.02, 0.12, vUv.x) * (1.0 - smoothstep(0.93, 1.0, vUv.x)) * (1.0 - smoothstep(0.9, 1.0, abs(vUv.y)));
           vec3 A = drops(P, 0.05, uRain * 0.42, uStretch, 1.7, 0.45);

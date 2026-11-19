@@ -358,8 +358,25 @@ export function createCockpit3D(THREE, env) {
   add(new THREE.Mesh(new THREE.BoxGeometry(PW + 0.02, PH, 0.05), consoleMat), panel).position.set(0, PTOP - PH / 2, 0);
 
   /* --- live texture atlases --------------------------------------- */
-  const gaugeAtlas = canvasTex(1024, 1024, () => {});
-  const dispAtlas = canvasTex(1024, 1024, () => {});
+  // The atlases are uploaded once; afterwards each dial (256 px) / CRT (384 px) is
+  // painted into its own small canvas and copied into its atlas cell on the GPU
+  // (texSubImage2D via renderer.copyTextureToTexture) -- no full-atlas re-uploads.
+  const GCELL = 256, DCELL = 384;
+  const gaugeAtlas = canvasTex(GCELL * 4, GCELL * 4, (x, w, h) => { x.fillStyle = '#0c0e10'; x.fillRect(0, 0, w, h); });
+  const dispAtlas = canvasTex(DCELL * 2, DCELL * 2, (x, w, h) => { x.fillStyle = '#020a05'; x.fillRect(0, 0, w, h); });
+  const cellCanvas = n => { const c = canvasTex(n, n, () => {}); c.t.generateMipmaps = false; c.t.minFilter = THREE.LinearFilter; return c; };
+  const gCell = cellCanvas(GCELL), dCell = cellCanvas(DCELL);
+  const _cellPos = new THREE.Vector2();
+  // Copy a painted cell canvas into atlas cell (col, row) (rows counted from the top).
+  function uploadCell(src, atlas, col, row, n) {
+    const H = atlas.c.height;
+    if (renderer && renderer.copyTextureToTexture) {
+      _cellPos.set(col * n, H - (row + 1) * n);                 // GL origin is bottom-left (flipY)
+      renderer.copyTextureToTexture(_cellPos, src.t, atlas.t);
+    } else {                                                     // fallback: blit + full upload
+      atlas.x.drawImage(src.c, col * n, row * n); atlas.t.needsUpdate = true;
+    }
+  }
   const cellUV = (geo, col, row, n) => {               // map a geometry's 0..1 UVs onto atlas cell (col,row) of an n x n grid
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (col + uv.getX(i)) / n, 1 - (row + 1 - uv.getY(i)) / n);
@@ -752,13 +769,17 @@ export function createCockpit3D(THREE, env) {
     ufcLED.t.needsUpdate = true;
   }
 
-  // Generic analog dial painted into a 256 px atlas cell.
-  function dial(x, ox, oy, o) {
-    const S2 = 256, cx = ox + S2 / 2, cy = oy + S2 / 2, R = S2 * 0.46;
-    x.save();
+  // Generic analog dial painted into a 256 px cell. The static face (bands, ticks,
+  // numerals, title) is rendered once per dial and cached; each refresh only blits
+  // it and draws the window readout + needles.
+  const faceCache = {};
+  function dialFace(key, o) {
+    if (faceCache[key]) return faceCache[key];
+    const c = document.createElement('canvas'); c.width = c.height = GCELL;
+    const x = c.getContext('2d'), cx = GCELL / 2, cy = GCELL / 2, R = GCELL * 0.46;
+    x.fillStyle = '#0c0e10'; x.fillRect(0, 0, GCELL, GCELL);
     x.beginPath(); x.arc(cx, cy, R + 4, 0, Math.PI * 2); x.fillStyle = '#0c0e10'; x.fill();
     const ang = v => ((o.a0 + (o.a1 - o.a0) * clamp((v - o.min) / (o.max - o.min), 0, 1)) - 90) * D2R;
-    // arcs (green / amber / red bands)
     for (const [lo, hi, col] of o.bands || []) { x.strokeStyle = col; x.lineWidth = 7; x.beginPath(); x.arc(cx, cy, R - 6, ang(lo), ang(hi)); x.stroke(); }
     x.strokeStyle = '#eef2f4'; x.fillStyle = '#eef2f4';
     for (let v = o.min; v <= o.max + 1e-6; v += o.minor) {
@@ -769,6 +790,14 @@ export function createCockpit3D(THREE, env) {
     }
     x.font = `bold 17px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
     (o.title || '').split('\n').forEach((t, i) => x.fillText(t, cx, cy + (o.titleY ?? 34) + i * 18));
+    return (faceCache[key] = c);
+  }
+  function dial(x, key, o) {
+    const cx = GCELL / 2, cy = GCELL / 2, R = GCELL * 0.46;
+    x.save();
+    x.drawImage(dialFace(key, o), 0, 0);
+    const ang = v => ((o.a0 + (o.a1 - o.a0) * clamp((v - o.min) / (o.max - o.min), 0, 1)) - 90) * D2R;
+    x.textAlign = 'center'; x.textBaseline = 'middle';
     if (o.window) { x.fillStyle = '#1b1f22'; x.fillRect(cx - 46, cy - 52, 92, 26); x.fillStyle = '#eef2f4'; x.font = `bold 20px ${FONT}`; x.fillText(o.window, cx, cy - 38); }
     for (const n of o.needles || []) {
       const a = ang(n.v), L = R * (n.len ?? 0.82);
@@ -778,14 +807,43 @@ export function createCockpit3D(THREE, env) {
     x.fillStyle = '#2b3036'; x.beginPath(); x.arc(cx, cy, 9, 0, Math.PI * 2); x.fill();
     x.restore();
   }
-  let gMaxSeen = 1;
+  // Round-robin dial scheduler: every frame each dial's needle / window values are
+  // quantised into a signature (cheap numbers only); at most MAX_DIALS dials whose
+  // signature changed are repainted + uploaded, starting after the last one served.
+  // Fast dials (ASI, ALT, VVI, clock) get ~15-30 Hz, idle dials cost nothing.
+  let gMaxSeen = 1, gaugeRR = 0;
+  const MAX_DIALS = 2;
+  const gaugeSig = new Float64Array(16).fill(NaN);
+  const gaugeStats = { painted: 0, uploads: 0 };
+  function gaugeSignature(k, kts, altFt, vs, ffL, ffR, fuel, hydP) {
+    switch (k) {
+      case 'asi': return Math.round(kts * 0.5) * 1000 + Math.round(S.mach * 100);
+      case 'aoa': return Math.round(Math.max(0, S.alpha / D2R) * 2);
+      case 'acc': return Math.round(S.gLoad * 20) * 1000 + Math.round(gMaxSeen * 10);
+      case 'alt': return Math.round(altFt / 10);
+      case 'vvi': return Math.round(clamp(vs, -6000, 6000) / 50);
+      case 'clk': return Math.floor(Date.now() / 1000);
+      case 'rpmL': return Math.round(eng.nlL * 2); case 'rpmR': return Math.round(eng.nlR * 2);
+      case 'tmpL': return Math.round(eng.egtL / 4); case 'tmpR': return Math.round(eng.egtR / 4);
+      case 'ffL': return Math.round(ffL / 100); case 'ffR': return Math.round(ffR / 100);
+      case 'nozL': return Math.round(C.engineOut === 'L' ? 100 : eng.noz); case 'nozR': return Math.round(C.engineOut === 'R' ? 100 : eng.noz);
+      case 'fuel': return Math.round(fuel / 10);
+      default: return Math.round(hydP * 20);                          // hyd
+    }
+  }
   function paintGauges(frame) {
-    if (frame % 4) return;                                           // 15 Hz analog refresh
-    const x = gaugeAtlas.x, kts = S.speed * 1.94384, altFt = S.position.y * 3.28084, vs = S.velocity.y * 196.85;
+    const kts = S.speed * 1.94384, altFt = S.position.y * 3.28084, vs = S.velocity.y * 196.85;
     gMaxSeen = Math.max(gMaxSeen, S.gLoad);
-    const pphE = (outSide) => outSide ? 0 : 700 + 4300 * S.throttle + 17000 * S.afterburner;
-    const ffL = pphE(C.engineOut === 'L'), ffR = pphE(C.engineOut === 'R');
+    const pph = out => out ? 0 : 700 + 4300 * S.throttle + 17000 * S.afterburner;
+    const ffL = pph(C.engineOut === 'L'), ffR = pph(C.engineOut === 'R');
     const fuel = S.fuel ?? 0, hydP = C.hydraulic ? 1.2 + 0.25 * Math.sin(frame * 0.07) : 3.0;
+    let todo = 0, first = -1, second = -1;
+    for (let n = 0; n < 16 && todo < MAX_DIALS; n++) {
+      const i = (gaugeRR + n) % 16;
+      if (gaugeSignature(GAUGE_KEYS[i], kts, altFt, vs, ffL, ffR, fuel, hydP) !== gaugeSig[i]) { if (todo) second = i; else first = i; todo++; }
+    }
+    if (!todo) return;
+    gaugeRR = ((todo === 2 ? second : first) + 1) % 16;
     const d = new Date();
     const cells = {
       asi: { min: 0, max: 1000, a0: -150, a1: 150, major: 100, minor: 50, label: v => String(v / 100), title: 'KNOTS\nx100', titleY: -4, window: 'M ' + S.mach.toFixed(2), needles: [{ v: kts }] },
@@ -805,16 +863,30 @@ export function createCockpit3D(THREE, env) {
       fuel: { min: 0, max: 14000, a0: -135, a1: 135, major: 2000, minor: 1000, label: v => String(v / 1000), title: 'INTERNAL\nLBS x1000', bands: [[0, 2000, '#e0302a']], window: String(Math.round(fuel / 10) * 10), needles: [{ v: fuel }] },
       hyd: { min: 0, max: 4, a0: -135, a1: 135, major: 1, minor: 0.5, label: v => String(v), title: 'HYD\nx1000 PSI', bands: [[0, 1.5, '#e0302a']], needles: [{ v: hydP }] }
     };
-    GAUGE_KEYS.forEach((k, i) => dial(x, (i % 4) * 256, Math.floor(i / 4) * 256, cells[k]));
-    gaugeAtlas.t.needsUpdate = true;
+    for (const i of todo === 2 ? [first, second] : [first]) {
+      const k = GAUGE_KEYS[i];
+      gaugeSig[i] = gaugeSignature(k, kts, altFt, vs, ffL, ffR, fuel, hydP);
+      dial(gCell.x, k, cells[k]);
+      uploadCell(gCell, gaugeAtlas, i % 4, Math.floor(i / 4), GCELL);
+      gaugeStats.painted++; gaugeStats.uploads++;
+    }
   }
 
-  // CRT displays: VSD radar (0,0), round TEWS (1,0), HSI (1,1) in 512 px cells.
+  // CRT displays: VSD radar (0,0), round TEWS (1,0), HSI (1,1) of a 2 x 2 atlas of
+  // 384 px cells. One display is repainted per frame (each ~20 Hz at 60 fps) in a
+  // 512-unit drawing space scaled to the 384 px cell, then copied into its cell.
   function paintDisplays(frame, now) {
-    if (frame % 2) return;
-    const x = dispAtlas.x, hRad = S.heading * D2R;
+    const which = frame % 3, x = dCell.x, hRad = S.heading * D2R;
+    x.setTransform(DCELL / 512, 0, 0, DCELL / 512, 0, 0);
+    paintDisplay(which, x, hRad, now);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    uploadCell(dCell, dispAtlas, which === 0 ? 0 : 1, which === 2 ? 1 : 0, DCELL);
+    gaugeStats.uploads++;
+  }
+  function paintDisplay(which, x, hRad, now) {
     const rel = p => { const rx = p.x - S.position.x, rz = p.z - S.position.z; return { sx: rx * Math.cos(hRad) + rz * Math.sin(hRad), sy: -rx * Math.sin(hRad) + rz * Math.cos(hRad) }; };
     // --- VSD: azimuth (-60..60 deg) x range (0..20 NM) B-scope with a sweeping beam
+    if (which === 0) {
     x.save(); x.beginPath(); x.rect(0, 0, 512, 512); x.clip();
     x.fillStyle = '#020a05'; x.fillRect(0, 0, 512, 512);
     x.strokeStyle = 'rgba(70,255,140,0.28)'; x.lineWidth = 1.5;
@@ -838,8 +910,11 @@ export function createCockpit3D(THREE, env) {
       if (C.designated === e) { x.strokeStyle = '#46ff8c'; x.lineWidth = 2; x.strokeRect(px - 13, py - 11, 26, 22); }
     }
     x.restore();
+    return;
+    }
     // --- TEWS round scope: threat bearings from the RWR picture
-    x.save(); x.translate(512, 0);
+    if (which === 1) {
+    x.save();
     x.fillStyle = '#04100a'; x.fillRect(0, 0, 512, 512);
     const cx = 256, cy = 256, R = 230;
     x.strokeStyle = 'rgba(70,255,140,0.4)'; x.lineWidth = 2;
@@ -856,8 +931,10 @@ export function createCockpit3D(THREE, env) {
       if (r.kind !== 'paint') { x.strokeStyle = x.fillStyle; x.lineWidth = 3; x.beginPath(); x.arc(px, py, 26, 0, Math.PI * 2); x.stroke(); }
     }
     x.restore();
+    return;
+    }
     // --- HSI: rotating compass rose, lubber line, bearing bug to the target
-    x.save(); x.translate(512, 512);
+    x.save();
     x.fillStyle = '#16191c'; x.fillRect(0, 0, 512, 512);
     x.save(); x.translate(256, 256); x.rotate(-hRad);
     x.strokeStyle = x.fillStyle = '#eef2f4'; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -885,7 +962,6 @@ export function createCockpit3D(THREE, env) {
     x.fillText(String(Math.round(miles)).padStart(4, '0'), 14, 10); x.font = `16px ${FONT}`; x.fillText('MILES', 14, 40);
     x.textAlign = 'right'; x.font = `bold 26px ${FONT}`; x.fillText(String(Math.round(S.heading)).padStart(3, '0'), 498, 10); x.font = `16px ${FONT}`; x.fillText('COURSE', 498, 40);
     x.restore();
-    dispAtlas.t.needsUpdate = true;
   }
 
   // Caution / warning matrix: lit by fuel, G, battle damage and system state.
@@ -1028,6 +1104,7 @@ export function createCockpit3D(THREE, env) {
   return {
     rig, setActive, update, missionClock, setNVG, setFreeLook,
     get active() { return active; },
+    get gaugeStats() { return gaugeStats; },          // dials repainted / cell uploads since start
     get hotas() {
       return { pitch: +(hotas.pitch / D2R).toFixed(1), roll: +(hotas.roll / D2R).toFixed(1), trig: +hotas.trig.toFixed(2), pickle: +hotas.pickle.toFixed(2),
         thrL: +(throttles[0].angle / D2R).toFixed(1), thrR: +(throttles[1].angle / D2R).toFixed(1) };
