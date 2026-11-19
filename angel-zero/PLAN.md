@@ -640,6 +640,39 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     14,000 ft (cauliflower tops, no stripes / contour bands), golden hour
     warm backlighting; 88-107 fps; zero shader / page console errors headless
     (day, dusk overcast, night cockpit, menu).
+- [x] **Free Look: cockpit head-track + chase orbit (hold Alt / MMB)** *(build `s39a`, new `src/freelook.js`, `src/cockpit3d.js`, `src/hud.js`, `index.html`)*
+  - Hold Alt or the middle mouse button (both `preventDefault`ed: no menu-bar
+    focus, no middle-click autoscroll; Alt+letter browser shortcuts blocked,
+    flight keys read by physical code while Alt is down) and move the mouse.
+  - The mouse stick is frozen while looking; W / S / A / D / Shift / weapons /
+    flares stay live. The pointer is locked while looking where the browser
+    allows it, so the stick is exactly where it was on release; without the
+    lock the stick eases to the cursor over 0.25 s instead of jumping.
+  - Release springs the view home in ~0.25 s (exponential, 95 %), the short
+    way round; re-grabbing mid-return continues from the current view.
+  - Cockpit: head yaw +/-150 deg, pitch -45..+85 deg, layered on the existing
+    head-motion springs (roll lag, look-into-turn, G slump). Past ~90 deg the
+    eye leans 12 cm toward the look side and 8 cm forward (ramped 70-130 deg)
+    to clear the headrest. The combiner HUD stays bolted to the nose (it is
+    projected from the 3D glass); target brackets, labels and off-screen
+    arrows already project through the live camera, so bandits stay tagged
+    through the side and top canopy.
+  - Chase: rigid orbit about the jet at the current chase radius (360 deg yaw,
+    -70..+75 deg pitch) in the camera's own frame, ground-clamped; the chase
+    spring state is restored each frame so the orbit never disturbs it. The
+    boresight reticle / SPEED / ALT boxes fade out by 30 deg of look offset.
+  - `[ FREE LOOK ]` tag bottom-centre while held; `ALT / MMB — Free Look` in
+    the briefing / H controls list. Debug: `?look=yaw,pitch&lookoff=s`,
+    `window.__az.freeLook`, `look {...}` in the warp log.
+  - Verified in the pane with dispatched Alt / MMB / mousemove / D events:
+    stick held at 0.100 while the cursor moved 640 px; D rudder yawed the jet
+    (r -0.136 rad/s) with Alt held, Alt+D `preventDefault`ed; yaw clamped 150,
+    pitch clamped -45 / +85 (consoles, gauges and stick visible looking down;
+    open sky overhead); left / right check-six with no seat / headrest clip;
+    a bandit placed 100 deg left / 40 deg up bracketed at (390,143) vs its
+    true projection (396,145); release 150 -> 7.5 deg in 0.25 s; chase orbit
+    radius 26.2 -> 26.4 m at 140 deg, 340 deg orbit returns via -20 deg;
+    headless cockpit / chase / release / menu runs with zero page errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -728,7 +761,8 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `todto=NAME:t` · `rolls=n` · `nvg` / `nvgat=s` · `camat=x,y,z` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
-`flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
+`flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i` ·
+`look=yaw,pitch` (hold free look, degrees) · `lookoff=s` (release at s)
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load) · `onrwy[=z]` (stopped on RWY 36, gear down) · `gear` (start gear down)

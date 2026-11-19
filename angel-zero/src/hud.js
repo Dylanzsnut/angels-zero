@@ -1454,8 +1454,13 @@ export function createHUD(THREE, A) {
       if (g && !C.dead) drawCentralHUD(hctx, g, dt, true);
     } else {
       g = chaseLayout();
-      if (!C.dead) {
+      // Chase free-look orbit: the boresight reticle / SPEED / ALT boxes no longer sit
+      // on the nose, so they fade out with the look offset (gone past ~30 deg).
+      const fl = A.getFreeLook && A.getFreeLook();
+      const hudA = fl ? 1 - fl.amount : 1;
+      if (!C.dead && hudA > 0.02) {
         hctx.save();
+        hctx.globalAlpha = hudA;
         hctx.translate(inertia.x, inertia.y);
         drawCentralHUD(hctx, g, dt, false);
         hctx.restore();
@@ -1474,6 +1479,7 @@ export function createHUD(THREE, A) {
     drawDangerPill(hctx);
     drawComms(hctx, fp ? HH * 0.71 : HH * 0.84);
     if (!A.isModal()) drawStickCue(hctx);
+    drawFreeLookTag(hctx);
     drawGLoc(hctx);
   }
 
@@ -1764,6 +1770,19 @@ export function createHUD(THREE, A) {
   }
 
   // Generic bracketed status badge (weather etc.).
+  // [ FREE LOOK ] tag, bottom centre, while Alt / MMB is held (src/freelook.js).
+  function drawFreeLookTag(ctx) {
+    const fl = A.getFreeLook && A.getFreeLook();
+    if (!fl || !fl.active) return;
+    const txt = '[ FREE LOOK ]', cx = HW / 2, cy = HH - 34;
+    ctx.save();
+    ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(txt).width + 18;
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 12, 5, 0.45)'; ctx.fillRect(cx - w / 2, cy - 10, w, 20);
+    ctx.globalAlpha = 0.9;
+    labelText(ctx, txt, cx, cy + 1, G, 3);
+    ctx.restore();
+  }
   function drawBadge(ctx, x, y, txt, col) {
     ctx.save();
     ctx.font = f(12, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';

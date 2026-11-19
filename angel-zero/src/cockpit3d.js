@@ -961,7 +961,9 @@ export function createCockpit3D(THREE, env) {
   const head = { yaw: 0, roll: 0, pitch: 0, look: 0, lookYaw: 0, off: new THREE.Vector3() };
   const MAX_ROLL_LAG = 11 * D2R, LOOK_PITCH = 14 * D2R, LOOK_YAW = 12 * D2R;
   const _e = new THREE.Euler(0, 0, 0, 'YXZ'), _q = new THREE.Quaternion(), _offT = new THREE.Vector3();
-  let active = false, frame = 0;
+  let active = false, frame = 0, freeLook = null;
+  const _lean = new THREE.Vector3();
+  function setFreeLook(v) { freeLook = v; }               // { yaw, pitch, lean } shared by reference
   function setActive(on) {
     active = on; rig.visible = on; sunLight.castShadow = on;
     if (!on) { sunLight.position.copy(sunHome); sunLight.target.position.set(0, 0, 0); sunLight.target.updateMatrixWorld(); }
@@ -1001,12 +1003,18 @@ export function createCockpit3D(THREE, env) {
     );
     head.off.lerp(_offT, ex(6));
 
+    // Free look (Alt / MMB, src/freelook.js): head turn on top of the motion springs,
+    // plus a shoulder lean past 90 deg -- toward the look side and 8 cm forward --
+    // so the eye clears the ACES II headrest instead of turning inside it.
+    const fy = freeLook ? freeLook.yaw : 0, fpch = freeLook ? freeLook.pitch : 0, lean = freeLook ? freeLook.lean : 0;
+    _lean.set(-0.12 * lean, 0.02 * Math.abs(lean), -0.08 * Math.abs(lean));
+
     const vib = 0.0015 * (S.afterburner * 0.6 + smooth(S.gLoad, 5, 12) + smooth(S.mach, 0.92, 1.05) * 0.5);
-    _e.set(PITCH_BASE + head.look + head.pitch + (Math.random() - 0.5) * vib,
-      head.lookYaw + head.yaw + (Math.random() - 0.5) * vib,
+    _e.set(PITCH_BASE + head.look + head.pitch + fpch + (Math.random() - 0.5) * vib,
+      head.lookYaw + head.yaw + fy + (Math.random() - 0.5) * vib,
       head.roll);
     _q.setFromEuler(_e);
-    camera.position.copy(head.off).applyQuaternion(jetQuat).add(eyeWorld);
+    camera.position.copy(head.off).add(_lean).applyQuaternion(jetQuat).add(eyeWorld);
     camera.quaternion.copy(jetQuat).multiply(_q);
     sunLight.position.copy(eyeWorld).addScaledVector(sunDir, 6);
     sunLight.target.position.copy(eyeWorld); sunLight.target.updateMatrixWorld();
@@ -1018,7 +1026,7 @@ export function createCockpit3D(THREE, env) {
 
   const _w = new THREE.Vector3();
   return {
-    rig, setActive, update, missionClock, setNVG,
+    rig, setActive, update, missionClock, setNVG, setFreeLook,
     get active() { return active; },
     get hotas() {
       return { pitch: +(hotas.pitch / D2R).toFixed(1), roll: +(hotas.roll / D2R).toFixed(1), trig: +hotas.trig.toFixed(2), pickle: +hotas.pickle.toFixed(2),
