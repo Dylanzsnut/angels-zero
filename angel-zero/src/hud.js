@@ -75,7 +75,8 @@ export function createHUD(THREE, A) {
   let alertState = 'NORMAL', alertOverride = null;
   const alertOn = () => alertState === 'MISSILE_ALERT';
   const pullUpOn = () => !C.dead && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5;
-  const stallOn = () => !C.dead && (S.alpha > A.STALL_AOA * 0.85 || S.speed * 1.94384 < 135);
+  // Near the 24 deg critical AoA below ~260 kt, an actual departure, or very slow flight.
+  const stallOn = () => !C.dead && (S.stalled || (S.alpha > A.STALL_AOA * 0.96 && S.speed * 1.94384 < 260) || S.speed * 1.94384 < 135);
   const flashRed = () => alertOn() && Math.floor(performance.now() / 160) % 2 === 0;
   const pulseAlpha = (periodMs = 160) => (Math.floor(performance.now() / periodMs) % 2 === 0 ? 1.0 : 0.45);
   const mslFlash = () => Math.floor(performance.now() / 140) % 2 === 0;
@@ -1182,6 +1183,21 @@ export function createHUD(THREE, A) {
     ctx.stroke();
     ctx.restore();
   }
+  // Chase view: the true flight-path vector (where the jet is actually going),
+  // shown once AoA / sideslip push it clear of the nose reticle.
+  const fpvTrue = new THREE.Vector3(0, 0, -1);
+  function drawTrueFPV(ctx, col) {
+    fpvTrue.lerp(S.velocity.clone().normalize(), 0.35).normalize();
+    const p = toScreen(cam.position.clone().addScaledVector(fpvTrue, 4500));
+    const b = toScreen(cam.position.clone().addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion), 4500));
+    if (!p.ok || !b.ok || Math.hypot(p.x - b.x, p.y - b.y) < 7) return;
+    ctx.save();
+    glow(ctx, col, 3); ctx.lineWidth = 1.1; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x - 13, p.y); ctx.lineTo(p.x - 5, p.y); ctx.moveTo(p.x + 5, p.y); ctx.lineTo(p.x + 13, p.y);
+    ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x, p.y - 10); ctx.stroke();
+    ctx.restore();
+  }
   // Pointed readout: SPEED  [  420 >   (points right)   /   ALT  < 3200  ]  (points left).
   function drawChevronBox(ctx, cx, cy, value, label, point, col, sub, subCol) {
     const w = 78, h = 26, tip = 10;
@@ -1216,6 +1232,7 @@ export function createHUD(THREE, A) {
     if (!compact) {
       // 3rd person (AC8): no ladders / tapes — reticle + pointed SPEED / ALT boxes only.
       drawReticle(ctx, g, dt, hudCol);
+      drawTrueFPV(ctx, hudCol);
       drawGunFunnel(ctx, hudCol);
       drawChevronBox(ctx, g.cx - BOX_OFF, g.cy, Math.round(kts), 'SPEED', 'right', spdCol,
         S.afterburner > 0.3 ? '[A/B]' : '', AMBER);

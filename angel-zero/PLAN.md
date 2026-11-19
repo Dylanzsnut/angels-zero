@@ -23,12 +23,27 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 
 ## Pillar 2 — 6-DOF Flight Physics & Camera Feel (`src/flight.js`, `src/camera.js`)
 - [ ] **Responsive handling, energy, stall, chase camera, cockpit head.**
-  - Implemented today: rate-command pitch / roll / yaw with shaped stick input,
-    lift / drag / thrust model, High-G turn (Shift or W+S while pulling) with
-    induced + corner-speed energy bleed, AoA limiter with post-stall lift break
-    and `STALL WARNING`, barrel roll (Q / double-tap A/D), spring-damped chase
-    camera that tightens FOV in High-G turns, 1st-person 3D cockpit
-    (`src/cockpit3d.js`) with roll-lag / look-into-turn head inertia.
+  - [x] **Rigid-body 6-DOF F-15C** *(build `s27a`)* — attitude and velocity are
+    decoupled: live AoA / sideslip, lift perpendicular to the airflow (CLa 3.5,
+    CLmax 1.55 at the 24 deg stall), fuselage side force, drag = CD0 + 0.24 CL^2
+    + transonic wave rise (M0.92-1.04) + post-stall form drag + speed brake,
+    thrust with density / ram, gravity; semi-implicit Euler. Mass 17,600 kg +
+    85 kg per AIM-9 + 230 kg per Mk-82 (~20,700 kg full); inertias Ixx 38,900 /
+    Iyy 223,800 / Izz 256,900 kg m^2 (+ stores). Rotation from moments: FCS turns
+    stick into a load-factor / AoA demand (7.5 G, 9 G in High-G, -2 G push, 26 deg
+    limit), control authority scales with dynamic pressure (mushy < 230 kt /
+    high up) and stiffens past M1.1; aero rate damping, weathercock yaw,
+    dihedral roll, adverse yaw; departure latch past 24 deg below 230 kt (nose
+    drop + wing rock until it flies again). Chase camera tracks a nose /
+    velocity blend; chase HUD adds the true flight-path marker; G readout is
+    the real aerodynamic load factor (max ~9 G instead of 12-30 G). Verified
+    headless: 200 kt turn mushes at stall AoA (~2 G, bleeding), 430 kt High-G
+    break 8.3 G bleeding 40-46 kt/s, roll winds up in ~0.3 s and settles in
+    ~0.3 s, 80 deg climb bleeds ~13 kt/s, AB dive M0.99 -> 1.21, level AB
+    creeps through the drag rise to M1.06, stall nose drop + recovery.
+  - Barrel roll (Q / double-tap A/D), spring-damped chase camera that tightens
+    FOV in High-G turns, 1st-person 3D cockpit (`src/cockpit3d.js`) with
+    roll-lag / look-into-turn head inertia.
   - [x] **Articulated F-15C surfaces (`src/surfaces.js`):** `Ctrl_Stabilator_L/R`
     (all-moving, pitch + roll differential, +/-24 deg), `Ctrl_Aileron_L/R`
     (+/-20 deg), auto `Ctrl_Flap_L/R` (0 -> 26 deg below ~260 kt / high AoA),
@@ -65,8 +80,6 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   - **Gap:** flight model and chase camera live in `index.html`
     (`updatePhysics`, `updateCameraAndVisuals`) — no `flight.js` / `camera.js`.
   - **Gap:** no chase-camera FOV *speed* kick (only the High-G tighten).
-  - **Gap:** stall recovery is implicit (AoA limiter); no departure /
-    nose-drop recovery behaviour.
 
 ## Pillar 3 — Archipelago World & Dynamic Time-of-Day (`src/world.js`)
 - [x] **5-island eroded heightfield** — airbase island + runway peninsula,
