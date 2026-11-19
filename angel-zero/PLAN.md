@@ -379,6 +379,38 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     next wave PHASE 1 with normal labels and no tint; music layer 3 with combo
     at 1.0x; crimson instance colour on the Ace slot only; zero page console
     errors (headless `ace`, wingtest, cockpit, menu).
+- [x] **Fair enemy AI aerodynamics: roll inertia, G caps, energy bleed** *(build `s32c`)*
+  - Bank-to-turn kept, now with airframe limits rolled per bandit: roll rate
+    110-140 deg/s (Ace 175), roll acceleration 520 deg/s^2 (Ace 700) so rolls
+    build up and brake onto the target bank without overshoot (no snapping),
+    barrel-roll helix just inside the roll limit.
+  - G caps: 6.0-6.8 G per bandit (was 7-8 G, 10 G Ace), Ace 8.5 G; merge
+    break-away, terrain pull-up and full-G breaks are clipped to the cap.
+    Turn rate stays omega <= g*G/v. Below 240 kt available G scales with
+    (v / 240 kt)^2 (floor 35 %) and roll rate with v / 240 kt (floor 50 %).
+  - Energy model replaces the speed-target lerp: thrust 4.5 m/s^2 MIL +
+    6.5 AB (T/W ~1.1) with a feed-forward throttle, parasitic drag ~ v^2
+    (AB target = level top speed), induced drag 0.36 * (G^2 - 1.5), full
+    g sin(gamma) on climbs / dives; speed floor 175 kt (was 272 kt, which
+    made slow-speed fights impossible).
+  - New RECOVER state: in ENGAGE / a defensive break below 260 kt the bandit
+    unloads for 2.5-4 s: wings level, 7 deg dive (15 deg below 240 kt),
+    burner, <= 2 G, allowed to push over (negative G) if nose-high; only a
+    missile inside 900 m interrupts it. `ai.recovers`, `ai.maxRoll`,
+    `ai.minKt` in the combat log; TAC code `V`.
+  - Not applicable: there are no bombers in the game yet, so the 2 G / 30
+    deg/s bomber limits have no airframe to apply to.
+  - Verified in the pane (scripted dogfights): bandit on our six in a 50 s
+    sustained AB turn: roll peak 113 deg/s = its cap, G 6.0 = its cap, zero
+    frames turning faster than g*G/v, 5.6 G at 365 kt bleeding 10.8 m/s^2;
+    radar-lock pressure fight 60 s: 5 RECOVER episodes at 260 kt, each wings
+    level within 1 s and regaining 15-57 kt, min 258 kt, G 6.79 / roll 121
+    = caps; nose-high slow entry pushes over at -1.1 G (40 -> 8 deg in 4 s)
+    then rolls back in progressively; Ace 8.5 G / 175 deg/s, never needs to
+    recover; wing-severed bandit spirals (22 m/s sink, continuous roll) to
+    impact with kill credit after ~59 s. Headless: low patrol min clearance
+    199 m / 0 clamps, head-on merge 43 m / no ram, fleet max 6.8 G, zero page
+    console errors (lowpatrol, merge, ace, cockpit).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

@@ -458,22 +458,35 @@ export function createCombat(THREE, env) {
 
   /* ---------------------------------------------------- bandit flight AI */
   // Tactical states: PATROL -> ENGAGE (lead pursuit, guns, seeker, missiles),
-  // EVADE_BREAK (85 deg / 7 G break across the threat line, afterburner),
-  // BARREL_ROLL (helical defensive roll / split-S toward the cloud deck) and
-  // EXTEND_CLIMB (unload, burner, climb away after an overshoot or a break).
+  // EVADE_BREAK (85 deg break across the threat line at the G limit, afterburner),
+  // BARREL_ROLL (helical defensive roll / split-S toward the cloud deck),
+  // EXTEND_CLIMB (unload, burner, climb away after an overshoot or a break) and
+  // RECOVER (below 260 kt: wings level, shallow dive, burner, <= 2 G, 2.5-4 s).
   // Flight is bank-to-turn: each bandit rolls its lift vector onto the turn
-  // demand (+/-82 deg, ~205 deg/s) and only then pulls, G-limited, with gravity
-  // and induced drag bleeding energy. Safety layers on top of every state:
+  // demand (+/-82 deg, rate- and acceleration-limited) and only then pulls,
+  // G-capped (6.0-6.8 G, Ace 8.5, less when slow), turn rate omega <= g*G/v,
+  // with thrust, v^2 parasitic and G^2 induced drag and gravity setting the
+  // airspeed. Safety layers on top of every state:
   // a 150 / 350 / 650 m terrain + sea look-ahead (wings-level pull-up), a hard
   // floor 12 m above ground / water, 65 m wingman separation, a merge
   // break-away inside 95 m of the player (or a predicted pass that close), and
   // a 14 m swept airframe-collision check (ram = shockwave, +45 % DMG, kill).
   const KT = 0.514444;
-  const BANK_MAX = 82 * D2R, ROLL_RATE = 3.6, BREAK_BANK = 85 * D2R;
+  const BANK_MAX = 82 * D2R, BREAK_BANK = 85 * D2R;
+  // Airframe limits (per bandit, rolled at spawn): roll rate 110-140 deg/s (Ace 175),
+  // roll acceleration 520 deg/s^2 (Ace 700) so rolls build and stop with weight,
+  // G cap 6.0-6.8 (Ace 8.5). Below 240 kt available G falls with dynamic
+  // pressure ((v / 240 kt)^2, floor 35 %) and roll rate with v / 240 kt (floor 50 %).
+  const ROLL_ACC = 520 * D2R, ACE_ROLL_ACC = 700 * D2R, SLOW_V = 240 * 0.514444;
+  // Energy: thrust 4.5 m/s^2 MIL + 6.5 m/s^2 AB (T/W ~1.1 in burner), parasitic drag ~ v^2 (top speed = AB
+  // target), induced drag 0.36 * (G^2 - 1.5) m/s^2, full gravity along the flight
+  // path. Below 260 kt in a fight the bandit RECOVERs: wings level, shallow dive,
+  // burner, max 2 G, for 2.5-4 s.
+  const T_MIL = 4.5, T_AB = 6.5, K_IND = 0.36, RECOVER_V = 260 * 0.514444, V_FLOOR = 90;
   const LOOK = [150, 350, 650], SAFE_WATER = 35, SAFE_TERRAIN = 55, AVOID_BAND = 140, HARD_FLOOR = 12;
   const MERGE_R = 95, MERGE_CLEAR = 32, SEP_R = 65, RAM_R = 14, REACT_RANGE = 1800;
   const AI_FLR_CD = 10, AI_FLR_P = 0.45;
-  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X', CRIPPLED: 'C' };
+  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X', RECOVER: 'V', CRIPPLED: 'C' };
   const ai = { minClear: Infinity, clamps: 0, avoid: 0, merges: 0, minSep: Infinity, minWing: Infinity, breaks: 0, rolls: 0, splitS: 0,
     extends: 0, flares: 0, spoofs: 0, rams: 0, impacts: 0, maxBank: 0, maxG: 0, abT: 0, trails: 0 };
   let aiFlareSalvo = 0, aiPassive = false;                     // aiPassive: debug terrain test (no engaging)
@@ -490,6 +503,7 @@ export function createCombat(THREE, env) {
       cruise: 210, abSpeed: 300, ab: 0, gNow: 1, reactT: null, threatTm: null,
       rollPhase: 0, rollDir: 1, splitS: false, merge: 0, mergeDir: new THREE.Vector3(0, 1, 0), mergeRoll: 0,
       flaresLeft: 2, flareCD: 0, trailAcc: 0, avoiding: false, noBreak: false,
+      rollRate: 125 * D2R, rollRateNow: 0, gMax: 6.4,
       wingL: 30, wingR: 30, wingOffL: false, wingOffR: false, engHits: 0, engineFire: false, speedCap: 1,
       crippled: null, crippleT: 0, crRoll: 0, sinkTarget: 25, rollVel: 0, dipV: 0
     };
@@ -499,7 +513,8 @@ export function createCombat(THREE, env) {
   function resetAI(e) {
     e.cruise = (360 + rand() * 80) * KT;                     // 360-440 kt cruise
     e.abSpeed = (520 + rand() * 120) * KT;                   // 520-640 kt in afterburner
-    e.speed = e.cruise; e.ab = 0; e.gNow = 1; e.bank = 0;
+    e.speed = e.cruise; e.ab = 0; e.gNow = 1; e.bank = 0; e.rollRateNow = 0;
+    e.rollRate = (110 + rand() * 30) * D2R; e.gMax = 6.0 + rand() * 0.8;   // airframe limits (makeAce overrides)
     e.tac = e.mode = 'PATROL'; e.tacT = 0; e.reactT = null; e.threatTm = null; e.merge = 0; e.noBreak = false;
     e.flaresLeft = rand() < 0.5 ? 1 : 2; e.flareCD = 0; e.trailAcc = 0; e.rollPhase = 0; e.avoiding = false;
     Object.assign(e, { wingL: WING_HP, wingR: WING_HP, wingOffL: false, wingOffR: false, engHits: 0, engineFire: false, speedCap: 1,
@@ -509,7 +524,7 @@ export function createCombat(THREE, env) {
   /* ------------------------------------------------ mission phases + Ace */
   // Three-phase cycle: PHASE 1 and PHASE 2 are six-bandit waves; PHASE 3 is the
   // Ace sortie: SCARLET 1 (crimson-tinted Su-35S, red wingtip vapour) plus two
-  // escorts. The Ace always engages, pulls 9 G, reacts in ~0.2 s, locks 40 %
+  // escorts. The Ace always engages, pulls 8.5 G / rolls 175 deg/s, reacts in ~0.2 s, locks 40 %
   // faster, carries 6 flare salvos (4 s re-arm, 70 % spoof), has 360 HP and
   // 70-hit wings, takes missile hits as 150 HP damage instead of dying, and
   // catches fire only after 5 engine hits. Killing it pays ACE KILL; then the
@@ -522,6 +537,7 @@ export function createCombat(THREE, env) {
     e.hp = e.hpMax = ACE.hp; e.wingL = e.wingR = ACE.wing; e.flaresLeft = ACE.flares;
     e.cruise = ACE.cruise * KT; e.abSpeed = ACE.ab * KT; e.speed = e.cruise;
     e.mslCD = 5 + rand() * 3; e.burstCD = 1.5; e.aceTaunt = false;
+    e.rollRate = 175 * D2R; e.gMax = 8.5;                         // skilled human F-15 pilot, never superhuman
     C.ace = { label: ACE.label, type: ACE.type, hp: e.hp, hpMax: e.hpMax, alive: true };
     tintFleet();
   }
@@ -677,7 +693,15 @@ export function createCombat(THREE, env) {
     const threat = (tm && tmD < REACT_RANGE) || locked;
     const defending = e.tac === 'EVADE_BREAK' || e.tac === 'BARREL_ROLL';
     if (e.tacT > 0) e.tacT -= dt;
-    if (threat) {
+    // Energy recovery: too slow to fight -> unload, shallow dive, burner (a missile inside 900 m still forces a break).
+    if (e.tac === 'RECOVER' && e.tacT <= 0) { e.tac = 'PATROL'; e.reactT = null; }
+    const recovering = e.tac === 'RECOVER';
+    if (!recovering && (e.tac === 'ENGAGE' || defending) && e.speed < RECOVER_V && e.merge <= 0) {
+      e.tac = 'RECOVER'; e.tacT = 2.5 + rand() * 1.5; e.reactT = null; ai.recovers = (ai.recovers || 0) + 1;
+    }
+    if (e.tac === 'RECOVER' && !(tm && tmD < 900)) {
+      if (tm && e.flaresLeft > 0 && e.flareCD <= 0 && tmD < 1200) banditFlares(e);
+    } else if (threat) {
       if (e.reactT === null) e.reactT = e.ace ? 0.12 + rand() * 0.12 : 0.35 + rand() * 0.4;   // human reaction delay (Ace ~0.2 s)
       else if (e.reactT > 0) { e.reactT -= dt; if (e.reactT <= 0) startDefence(e, tm, tmD); }
       else if (!defending || e.tacT <= 0) startDefence(e, tm, tmD);      // keep defending while the threat lasts
@@ -739,20 +763,29 @@ export function createCombat(THREE, env) {
       maxG = 7; useAB = true; bankOverride = BREAK_BANK * e.evadeDir;
     } else if (e.tac === 'BARREL_ROLL') {
       // Helical defensive roll; split-S variant dives toward the cloud deck.
-      e.rollPhase = wrapPi(e.rollPhase + e.rollDir * 3.4 * dt);
+      e.rollPhase = wrapPi(e.rollPhase + e.rollDir * e.rollRate * 0.92 * dt);   // helix just inside the roll-rate limit
       bankOverride = e.rollPhase;
       const L = _L.copy(up0).multiplyScalar(Math.cos(e.rollPhase)).addScaledVector(right, -Math.sin(e.rollPhase));
       const deck = 1250;                                          // mid cloud deck (~4,100 ft)
       const vBias = e.splitS ? -0.55 : clamp((deck - e.pos.y) * 0.0015, -0.45, 0.3);
       desired.copy(e.fwd).addScaledVector(L, 0.65).addScaledVector(UP, vBias);
       maxG = 7; useAB = !e.splitS;
+    } else if (e.tac === 'RECOVER') {
+      // Unload: wings level along the current heading, 7 deg shallow dive (15 deg
+      // below 240 kt; held above the cruise floor), full afterburner, <= 2 G,
+      // pushing over (negative G) if it entered nose-high.
+      const fh = _fh.set(e.fwd.x, 0, e.fwd.z);
+      if (fh.lengthSq() < 1e-6) fh.set(0, 0, -1);
+      const dive = e.speed < SLOW_V ? -0.27 : -0.12;               // very slow: steeper 15 deg dive to trade height for speed
+      desired.copy(fh.normalize()).addScaledVector(UP, e.pos.y > cruiseFloor + 120 ? dive : 0.02);
+      maxG = 2; useAB = true; bankOverride = 0;
     } else {                                                      // EXTEND_CLIMB
       desired.set(-toP.x, 0, -toP.z);
       if (desired.lengthSq() < 1) desired.copy(e.fwd).setY(0);
       desired.normalize().addScaledVector(UP, 0.4);
       maxG = 5; useAB = true;
     }
-    if (e.ace && e.tac !== 'PATROL') { maxG += 2; if (e.tac === 'ENGAGE') useAB = useAB || dist > 900; }   // 9 G Ace
+    if (e.ace && e.tac !== 'PATROL' && e.tac !== 'RECOVER') { maxG = e.gMax; if (e.tac === 'ENGAGE') useAB = useAB || dist > 900; }   // Ace flies at its 8.5 G limit
     if (desired.lengthSq() < 1e-6) desired.copy(e.fwd);
     desired.normalize();
 
@@ -787,7 +820,7 @@ export function createCombat(THREE, env) {
       if (e.merge > 0) {
         e.merge -= dt;
         desired.multiplyScalar(0.3).addScaledVector(e.mergeDir, 1.6);
-        maxG = Math.max(maxG, 8);
+        maxG = Math.max(maxG, e.gMax);                            // break-away at the airframe limit
         if (bankOverride === null) bankOverride = e.mergeRoll;
         // Keep a 32 m (+wingspan) gap through the pass: lateral slip along the break direction.
         if (missD < MERGE_CLEAR && tca < 1.4) e.pos.addScaledVector(e.mergeDir, Math.min(MERGE_CLEAR - missD, 85 * dt));
@@ -810,8 +843,13 @@ export function createCombat(THREE, env) {
       desired.normalize();
     }
 
-    // ---- bank-to-turn dynamics
+    // ---- airframe limits: G cap (dynamic-pressure limited below 240 kt) and roll rate
     const v = Math.max(e.speed, 80);
+    const qK = clamp((v / SLOW_V) ** 2, 0.35, 1), rollK = clamp(v / SLOW_V, 0.5, 1);
+    maxG = Math.min(maxG, e.gMax * qK);
+    const rollMax = e.rollRate * rollK, rollAcc = (e.ace ? ACE_ROLL_ACC : ROLL_ACC) * rollK;
+
+    // ---- bank-to-turn dynamics
     const cosA = clamp(e.fwd.dot(desired), -1, 1), ang = Math.acos(cosA);
     const perp = _p.copy(desired).addScaledVector(e.fwd, -cosA);
     if (perp.lengthSq() > 1e-8) perp.normalize(); else perp.copy(up0);
@@ -823,8 +861,14 @@ export function createCombat(THREE, env) {
       if (liftReq.dot(up0) < 0) { bankT = wrapPi(bankT - Math.PI); push = true; }    // unload / push over instead of rolling inverted
       bankT = clamp(bankT, -BANK_MAX, BANK_MAX);
     }
-    if (e.tac === 'BARREL_ROLL' && !e.avoiding && e.merge <= 0) e.bank = bankT;
-    else e.bank = wrapPi(e.bank + clamp(wrapPi(bankT - e.bank), -ROLL_RATE * dt, ROLL_RATE * dt));
+    // Roll with inertia: the roll rate accelerates / brakes at rollAcc toward the
+    // rate that arrives on bankT without overshoot, capped at rollMax.
+    const bankErr = wrapPi(bankT - e.bank);
+    const rateCmd = Math.sign(bankErr) * Math.min(rollMax, Math.sqrt(2 * rollAcc * Math.abs(bankErr)));
+    e.rollRateNow += clamp(rateCmd - e.rollRateNow, -rollAcc * dt, rollAcc * dt);
+    const dBank = e.rollRateNow * dt;
+    e.bank = Math.abs(dBank) > Math.abs(bankErr) && Math.sign(dBank) === Math.sign(bankErr) ? bankT : wrapPi(e.bank + dBank);
+    ai.maxRoll = Math.max(ai.maxRoll || 0, Math.abs(e.rollRateNow) / D2R);
     // Ballistic jolts from wing hits + a persistent wobble from a shot-up wing.
     const wingBias = ((WING_HP - e.wingL) - (WING_HP - e.wingR)) / WING_HP;
     e.bank = wrapPi(e.bank + (e.rollVel + wingBias * 0.35 * Math.sin(e.prev.x * 0.01 + e.id)) * dt);
@@ -832,6 +876,7 @@ export function createCombat(THREE, env) {
     const L = _L.copy(up0).multiplyScalar(Math.cos(e.bank)).addScaledVector(right, -Math.sin(e.bank));
     let n = liftReq.dot(L);                                       // lift actually available in the current lift plane
     if (e.tac === 'EVADE_BREAK' && !e.avoiding) n = Math.max(n, maxG * G0 * 0.95);   // full-G break
+    if (e.tac === 'RECOVER' && !e.avoiding) push = true;          // unload: allowed to push the nose over (down to -2.5 G)
     n = push ? clamp(n, -2.5 * G0, maxG * G0) : clamp(n, 0, maxG * G0);
     e.gNow = n / G0;
     ai.maxG = Math.max(ai.maxG, e.gNow); ai.maxBank = Math.max(ai.maxBank, Math.abs(e.bank) / D2R);
@@ -842,8 +887,18 @@ export function createCombat(THREE, env) {
     e.ab += ((useAB ? 1 : 0) - e.ab) * Math.min(1, dt * 3);
     if (e.ab > 0.5) ai.abT += dt;
     const targetSpeed = (e.cruise + (e.abSpeed - e.cruise) * e.ab) * e.speedCap;      // engine hit: -40 % top speed
-    e.speed += (targetSpeed - e.speed) * Math.min(1, dt * 0.35) - G0 * e.fwd.y * dt * 0.55 - Math.max(0, e.gNow - 3) * 1.1 * dt;
-    e.speed = clamp(e.speed, 140, 345 * e.speedCap);
+    // Energy: throttle holds the target speed; thrust MIL + AB; parasitic drag
+    // scales so the AB target is the level top speed; induced drag ~ G^2;
+    // climbing bleeds and diving builds speed (full g sin(gamma)).
+    const tMax = (T_MIL + T_AB * e.ab) * e.speedCap;
+    const vTop = (e.cruise * 1.15 + (e.abSpeed - e.cruise * 1.15) * e.ab) * e.speedCap;   // full-throttle level top speed
+    const thr = clamp((targetSpeed / vTop) ** 2 + (targetSpeed - e.speed) * 0.05, 0, 1);   // feed-forward + trim
+    const parasitic = tMax * (e.speed / vTop) ** 2;
+    const induced = K_IND * Math.max(0, e.gNow * e.gNow - 1.5);
+    e.energyBleed = induced;
+    e.speed += (tMax * thr - parasitic - induced - G0 * e.fwd.y) * dt;
+    e.speed = clamp(e.speed, V_FLOOR, Math.max(345, e.abSpeed * 1.05) * e.speedCap);
+    ai.minKt = Math.min(ai.minKt || Infinity, e.speed / KT);
 
     // Smoothed turn acceleration feeds the HUD's LCOS lead computation.
     const nv = _mv.copy(e.fwd).multiplyScalar(e.speed);
