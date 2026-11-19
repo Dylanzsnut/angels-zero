@@ -746,9 +746,13 @@ export function createCockpit3D(THREE, env) {
   function updateEngines(dt) {
     const k = Math.min(1, dt * 1.5), t = S.throttle, ab = S.afterburner;
     const nl = 62 + 32 * t + 6 * ab, egt = 400 + 430 * t + 180 * ab;
-    const outL = C.engineOut === 'L', outR = C.engineOut === 'R';
-    eng.nlL += ((outL ? 18 : nl) - eng.nlL) * k; eng.nlR += ((outR ? 18 : nl * 0.996) - eng.nlR) * k * 0.92;
-    eng.egtL += ((outL ? 260 : egt) - eng.egtL) * k * 0.8; eng.egtR += ((outR ? 260 : egt + 7) - eng.egtR) * k * 0.76;
+    // Damaged F100 (combat engine state): ON_FIRE spools down toward 0 % with TEMP
+    // spiking into the red; EXTINGUISHED / SEIZED cools and winds down to ~3 %;
+    // RELIGHTING windmills at 28 % N2 with TEMP climbing as the igniters fire.
+    const dmgT = st => st === 'ON_FIRE' ? [2, 1150, 0.5] : st === 'RELIGHTING' ? [28, 380, 1.4] : st === 'EXTINGUISHED' || st === 'SEIZED' ? [3, 140, 0.35] : null;
+    const tL = dmgT(C.engL), tR = dmgT(C.engR);
+    eng.nlL += ((tL ? tL[0] : nl) - eng.nlL) * k * (tL ? tL[2] : 1); eng.nlR += ((tR ? tR[0] : nl * 0.996) - eng.nlR) * k * 0.92 * (tR ? tR[2] : 1);
+    eng.egtL += ((tL ? tL[1] : egt) - eng.egtL) * k * 0.8; eng.egtR += ((tR ? tR[1] : egt + 7) - eng.egtR) * k * 0.76;
     const base = 80 - 70 * smooth(t, 0.15, 0.75);                    // F100 nozzle: open at idle, tight at MIL, wide in AB
     eng.noz += ((base + (100 - base) * ab) - eng.noz) * Math.min(1, dt * 3);
   }

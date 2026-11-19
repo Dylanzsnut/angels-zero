@@ -81,6 +81,19 @@ export function createRadio(env) {
       case 'BASE_SAM':
         awacs('Base SAMs are engaging—bandits over the field.', 1, 'basesam', 25);
         break;
+      // Engine fire procedure.
+      case 'ENG_FIRE':
+        awacs(`Eagle, your ${d.side === 'L' ? 'left' : 'right'} engine is on fire! Hit the extinguisher—now!`, 4, 'engfire', 10);
+        break;
+      case 'ENG_EXTINGUISHED':
+        awacs("Fire's out, Eagle! Engine is cold—build airspeed if you want to try a windmill relight.", 4, 'engout', 10);
+        break;
+      case 'RELIGHT_OK':
+        awacs("Unbelievable! Engine caught—you've got full twin-engine power back!", 4, 'relight', 10);
+        break;
+      case 'RELIGHT_FAIL':
+        awacs("No joy on the relight—that engine's seized. Fly it on one and RTB to Archipelago when you can.", 4, 'relight', 10);
+        break;
       case 'TERRAIN_MASK':
         awacs('Good terrain masking—the canyon walls blocked their radar!', 2, 'mask', 20);
         break;

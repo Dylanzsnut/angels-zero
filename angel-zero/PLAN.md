@@ -862,6 +862,45 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     bomber run -> base hit; PHASE 2 held until the fleet sank, then SOL-1
     over SEC-03; fleet-area frame 7.4-7.8 ms median (pane); zero page errors
     (cockpit rain, night fleet, Ace canyon, menu).
+- [x] **Single-engine fire, Halon extinguisher, slim-chance windmill relight** *(build `s45a`, `src/combat.js`, `index.html`, `src/hud.js`, `src/cockpit3d.js`, `src/audio.js`, `src/radio.js`)*
+  - Per-engine state `C.engL / C.engR`: HEALTHY | ON_FIRE | EXTINGUISHED |
+    RELIGHTING | SEIZED (replaces the old 60 % flameout / 85 % fire). Legacy
+    `engineOut` / `engineFire` are derived, so thrust, dead plume, gauges and
+    lamps follow the state.
+  - Ignition: DMG crossing 45 % (re-arms below 40 %) or a 35 % chance on a
+    direct missile hit with both engines healthy. ON_FIRE: thrust capped at
+    58 %, roll-off 0.06 + asymmetric-thrust yaw toward the dead side (stick
+    holds it), fire spreads +2.2 % DMG/s, airframe explodes at 16 s
+    (`ENGINE FIRE — AIRFRAME EXPLODED` debrief reason).
+  - F is context-sensitive: Vulcan normally; during an engine emergency F press
+    = Halon bottle (white vapour burst, pneumatic discharge SFX, AWACS),
+    ON_FIRE -> EXTINGUISHED, spread stops. Hold F 2.5 s (fresh press, one
+    attempt) = windmill relight: starter whine + accelerating igniter clicks,
+    white fuel vapour, N2 28 %; releasing early aborts without spending it.
+    Odds 5 % < 220 kt, 20 % at 220 kt rising to 38 % at 350+ kt. Success ->
+    HEALTHY, DMG -20 %, relight boom + flame tongue, AWACS; failure -> SEIZED
+    (compressor-stall bangs), single-engine ops until the AFB pit stop
+    (pit stop / respawn restore both engines). LMB always fires the gun.
+  - VFX: ON_FIRE thick black smoke + jagged orange flame from the damaged
+    nozzle only; EXTINGUISHED / SEIZED thin grey wisps; RELIGHTING white vapour.
+  - Cockpit: L / R ENG FIRE lamp flashes + master caution; RPM spools toward
+    0 % (28 % while cranking), TEMP spikes into the red then cools.
+  - HUD (center-lower): `[ L/R ENGINE FIRE — PRESS F TO EXTINGUISH ]` + time
+    to airframe loss; `[ ENGINE COLD — HOLD F FOR WINDMILL RELIGHT (SLIM
+    ODDS) ]` with live ram-air odds and a 0-100 % spool bar; then `[ ENGINE
+    RELIT! ]` / `[ RELIGHT FAILED — SINGLE ENGINE OPS ]` for 3.5 s; stores
+    row `L ENG FIRE / COLD / CRANK / SEIZED`. Fire bell every 3.2 s on fire.
+  - Debug: `engfire=s[,L|R]`, `extat=s`, `relightat=s` (holds 2.7 s),
+    `relight=ok|fail`; stats `eng {...}`; `combatSys.debugEngineFire /
+    setRelightForce / fireKey`.
+  - Verified (pane): 2.2 %/s spread, roll drift 0.063 rad/s, F press ->
+    EXTINGUISHED (holding through does not crank), spread stops, forced fail
+    -> SEIZED, pit stop -> both HEALTHY, early release aborts (attempt kept),
+    forced success -> HEALTHY with DMG 45 -> 25 %, keyboard F extinguishes
+    without firing the gun (gun again once healthy), DMG crossing 45 %
+    ignites, unattended fire -> airframe lost at exactly 16.0 s; odds 38 % at
+    389 kt. Headless: chase fire trail, cockpit prompt + lamps, crank bar,
+    SEIZED / relit runs, zero page errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

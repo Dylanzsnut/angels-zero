@@ -459,6 +459,78 @@ export function createAudio() {
     o.connect(lp).connect(g).connect(cockpitLP); o.start(t); o.stop(t + 2.5);
     explosion(0.35);
   }
+  /* ------------- engine fire / Halon bottle / windmill relight (cockpit cues) */
+  // Fire-warning bell: three bright struck-bell rings (inharmonic partials 1 : 2.76 : 5.4).
+  function fireBell() {
+    if (!ready) return;
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const at = t0 + i * 0.32;
+      for (const [mul, amp] of [[1, 0.07], [2.76, 0.035], [5.4, 0.018]]) {
+        const o = osc('sine', 1180 * mul), g = gain(0);
+        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(amp, at + 0.004); g.gain.exponentialRampToValueAtTime(0.0005, at + 0.42);
+        o.connect(g).connect(N.body); o.stop(at + 0.45);
+      }
+    }
+  }
+  // Halon discharge: sharp pneumatic burst (bright noise blast falling in pitch) + squib thump.
+  function extinguisher() {
+    if (!ready || !N.whiteBuf) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+    const bp = filt('bandpass', 4200, 0.8), g = gain(0);
+    bp.frequency.setValueAtTime(5200, t); bp.frequency.exponentialRampToValueAtTime(1400, t + 0.9);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.42, t + 0.012); g.gain.exponentialRampToValueAtTime(0.002, t + 1.0);
+    src.connect(bp).connect(g).connect(N.body); src.start(t, Math.random() * 2); src.stop(t + 1.05);
+    const th = osc('sine', 140), tg = gain(0);
+    th.frequency.setValueAtTime(140, t); th.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    tg.gain.setValueAtTime(0.3, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    th.connect(tg).connect(N.body); th.stop(t + 0.25);
+  }
+  // Windmill relight crank: starter whine rising over 2.5 s + igniter clicks
+  // accelerating 4 -> 14 Hz. crank(false) cuts it (abort / resolved).
+  function relightCrank(on) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    if (N.crank) { try { N.crank.g.gain.cancelScheduledValues(t); N.crank.g.gain.setTargetAtTime(0, t, 0.04); N.crank.o.stop(t + 0.2); for (const c of N.crank.clicks) c.stop(t + 0.01); } catch (e) { /* stopped */ } N.crank = null; }
+    if (!on) return;
+    const o = osc('sawtooth', 90), lp = filt('lowpass', 900, 1.2), g = gain(0);
+    o.frequency.setValueAtTime(90, t); o.frequency.linearRampToValueAtTime(420, t + 2.5);
+    lp.frequency.setValueAtTime(500, t); lp.frequency.linearRampToValueAtTime(2200, t + 2.5);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05, t + 0.3); g.gain.linearRampToValueAtTime(0.09, t + 2.5);
+    o.connect(lp).connect(g).connect(N.body);
+    const clicks = [];
+    for (let c = 0.05; c < 2.5;) {
+      const at = t + c, s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+      const hp = filt('highpass', 3000, 0.7), cg = gain(0);
+      cg.gain.setValueAtTime(0, at); cg.gain.linearRampToValueAtTime(0.16, at + 0.001); cg.gain.exponentialRampToValueAtTime(0.0005, at + 0.012);
+      s.connect(hp).connect(cg).connect(N.body); s.start(at, Math.random() * 3, 0.02); clicks.push(s);
+      c += 1 / (4 + 10 * (c / 2.5));
+    }
+    N.crank = { o, g, clicks };
+  }
+  // Relight: deep turbine boom + whoosh of the burner lighting.
+  function relightBoom() {
+    if (!ready) return;
+    explosion(0.55);
+    const t = ctx.currentTime, src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+    const lp = filt('lowpass', 300, 0.8), g = gain(0);
+    lp.frequency.setValueAtTime(300, t); lp.frequency.exponentialRampToValueAtTime(2400, t + 0.8);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.15); g.gain.exponentialRampToValueAtTime(0.002, t + 1.4);
+    src.connect(lp).connect(g).connect(cockpitLP); src.start(t, Math.random() * 2); src.stop(t + 1.5);
+  }
+  // Relight failure: two sharp compressor-stall bangs and a sputter.
+  function compressorStall() {
+    if (!ready) return;
+    const t0 = ctx.currentTime;
+    [0, 0.21, 0.5, 0.62, 0.71].forEach((d, i) => {
+      const at = t0 + d, s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+      const lp = filt('lowpass', i < 2 ? 1600 : 700, 0.9), g = gain(0);
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(i < 2 ? 0.5 : 0.18, at + 0.004); g.gain.exponentialRampToValueAtTime(0.001, at + (i < 2 ? 0.16 : 0.07));
+      s.connect(lp).connect(g).connect(cockpitLP); s.start(at, Math.random() * 3, 0.2);
+    });
+  }
+
   // Master caution: three quick high / low avionics tones on the headset bus.
   function masterCaution() {
     if (!ready) return;
@@ -1010,7 +1082,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.

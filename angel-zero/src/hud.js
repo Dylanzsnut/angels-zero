@@ -1154,7 +1154,8 @@ export function createHUD(THREE, A) {
     rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
     if (S.gear > 0 || S.gearDown) rows.push(['  GEAR', S.gear >= 1 ? (S.onGround ? 'WOW' : 'DOWN') : 'TRANSIT', S.gear >= 1 ? G : AMBER]);
     if (S.ctl && S.ctl.airbrake > 0.05) rows.push(['  S/BRK', `${Math.round(48 * S.ctl.airbrake)}°`, S.brakeLatch ? GB : G]);
-    if (C.engineOut) rows.push([`  ${C.engineOut} ENG`, C.engineFire ? 'FIRE' : 'OUT', WARN]);
+    if (C.engineOut) rows.push([`  ${C.engineOut} ENG`, { ON_FIRE: 'FIRE', EXTINGUISHED: 'COLD', RELIGHTING: 'CRANK', SEIZED: 'SEIZED' }[C.engState] || 'OUT',
+      C.engState === 'ON_FIRE' || C.engState === 'SEIZED' ? WARN : AMBER]);
     if (C.hydraulic) rows.push(['  HYD', 'LEAK', AMBER]);
     let y = y0;
     for (const r of rows) {
@@ -1233,6 +1234,37 @@ export function createHUD(THREE, A) {
     ctx.restore();
   }
 
+  // Engine emergency prompt (center-lower): fire -> PRESS F, cold -> HOLD F with a
+  // live 0-100 % windmill-spool bar, then ENGINE RELIT! / RELIGHT FAILED for 3.5 s.
+  function drawEngineEmergency(ctx, now) {
+    if (C.dead) return;
+    const fp = A.isFirstPerson(), y = HH * (fp ? 0.80 : 0.70), cx = HW / 2, side = C.engSide || '';
+    const st = C.engState;
+    if (st === 'ON_FIRE') {
+      const flash = Math.floor(now / 260) % 2;
+      const left = Math.max(0, 16 - (C.fireT || 0));
+      drawBanner(ctx, cx, y, `[ ${side} ENGINE FIRE — PRESS F TO EXTINGUISH ]`, flash ? WARN : AMBER, 420, 1);
+      ctx.save(); ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      labelText(ctx, `FIRE SPREADING — ${left.toFixed(0)} S TO AIRFRAME LOSS`, cx, y + 16, WARN, 4);
+      ctx.restore();
+    } else if ((st === 'EXTINGUISHED' && !C.relightUsed) || st === 'RELIGHTING') {
+      drawBanner(ctx, cx, y, '[ ENGINE COLD — HOLD F FOR WINDMILL RELIGHT (SLIM ODDS) ]', AMBER, 470, 1);
+      const p = st === 'RELIGHTING' ? clamp((C.relightT || 0) / (A.relightHold || 2.5), 0, 1) : 0;
+      const w = 260, h = 9, x0 = cx - w / 2, yb = y + 18;
+      ctx.save();
+      noGlow(ctx); ctx.fillStyle = 'rgba(0, 12, 6, 0.6)'; ctx.fillRect(x0, yb, w, h);
+      glow(ctx, AMBER, 4); ctx.fillStyle = p > 0 ? AMBER : 'rgba(255,191,63,0.25)'; ctx.fillRect(x0 + 1, yb + 1, (w - 2) * p, h - 2);
+      ctx.strokeStyle = AMBER; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, yb + 0.5, w - 1, h - 1);
+      ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const odds = A.relightOdds ? Math.round(A.relightOdds() * 100) : null;
+      labelText(ctx, st === 'RELIGHTING' ? `SPOOL ${Math.round(p * 100)}%  —  N2 WINDMILL 28%` : `RAM-AIR ODDS ${odds}% — DIVE > 350 KT FOR BEST CHANCE`, cx, yb + h + 4, AMBER, 3);
+      ctx.restore();
+    }
+    if (C.relightResult && now - (C.relightResultT || 0) < 3500) {
+      const ok = C.relightResult === 'OK';
+      drawBanner(ctx, cx, y + (st === 'ON_FIRE' ? 46 : 0), ok ? '[ ENGINE RELIT! ]' : '[ RELIGHT FAILED — SINGLE ENGINE OPS ]', ok ? G : WARN, ok ? 220 : 380, ok ? 1 : pulseAlpha(220));
+    }
+  }
   function drawCenterBanners(ctx, g) {
     const now = performance.now();
     const cx = g ? g.cx : HW / 2;
@@ -1252,7 +1284,7 @@ export function createHUD(THREE, A) {
     if (!C.dead && S.gear > 0.05 && !S.onGround && S.speed * 1.94384 > 280)
       drawBanner(ctx, cx, lowerY + 68, '[ GEAR OVERSPEED ]', AMBER, 230, pulseAlpha(220));
     if (C.gunOverheat && !C.dead) drawBanner(ctx, cx, lowerY + (pullUpOn() || stallOn() ? 34 : 0), '[ GUN OVERHEAT ]', WARN, 220, pulseAlpha(200));
-    if (C.engineFire && !C.dead && Math.floor(now / 400) % 2) drawBanner(ctx, cx, upperY + 34, 'ENGINE FIRE — EJECT [E]', WARN, 280, 1);
+    drawEngineEmergency(ctx, now);
     if (pullUpOn()) {
       const a = pulseAlpha(125);
       drawBanner(ctx, cx, lowerY, 'PULL UP', WARN, 176, a);

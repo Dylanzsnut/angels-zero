@@ -1793,7 +1793,11 @@ export function createCombat(THREE, env) {
             m.vel.addScaledVector(acc, dt);
             const fuse = m.enemy ? 22 : 18;
             if (range < fuse) {
-              if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true; }
+              if (tgt.isPlayer) {
+                explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true;
+                // Critical hit on two healthy engines: 35 % chance one of them catches fire.
+                if (!C.engSide && C.fireArmed && !C.dead && rand() < 0.35) igniteEngine('MISSILE HIT');
+              }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
               else if (tgt.fleet) { explosion(pos, 1.3); damageSurface(tgt, 90); }          // ship: multi-hit
               else { explosion(pos, 0.8); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
@@ -2825,36 +2829,162 @@ export function createCombat(THREE, env) {
 
   /* ==================================================== damage model */
   // DMG >= 35 %: hydraulic leak (stiffer, -15 % control response, HYD caution).
-  // DMG >= 60 %: one F100 (random side) flames out: AB plume dies, thrust capped
-  // ~72 %, yaw pull toward the dead engine, dark oil-smoke ribbon from its nacelle.
-  // DMG >= 85 %: engine fire: flame licks / sparks + "ENGINE FIRE — EJECT [E]".
+  //
+  // Single-engine fire, Halon bottle, slim-chance windmill relight. Each F100 has a
+  // state: HEALTHY | ON_FIRE | EXTINGUISHED | RELIGHTING | SEIZED (C.engL / C.engR).
+  //   Ignition: DMG crossing 45 % (re-arms below 40 %), or a direct missile hit on
+  //     two healthy engines (35 %). One engine (random side) goes ON_FIRE: thrust
+  //     capped at 58 %, dead plume, yaw / roll drift toward it, fire spreads +2.2 %
+  //     DMG/s and the airframe explodes after 16 s.
+  //   F (press) while ON_FIRE: Halon discharge -> EXTINGUISHED (spread stops).
+  //   F (hold 2.5 s) while EXTINGUISHED, one attempt: RELIGHTING (windmill crank).
+  //     Success p = 5 % below 220 kt, 20 % at 220 kt rising to 38 % at 350+ kt:
+  //     -> HEALTHY (DMG -20 %), else -> SEIZED (single-engine ops until AFB repair).
+  // Legacy flags derived for the flight model / VFX / gauges: C.engineOut = the
+  // affected side unless HEALTHY, C.engineFire = ON_FIRE.
+  const FIRE_DMG_RATE = 2.2, FIRE_FATAL_T = 16, RELIGHT_HOLD = 2.5, FIRE_DMG = 45, FIRE_REARM = 40;
+  Object.assign(C, { engL: 'HEALTHY', engR: 'HEALTHY', engSide: null, engState: 'HEALTHY', fireT: 0, fireArmed: true,
+    relightT: 0, relightUsed: false, relightResult: null, relightResultT: 0, relightP: 0, relightForce: null, fNeedRelease: false });
   let dmgSmokeAcc = 0, cautionT = 0;
+  const engState = side => (side === 'L' ? C.engL : C.engR);
+  function syncEngineFlags() {
+    const st = C.engSide ? engState(C.engSide) : 'HEALTHY';
+    C.engState = st;
+    C.engineOut = st === 'HEALTHY' ? null : C.engSide;
+    C.engineFire = st === 'ON_FIRE';
+  }
+  function setEng(side, st) { if (side === 'L') C.engL = st; else C.engR = st; syncEngineFlags(); }
+  function resetEngines() {
+    Object.assign(C, { engL: 'HEALTHY', engR: 'HEALTHY', engSide: null, fireT: 0, fireArmed: true, relightT: 0, relightUsed: false,
+      relightResult: null, relightResultT: 0, fNeedRelease: false });
+    syncEngineFlags();
+    if (env.onSfx) env.onSfx('crankStop', null, 1);
+  }
+  const _nzp = new THREE.Vector3();
+  function nozzleWorld(side, out, back = 1.2) {
+    const nz = nozzles[side === 'L' ? 0 : 1] || nozzles[0];
+    return nz ? out.copy(nz).setZ(nz.z + back).applyQuaternion(S.quaternion).add(S.position) : out.copy(S.position);
+  }
+  function igniteEngine(reason, side) {
+    if (C.engSide || C.dead) return false;
+    side = side || (rand() < 0.5 ? 'L' : 'R');
+    Object.assign(C, { engSide: side, fireT: 0, relightUsed: false, relightT: 0, relightResult: null, fireArmed: false });
+    setEng(side, 'ON_FIRE');
+    cautionT = 3.2;
+    say(`${side === 'L' ? 'LEFT' : 'RIGHT'} ENGINE FIRE — PRESS F TO EXTINGUISH`, 2.8, '#ff4d3d');
+    pushEvent('DAMAGED', `[ ${side} ENG FIRE ] ${reason}`, 0, '#ff4d3d');
+    if (env.onSfx) { env.onSfx('flameout', null, 1); env.onSfx('firebell', null, 1); }
+    if (env.onRadio) env.onRadio('ENG_FIRE', { side });
+    return true;
+  }
+  // Emergency procedure input pending? (F is the fire-bottle / relight switch then.)
+  function engineEmergency() {
+    const st = C.engState;
+    return !C.dead && (st === 'ON_FIRE' || st === 'RELIGHTING' || (st === 'EXTINGUISHED' && !C.relightUsed));
+  }
+  function extinguish() {
+    const side = C.engSide;
+    setEng(side, 'EXTINGUISHED');
+    C.fNeedRelease = true;                                   // relight needs a fresh press-and-hold
+    // White Halon vapour burst from the nacelle.
+    nozzleWorld(side, _nzp, -0.8);
+    for (let k = 0; k < 26; k++) smoke.spawn({ x: _nzp.x, y: _nzp.y, z: _nzp.z, vx: S.velocity.x * 0.5 + (rand() - 0.5) * 14, vy: S.velocity.y * 0.5 + (rand() - 0.2) * 10,
+      vz: S.velocity.z * 0.5 + (rand() - 0.5) * 14, life: 1.6 + rand() * 1.2, s0: 1.5, s1: 9 + rand() * 6, r: 0.93, g: 0.95, b: 0.97, a: 0.8, drag: 1.6 });
+    say(`${side} ENGINE FIRE OUT — HALON DISCHARGED`, 2.4, '#52ff9c');
+    pushEvent('EVADED', `[ ${side} ENG ] FIRE EXTINGUISHED`, 0, '#52ff9c');
+    if (env.onSfx) env.onSfx('extinguish', null, 1);
+    if (env.onRadio) env.onRadio('ENG_EXTINGUISHED');
+  }
+  // F key (index.html routes it here while engineEmergency()).
+  function fireKey(down) {
+    const st = C.engState;
+    if (down) {
+      if (st === 'ON_FIRE') { extinguish(); return; }
+      if (st === 'EXTINGUISHED' && !C.relightUsed && !C.fNeedRelease) {
+        setEng(C.engSide, 'RELIGHTING'); C.relightT = 0;
+        say('WINDMILL RELIGHT — CRANKING…', 1.4, '#ffbf3f');
+        if (env.onSfx) env.onSfx('crankStart', null, 1);
+      }
+    } else {
+      C.fNeedRelease = false;
+      if (st === 'RELIGHTING' && C.relightT < RELIGHT_HOLD) {      // let go early: abort, attempt not spent
+        setEng(C.engSide, 'EXTINGUISHED'); C.relightT = 0;
+        say('RELIGHT ABORTED — HOLD F 2.5 S', 1.4, '#ffbf3f');
+        if (env.onSfx) env.onSfx('crankStop', null, 1);
+      }
+    }
+  }
+  function relightOdds() {
+    const kts = S.speed * 1.94384;
+    return kts < 220 ? 0.05 : kts >= 350 ? 0.38 : 0.20 + 0.18 * (kts - 220) / 130;
+  }
+  function resolveRelight() {
+    const side = C.engSide, p = relightOdds();
+    const ok = C.relightForce === 'ok' ? true : C.relightForce === 'fail' ? false : rand() < p;
+    C.relightUsed = true; C.relightP = p; C.relightResult = ok ? 'OK' : 'FAIL'; C.relightResultT = performance.now();
+    if (env.onSfx) env.onSfx('crankStop', null, 1);
+    nozzleWorld(side, _nzp, 1.0);
+    if (ok) {
+      setEng(side, 'HEALTHY'); C.engSide = null; syncEngineFlags();
+      C.health = Math.min(100, C.health + 20);
+      // Relight boom + orange burner flare streaming from the exhaust.
+      explosion(_nzp, 0.45);
+      for (let k = 0; k < 40; k++) {                       // flame tongue streaming aft (slower than the jet)
+        const lag = 0.55 + rand() * 0.3;
+        fire.spawn({ x: _nzp.x, y: _nzp.y, z: _nzp.z, vx: S.velocity.x * lag + (rand() - 0.5) * 6, vy: S.velocity.y * lag + (rand() - 0.5) * 6,
+          vz: S.velocity.z * lag + (rand() - 0.5) * 6, life: 0.25 + rand() * 0.35, s0: 2.6 + rand() * 2, s1: 0.6, r: 1, g: 0.55 + rand() * 0.3, b: 0.15, a: 1, drag: 1.2 });
+      }
+      say('[ ENGINE RELIT! ] — FULL TWIN-ENGINE POWER', 2.8, '#52ff9c');
+      pushEvent('EVADED', `[ ${side} ENG ] RELIGHT SUCCESS (${Math.round(p * 100)}%)`, 0, '#52ff9c');
+      if (env.onSfx) env.onSfx('relight', null, 1);
+      if (env.onRadio) env.onRadio('RELIGHT_OK');
+    } else {
+      setEng(side, 'SEIZED');
+      for (let k = 0; k < 10; k++) smoke.spawn({ x: _nzp.x, y: _nzp.y, z: _nzp.z, vx: S.velocity.x * 0.45 + (rand() - 0.5) * 6, vy: S.velocity.y * 0.45 + rand() * 3,
+        vz: S.velocity.z * 0.45 + (rand() - 0.5) * 6, life: 2 + rand(), s0: 2, s1: 10, r: 0.25, g: 0.25, b: 0.25, a: 0.7, drag: 1 });
+      say('RELIGHT FAILED — ENGINE SEIZED', 2.8, '#ff4d3d');
+      pushEvent('DAMAGED', `[ ${side} ENG ] SEIZED — SINGLE ENGINE OPS`, 0, '#ff4d3d');
+      if (env.onSfx) env.onSfx('stall', null, 1);
+      if (env.onRadio) env.onRadio('RELIGHT_FAIL');
+    }
+  }
   function updateDamage(dt, playerActive) {
     const dmg = 100 - C.health;
     C.hydraulic = playerActive && dmg >= 35;
     if (!playerActive) return;
-    if (dmg >= 60 && !C.engineOut) {
-      C.engineOut = rand() < 0.5 ? 'L' : 'R';
-      say(`${C.engineOut === 'L' ? 'LEFT' : 'RIGHT'} ENGINE FLAMEOUT — RUDDER TRIM`, 2.6, '#ff4d3d');
-      if (env.onSfx) env.onSfx('flameout', null, 1);
-    }
-    if (dmg >= 85 && !C.engineFire) { C.engineFire = true; cautionT = 0; }
-    if (C.engineFire) {
+    if (dmg < FIRE_REARM) C.fireArmed = true;
+    if (dmg >= FIRE_DMG && C.fireArmed && !C.engSide) igniteEngine(`DMG ${Math.round(dmg)}%`);
+    const st = C.engState;
+    if (st === 'ON_FIRE') {
+      C.fireT += dt;
+      C.health = Math.max(0, C.health - FIRE_DMG_RATE * dt);           // fire spreads (no hit flash)
       cautionT -= dt;
-      if (cautionT <= 0) { cautionT = 3.2; say('ENGINE FIRE — EJECT [E]', 2.6, '#ff4d3d'); if (env.onSfx) env.onSfx('caution', null, 1); }
+      if (cautionT <= 0) { cautionT = 3.2; if (env.onSfx) env.onSfx('firebell', null, 1); }
+      if (C.fireT >= FIRE_FATAL_T || C.health <= 0) {
+        nozzleWorld(C.engSide, _nzp, 0); explosion(_nzp, 2.4);
+        C.health = 0; say('ENGINE FIRE — AIRFRAME EXPLODED', 3, '#ff4d3d');
+        env.onPlayerDown('fire');
+        return;
+      }
+    } else if (st === 'RELIGHTING') {
+      C.relightT += dt;
+      if (C.relightT >= RELIGHT_HOLD) resolveRelight();
     }
-    if (!C.engineOut || !nozzles.length) return;
-    const nz = nozzles[C.engineOut === 'L' ? 0 : 1] || nozzles[0];
-    const p = nz.clone().add(new THREE.Vector3(0, 0, 1.2)).applyQuaternion(S.quaternion).add(S.position);
-    dmgSmokeAcc += dt * 55;
+    if (!C.engSide || !nozzles.length || C.engState === 'HEALTHY') return;
+    // Exhaust trail from the damaged nozzle: ON_FIRE -> thick black smoke + jagged
+    // orange flame; RELIGHTING -> thin white unburned-fuel vapour; EXTINGUISHED /
+    // SEIZED -> thin grey wisps.
+    const p = nozzleWorld(C.engSide, _nzp, 1.2), fireOn = C.engState === 'ON_FIRE', crank = C.engState === 'RELIGHTING';
+    dmgSmokeAcc += dt * (fireOn ? 70 : crank ? 40 : 16);
     while (dmgSmokeAcc >= 1) {
       dmgSmokeAcc -= 1;
-      const g = 0.06 + rand() * 0.07;
+      const g = fireOn ? 0.04 + rand() * 0.05 : crank ? 0.86 + rand() * 0.08 : 0.42 + rand() * 0.12;
       // Carries ~40 % of the jet's velocity at first (drag 0.9/s) so the ribbon trails visibly behind the nacelle.
       smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: S.velocity.x * 0.42 + (rand() - 0.5) * 2, vy: S.velocity.y * 0.42 + rand(), vz: S.velocity.z * 0.42 + (rand() - 0.5) * 2,
-        life: 4 + rand() * 2.5, s0: 2.2, s1: 14 + rand() * 6, r: g, g: g * 0.95, b: g * 0.9, a: 0.75, drag: 0.9, rise: 0.6 });
-      if (C.engineFire && rand() < 0.45) fire.spawn({ x: p.x, y: p.y, z: p.z, vx: S.velocity.x * 0.6 + (rand() - 0.5) * 8, vy: S.velocity.y * 0.6 + (rand() - 0.5) * 8, vz: S.velocity.z * 0.6 + (rand() - 0.5) * 8,
-        life: 0.18 + rand() * 0.25, s0: 1.8 + rand() * 2.5, s1: 0.5, r: 1, g: 0.55 + rand() * 0.3, b: 0.12, a: 1, drag: 1.4 });
+        life: fireOn ? 4.5 + rand() * 2.5 : 2 + rand() * 1.5, s0: fireOn ? 2.6 : 1.2, s1: fireOn ? 16 + rand() * 7 : 6 + rand() * 3,
+        r: g, g: g * 0.97, b: g * 0.94, a: fireOn ? 0.82 : crank ? 0.42 : 0.35, drag: 0.9, rise: 0.6 });
+      if (fireOn && rand() < 0.8) fire.spawn({ x: p.x, y: p.y, z: p.z, vx: S.velocity.x * 0.6 + (rand() - 0.5) * 10, vy: S.velocity.y * 0.6 + (rand() - 0.5) * 10, vz: S.velocity.z * 0.6 + (rand() - 0.5) * 10,
+        life: 0.2 + rand() * 0.3, s0: 2.4 + rand() * 3, s1: 0.6, r: 1, g: 0.45 + rand() * 0.35, b: 0.1, a: 1, drag: 1.4 });
     }
   }
 
@@ -2878,6 +3008,7 @@ export function createCombat(THREE, env) {
     ripple.length = 0; aamRack = 0; flareRecharge = 0;
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
       reload: 0, missileReload: 0, gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, health: 100, hitFlash: 0 });
+    resetEngines();                                         // both F100s back to HEALTHY
   }
   function resetPlayer() {
     rearm('msl'); rearm('bomb');
@@ -2886,6 +3017,7 @@ export function createCombat(THREE, env) {
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
     Object.assign(C, { gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, ccrpArmed: false });
+    resetEngines();
     flareRecharge = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
@@ -3049,6 +3181,12 @@ export function createCombat(THREE, env) {
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
+    // Engine emergency: F routes here while a fire / relight is pending.
+    engineEmergency, fireKey, relightOdds,
+    get relightHold() { return RELIGHT_HOLD; },
+    // Debug: ignite an engine now (side 'L' / 'R' optional); force the relight outcome ('ok' | 'fail' | null).
+    debugEngineFire(side) { C.fireArmed = true; return igniteEngine('DEBUG', side); },
+    setRelightForce(v) { C.relightForce = v || null; },
     get taskForce() { return taskForce; },
     get sector() { return C.sector || null; },
     // Debug: jump straight to a phase (1 strait sweep, 2 fleet + bombers, 3 canyon Ace).
@@ -3155,6 +3293,7 @@ export function createCombat(THREE, env) {
           ccrp: C.ccrp ? { along: Math.round(C.ccrp.along), cross: Math.round(C.ccrp.cross), ttr: +C.ccrp.ttr.toFixed(1), rng: Math.round(C.ccrp.range) } : null,
           armed: !!C.ccrpArmed, rel: C.ccrpRelease || null },
         dmg: { pct: Math.round(100 - C.health), hyd: !!C.hydraulic, out: C.engineOut || null, fire: !!C.engineFire },
+        eng: { L: C.engL, R: C.engR, side: C.engSide, fireT: +C.fireT.toFixed(1), relightT: +C.relightT.toFixed(2), used: C.relightUsed, result: C.relightResult, p: +(C.relightP || 0).toFixed(2), armed: C.fireArmed },
         zone: { sector: C.sector ? C.sector.code : null, terrainBreaks: C.terrainBreaks || 0, baseHits: C.baseHits || 0, baseKills: C.baseKills || 0,
           shots: C.mslLog.slice(-4).map(x => x.tag + ':' + x.result).join(' '), sams: missiles.filter(m => m.active && m.sam).length, provoked: fleetProvoked,
           fleet: taskForce.map(t => t.id + (t.alive ? ':' + Math.round(100 * t.hp / t.hpMax) : 'x')).join(' '), bombers: enemies.filter(e => e.bomber).map(e => e.label.slice(-1) + (e.alive ? (e.bombed ? 'B' : 'I') : 'x')).join('') },
