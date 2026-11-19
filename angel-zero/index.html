@@ -308,7 +308,7 @@
             <div class="bind"><span class="k"><kbd>Z</kbd></span><span class="a">ALQ-135 ECM Jammer</span></div>
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
             <div class="bind"><span class="k"><kbd>K</kbd></span><span class="a">Combat music on / off</span></div>
-            <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
+            <div class="bind"><span class="k"><kbd>Q</kbd></span><span class="a">Barrel roll</span></div>
             <div class="bind"><span class="k"><kbd>X</kbd></span><span class="a">Deploy flares</span></div>
             <div class="bind"><span class="k"><kbd>G</kbd></span><span class="a">Landing gear up / down</span></div>
             <div class="bind"><span class="k"><kbd>B</kbd></span><span class="a">Speedbrake / wheel brakes</span></div>
@@ -426,22 +426,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s36a';
-import { createHUD } from './src/hud.js?v=s36a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s36a';
-import { createCombat } from './src/combat.js?v=s36a';
-import { createEjection } from './src/eject.js?v=s36a';
-import { createAudio } from './src/audio.js?v=s36a';
-import { createRadio } from './src/radio.js?v=s36a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s36a';
-import { createLivery } from './src/livery.js?v=s36a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s36a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s36a';
-import { createCanopyFX } from './src/canopy.js?v=s36a';
-import { createNVG } from './src/nvg.js?v=s36a';
-import { createWorld, WORLD } from './src/world.js?v=s36a';
-import { createSurfaces } from './src/surfaces.js?v=s36a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s36a';
+import { createVFX } from './src/vfx.js?v=s37a';
+import { createHUD } from './src/hud.js?v=s37a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s37a';
+import { createCombat } from './src/combat.js?v=s37a';
+import { createEjection } from './src/eject.js?v=s37a';
+import { createAudio } from './src/audio.js?v=s37a';
+import { createRadio } from './src/radio.js?v=s37a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s37a';
+import { createLivery } from './src/livery.js?v=s37a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s37a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s37a';
+import { createCanopyFX } from './src/canopy.js?v=s37a';
+import { createNVG } from './src/nvg.js?v=s37a';
+import { createWorld, WORLD } from './src/world.js?v=s37a';
+import { createSurfaces } from './src/surfaces.js?v=s37a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s37a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -814,10 +814,19 @@ function finishEject() {
   combatSys.say('ALPHA 1 BACK IN THE FIGHT', 2);
 }
 
-// Evasive 360-degree barrel roll (double-tap A / D, or Q).
+// Evasive 360-degree barrel roll (Q only — the double-tap A / D trigger was removed:
+// rapid rudder taps for gun aiming kept firing accidental rolls).
 const roll = { left: 0, dir: 1 };
 const ROLL_RATE = 2 * Math.PI / 1.15;
-const lastTap = { a: 0, d: 0 };
+// Keyboard rudder ramp: a tap starts at 25 % authority, smoothstep to 100 % after
+// 0.22 s of hold, so taps are surgical nudges and holds still give full rate.
+const rudderHold = { a: 0, d: 0 };
+function rudderInput(dt) {
+  rudderHold.a = keys.a ? rudderHold.a + dt : 0;
+  rudderHold.d = keys.d ? rudderHold.d + dt : 0;
+  const amt = t => (t > 0 ? 0.25 + 0.75 * THREE.MathUtils.smoothstep(t, 0, 0.22) : 0);
+  return amt(rudderHold.a) - amt(rudderHold.d);
+}
 function startRoll(dir) { if (flightMode === 'FLY' && roll.left <= 0) { roll.left = 2 * Math.PI; roll.dir = dir; } }
 
 function setView(fp) {
@@ -1137,11 +1146,7 @@ addEventListener('keydown', e => {
     pauseSim(); return;
   }
   if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setView(!firstPerson); return; }
-  if ((k === 'a' || k === 'd') && !e.repeat) {
-    const t = performance.now();
-    if (t - lastTap[k] < 300) startRoll(k === 'a' ? -1 : 1);
-    lastTap[k] = t;
-  }
+  // (A / D are rudder only: the old double-tap AA / DD barrel-roll macro is gone; Q rolls.)
   if (k === 'w') keys.w = true;
   if (k === 's') keys.s = true;
   if (k === 'a') keys.a = true;
@@ -1257,7 +1262,7 @@ function updatePhysics(dt) {
 
   // --- pilot inputs
   const pitchIn = shaped(mouse.ny), rollIn = shaped(mouse.nx);
-  const rudderIn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0);
+  const rudderIn = rudderInput(dt);                                    // A / D, ramped 25 % -> 100 % over 0.22 s
   // High-G turn: hold W+S (throttle + brake) or Shift while pulling hard -> 9 G limit (7.5 G otherwise).
   state.highG = ((keys.w && keys.s) || keys.shift || (DEBUG && Q.has('highg'))) && Math.abs(pitchIn) > 0.6;
   const pilotK = 1 - 0.55 * sstep(state.gStrain, 0.95, 1.0);          // near G-LOC the inputs go soft
@@ -1320,15 +1325,22 @@ function updatePhysics(dt) {
   // Roll: up to ~240 deg/s at high q, degrading with AoA; dihedral rolls away from sideslip.
   const pMax = 4.2 * (0.25 + 0.75 * auth) * (1 - 0.55 * sstep(alpha, 0.2, 0.45)) * hydK;
   let pCmd = roll.left > 0 ? -roll.dir * ROLL_RATE : -rollIn * pMax * pilotK * (state.stalled ? 0.4 : 1);
-  pCmd += 0.5 * beta * auth;                                             // dihedral (roll due to sideslip)
+  // Dihedral (roll due to sideslip): cut to 30 % for small / no rudder (|rudder| < 0.5,
+  // i.e. taps) so flat nose nudges don't bank the wings; full with a held rudder.
+  const smallYaw = Math.abs(rudderIn) < 0.5;
+  pCmd += 0.5 * beta * auth * (smallYaw ? 0.3 : 1);
   // (high-AoA buffet is camera / airframe micro-vibration only -- see updateCameraAndVisuals)
   if (outSide) pCmd += outSide * 0.05;                                   // dead-engine roll-off
-  state.rollRate += (pCmd - state.rollRate) * Math.min(1, (roll.left > 0 ? 12 : 1.5 + 6.5 * auth) * kxx * dt);
+  // Stop-damping: with no roll stick and no rudder key the rate converges 1.8x faster,
+  // so the jet stops rotating when the input is released instead of coasting.
+  const rollIdle = roll.left <= 0 && Math.abs(rollIn) < 0.04 && rudderIn === 0;
+  state.rollRate += (pCmd - state.rollRate) * Math.min(1, (roll.left > 0 ? 12 : 1.5 + 6.5 * auth) * kxx * (rollIdle ? 1.8 : 1) * dt);
 
   // Yaw: rudder + weathercock stability (nose into the airflow) + adverse yaw from roll.
   const rCmd = rudderIn * 0.32 * (0.3 + 0.7 * auth) - beta * (0.6 + 2.6 * auth) - 0.06 * state.rollRate
     + outSide * 0.07 * (0.3 + state.throttle + 0.6 * state.afterburner) * (0.4 + 0.6 * auth);   // asymmetric thrust yaw
-  state.yawRate += (rCmd - state.yawRate) * Math.min(1, (1.2 + 3.0 * auth) * kzz * dt);
+  // Rudder released: 2.5x yaw stop-damping (no coasting yaw overshoot after a tap).
+  state.yawRate += (rCmd - state.yawRate) * Math.min(1, (1.2 + 3.0 * auth) * kzz * (rudderIn === 0 ? 2.5 : 1) * dt);
 
   // Storm gusts kick the body rates (src/weather.js).
   if (weather && weather.current.turb > 0.01) { state.rollRate += weather.gust.roll * 6 * dt; state.pitchRate += weather.gust.pitch * 6 * dt; }
@@ -1487,7 +1499,7 @@ function enterGround(td) {
 function updateGround(dt) {
   const clamp = THREE.MathUtils.clamp, sstep = THREE.MathUtils.smoothstep, R = world.runway;
   const kts = state.groundSpeed * 1.94384;
-  const pitchIn = shaped(mouse.ny), rudderIn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0);
+  const pitchIn = shaped(mouse.ny), rudderIn = rudderInput(dt);   // same tap ramp for nose-wheel steering
   state.wheelBrake = !!(keys.s || keys.b || state.brakeHeld || state.brakeLatch);
   updateAirbrake(dt, 0);
   updateThrottle(dt);

@@ -54,7 +54,7 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     sampling: 350 / 450 kt High-G pulls and 350 / 550 kt roll-and-pull are
     monotone with no warning; 205 kt pull settles at 23.4 deg without passing
     the stall; throttled stall in at 155 kt, smooth nose-drop, out at 184 kt.
-  - Barrel roll (Q / double-tap A/D), spring-damped chase camera that tightens
+  - Barrel roll (Q; the double-tap A/D trigger was removed in s37a), spring-damped chase camera that tightens
     FOV in High-G turns, 1st-person 3D cockpit (`src/cockpit3d.js`) with
     roll-lag / look-into-turn head inertia.
   - [x] **Articulated F-15C surfaces (`src/surfaces.js`):** `Ctrl_Stabilator_L/R`
@@ -589,6 +589,24 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     away; take-off, gear up, past 453 ft -> safe clears and bandits re-engage
     the same frame; headless: on-runway all `O` + pit stop, merge at altitude
     still engages, zero page console errors.
+- [x] **A / D micro-adjustment fix: no double-tap roll, ramped rudder, stop-damping** *(build `s37a`, `index.html`)*
+  - Removed the double-tap AA / DD barrel-roll trigger (`lastTap`, < 300 ms)
+    from the keydown handler; Q is the only barrel-roll key (keybind matrix
+    updated). Note: A / D are the rudder in this game; rolling is the mouse.
+  - `rudderInput(dt)`: keyboard rudder ramps from 25 % on a tap to 100 % after
+    0.22 s of hold (smoothstep), used in the air and for nose-wheel steering.
+  - Stop-damping: with the rudder released the yaw rate converges 2.5x faster;
+    with no roll stick and no rudder the roll rate converges 1.8x faster.
+  - Dihedral (roll due to sideslip) cut to 30 % while |rudder| < 0.5, so
+    flat nose nudges no longer bank the wings; full with a held rudder.
+  - Verified with real keydown / keyup events in the pane: before, a 150 ms
+    double-tap fired a full barrel roll (bank swing up to ~250 deg); after,
+    double-tap A,A / D,D = no roll, 0.0 deg bank, 0.2 deg nose nudge, rotation
+    stopped 50 ms after release; 80 ms tap = 0.09 deg nudge, stopped in 84 ms;
+    1 s hold = 6.6 deg nose yaw, 1.6 deg bank, nose eases back toward the
+    flight path after release (weathercock, no overshoot past centre); Q still
+    rolls; taxi tap 0.7 deg vs 1 s hold 21.8 deg of nose-wheel steering; zero
+    page console errors (headless flight, runway, cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -646,7 +664,7 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
 | --- | --- |
 | Mouse | Pitch / roll |
 | W / S | Throttle up / down (airbrake) |
-| A / D | Rudder yaw · double-tap = barrel roll |
+| A / D | Rudder yaw (tap = 25 % nudge, hold 0.22 s = full) |
 | Q | Barrel roll |
 | Shift | Afterburner; High-G turn while pulling (also W+S) |
 | LMB / F | M61 Vulcan cannon |
