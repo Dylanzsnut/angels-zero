@@ -279,6 +279,34 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     x2.0 decays to x1.0 at exactly 12 s; zero page console errors (headless
     wingtest + cockpit runs too). `combatSys.awardStyle(kind)` exposed for
     debugging.
+- [x] **Style feedback polish: center-HUD callouts, punchy audio, refill flashes**
+  *(build `s31b`)*
+  - Callouts moved into center-peripheral vision: chase view at 64 % of the
+    viewport, cockpit just under the combiner glass lower edge; bold 22 px
+    text on a dark shadowed plate, 0.15 s pop (1.35x -> 1.0x), 1.6 s hold,
+    0.6 s slide-up fade; older callouts stack above at 78 %; drops below
+    PULL UP / STALL / OVERHEAT banners. Reward bracket beside each callout
+    (`WING RIP +300 [HEAT -50% // +1 FLR // x2.0]`), cyan when it refilled.
+  - Multiplier badge: 24 px readout with springy bounce on every climb, 4 px
+    glowing decay bar; tiers emerald `#58ff9a` (<= x2.5), gold `#ffcc33`
+    (x3.0-4.0), crimson-gold `#ff3b5c` (x4.5-5.0).
+  - Refill flash: GUN / FLR rows go white -> cyan with a row glow for 0.4 s.
+    Reticle kill-flash: double expanding diamond ring (0.25 s, tier colour)
+    on every confirmed kill. `[ DANGER CLOSE x1.5 ]` amber pill at 75.5 %.
+  - Every kill now awards: Vulcan kills GUNS KILL, all others (missile, bomb,
+    crash, ram, ground targets) TARGET DESTROYED +0.5x with the 12 s timer.
+    CLOSE CALL radius 95 m; DANGER CLOSE < 220 ft AGL above 380 kt.
+  - Audio: confirmation ping 1,320 -> 1,760 Hz (sine + triangle + 2nd / 3rd
+    partials above the F100 whine band), +1 semitone per combo step, on the
+    headset bus with a -7.5 dB / 160 ms world-bus duck (`N.duck`); steam hiss
+    (gun vent), double flare-reload clack, louder supersonic whoosh + thump.
+    Measured under full afterburner (477 kt): ping +18.7 dB at 1,760 Hz and
+    +18.1 dB at 3,520 Hz over the engine floor (`audio.bandDb(hz)` probe).
+  - Verified in the pane (real 20 mm wing rip / guns kill under AB, missile
+    kill, real 80 m missile pass -> CLOSE CALL, low pass over water -> pill),
+    screenshots of x3.0 gold / x4.0 / x5.0 crimson tiers, refill flashes and
+    kill ring in chase + cockpit; zero page console errors (headless wingtest,
+    cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

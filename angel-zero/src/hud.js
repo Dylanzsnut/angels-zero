@@ -37,7 +37,14 @@ export function createHUD(THREE, A) {
     canvas.height = Math.round(HH * DPR);
   }
 
+  // Combo tiers: x1.5-2.5 emerald, x3.0-4.0 gold, x4.5-5.0 blazing crimson-gold.
+  const GOLD = '#ffcc33', BLAZE = '#ff3b5c', REFILL = '#7ff3ff';
+  const comboColor = m => m >= 4.5 ? BLAZE : m >= 3.0 ? GOLD : G;
+  let comboSeen = 1, comboPulseT = -1e9;
   function glowColor(color) {
+    if (color === GOLD) return 'rgba(255, 204, 51, 0.7)';
+    if (color === BLAZE) return 'rgba(255, 150, 60, 0.8)';
+    if (color === REFILL || color === '#ffffff') return 'rgba(127, 243, 255, 0.85)';
     if (color === WARN) return 'rgba(255, 46, 67, 0.65)';
     if (color === AMBER) return 'rgba(255, 184, 56, 0.55)';
     if (color === CYAN) return 'rgba(56, 182, 255, 0.55)';
@@ -858,27 +865,31 @@ export function createHUD(THREE, A) {
     labelText(ctx, A.missionClock(), x + 52, y - 1, GB, 5);
     const score = C.score ?? C.kills * 1500;
     labelText(ctx, String(score).padStart(6, '0'), x + 52, y + 18, GB, 5);
-    // Combo multiplier: x2.5 readout + 2 px emerald -> gold decay bar under SCORE.
+    // Combo multiplier badge: big x2.5 readout + 4 px glowing decay bar under
+    // SCORE; bounces on every climb; colour tier emerald -> gold -> crimson.
     let comboH = 0;
     const cm = C.comboMult;
+    if (cm !== undefined) {
+      if (cm > comboSeen + 1e-6) comboPulseT = performance.now();
+      comboSeen = cm;
+    }
     if (cm !== undefined && cm > 1.0) {
-      const k = clamp((cm - 1) / ((C.comboMax || 5) - 1), 0, 1);
-      const col = `rgb(${Math.round(88 + 167 * k)},${Math.round(255 - 43 * k)},${Math.round(154 - 64 * k)})`;
+      const col = comboColor(cm);
       const frac = clamp(C.comboTimer / (C.comboWindow || 12), 0, 1);
-      const yy = y + 38;
-      ctx.font = f(14, true);
-      labelText(ctx, 'x' + cm.toFixed(2).replace(/0$/, ''), x, yy, col, 5);
-      const bx = x + 52, bw = 74;
+      const pt = (performance.now() - comboPulseT) / 1000;
+      const pop = 1 + 0.45 * Math.exp(-pt * 9) * Math.cos(pt * 26);          // springy bounce
+      const yy = y + 40;
+      ctx.save();
+      ctx.translate(x, yy + 12); ctx.scale(pop, pop);
+      ctx.font = f(24, true); ctx.textBaseline = 'middle';
+      labelText(ctx, 'x' + cm.toFixed(2).replace(/0$/, ''), 0, 0, col, 10);
+      ctx.restore();
+      const bx = x + 64, bw = 90, by0 = yy + 10;
       noGlow(ctx);
-      ctx.fillStyle = 'rgba(88,255,154,0.16)'; ctx.fillRect(bx, yy + 7, bw, 2);
-      const grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-      grad.addColorStop(0, '#58ff9a'); grad.addColorStop(1, '#ffd45a');
-      glow(ctx, col, 4); ctx.fillStyle = grad; ctx.fillRect(bx, yy + 7, bw * frac, 2);
-      if (C.dangerClose) { ctx.font = f(11, true); labelText(ctx, 'DANGER x1.5', bx + bw + 8, yy + 1, AMBER, 4); }
-      comboH = 20;
-    } else if (C.dangerClose) {
-      ctx.font = f(11, true); labelText(ctx, 'DANGER CLOSE x1.5', x, y + 40, AMBER, 4);
-      comboH = 18;
+      ctx.fillStyle = 'rgba(0,10,6,0.55)'; ctx.fillRect(bx - 1, by0 - 1, bw + 2, 6);
+      ctx.fillStyle = 'rgba(88,255,154,0.18)'; ctx.fillRect(bx, by0, bw, 4);
+      glow(ctx, col, 8); ctx.fillStyle = col; ctx.fillRect(bx, by0, bw * frac, 4);
+      comboH = 30;
     }
     const alive = A.getEnemies().filter(e => e.alive).length;
     ctx.font = f(12, true);
@@ -1138,10 +1149,19 @@ export function createHUD(THREE, A) {
         ctx.beginPath(); ctx.moveTo(xl + 4, y + 6); ctx.lineTo(xr, y + 6); ctx.stroke();
         ctx.setLineDash([]); y += 12; continue;
       }
-      const [k, v, col] = r;
+      let [k, v, col] = r;
       if (k === '  GUN') heatArc(ctx, xl + 2, y + 8, 7, C.gunHeat || 0, 1);    // barrel heat beside the GUN readout
-      ctx.textAlign = 'left'; labelText(ctx, k, xl, y, col, 4);
-      ctx.textAlign = 'right'; labelText(ctx, v, xr, y, col, 5);
+      // Push-forward refill: GUN / FLR counters flash white -> cyan for 0.4 s.
+      const rf = C.refillFlash && (k === '  GUN' ? C.refillFlash.gun : k === '  FLR' ? C.refillFlash.flr : 0);
+      const ra = rf ? (performance.now() - rf) / 400 : 2;
+      let blur = 5;
+      if (ra >= 0 && ra < 1) {
+        col = ra < 0.45 ? '#ffffff' : REFILL; blur = 14 - 8 * ra;
+        noGlow(ctx); ctx.globalAlpha = 0.35 * (1 - ra); ctx.fillStyle = REFILL;
+        ctx.fillRect(xl - 8, y - 2, xr - xl + 12, rowH - 1); ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = 'left'; labelText(ctx, k, xl, y, col, Math.min(blur, 4 + (blur > 5 ? 6 : 0)));
+      ctx.textAlign = 'right'; labelText(ctx, v, xr, y, col, blur);
       y += rowH;
     }
 
@@ -1427,36 +1447,93 @@ export function createHUD(THREE, A) {
 
     if (!C.dead) drawTargets(hctx);
     drawTopLeft(hctx);
-    drawStyleFeed(hctx);
+    if (!C.dead) drawKillFlash(hctx, g);
     drawSquareRadar(hctx);
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
-    drawComms(hctx, fp ? HH * 0.62 : HH * 0.84);
+    drawStyleFeed(hctx, g);
+    drawDangerPill(hctx);
+    drawComms(hctx, fp ? HH * 0.71 : HH * 0.84);
     if (!A.isModal()) drawStickCue(hctx);
     drawGLoc(hctx);
   }
 
-  // Style feed: compact right-center callouts that fade in, drift up ~34 px and
-  // fade out over 3.2 s (newest at the bottom). Gold for big plays, emerald otherwise.
-  function drawStyleFeed(ctx) {
+  // Style feed in center-peripheral vision, just below the reticle / combiner
+  // lower edge (y ~ 64 %): bold callout + reward bracket, 0.15 s pop-in
+  // (1.35x -> 1.0x), 1.6 s hold, then a 0.6 s slide-up fade. Newer callouts
+  // push older ones upward. Drops below PULL UP / STALL / OVERHEAT banners.
+  const FEED_POP = 0.15, FEED_HOLD = 1.6, FEED_OUT = 0.6;
+  function drawStyleFeed(ctx, g) {
     const feed = C.styleFeed;
-    if (!feed || !feed.length) return;
-    const now = performance.now(), x = HW - 34, base = HH * 0.44;
+    if (!feed || !feed.length || C.dead) return;
+    const now = performance.now(), cx = g && A.isFirstPerson() ? g.cx : HW / 2;
+    const warnBusy = pullUpOn() || stallOn() || C.gunOverheat;
+    // Chase: ~64 % of the viewport; cockpit: just under the combiner glass lower edge.
+    const anchor = g && A.isFirstPerson() ? clamp(g.maxY + 24, HH * 0.4, HH * 0.7) : HH * 0.64;
+    const base = anchor + (warnBusy ? 46 : 0);
+    const live = feed.filter(s => (now - s.born) / 1000 < FEED_POP + FEED_HOLD + FEED_OUT).slice(-3);
     ctx.save();
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    const list = feed.slice(-4);
-    list.forEach((s, i) => {
-      const age = (now - s.born) / 1000;
-      if (age < 0 || age > 3.2) return;
-      const a = clamp(Math.min(age / 0.18, (3.2 - age) / 0.7), 0, 1);
-      const yy = base - (list.length - 1 - i) * 34 - 34 * smooth(age, 0, 3.2);
-      const pop = 1 + 0.18 * Math.max(0, 1 - age / 0.15);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    live.forEach((s, i) => {
+      const age = (now - s.born) / 1000, rank = live.length - 1 - i;
+      const out = clamp((age - FEED_POP - FEED_HOLD) / FEED_OUT, 0, 1);
+      const pop = age < FEED_POP ? 1.35 - 0.35 * smooth(age, 0, FEED_POP) : 1;
+      const a = clamp(age / 0.06, 0, 1) * (1 - out) * (rank ? 0.78 : 1);
+      const yy = base - rank * 30 - 28 * smooth(out, 0, 1);
+      const main = s.text + (s.pts ? `  +${s.pts}` : '');
+      const rew = s.sub ? `  [${s.sub}]` : '';
+      const sz = rank ? 17 : 22;
       ctx.globalAlpha = a;
-      ctx.font = f(Math.round(17 * pop), true);
-      labelText(ctx, s.text + (s.pts ? `  +${s.pts}` : ''), x, yy, s.color, 6);
-      glow(ctx, s.color, 4); ctx.fillRect(x + 8, yy - 8, 2, 16);
-      if (s.sub) { ctx.font = f(11, true); labelText(ctx, s.sub + (s.mult > 1 ? `   x${s.mult.toFixed(2).replace(/0$/, '')}` : ''), x, yy + 13, GD, 3); }
+      ctx.save(); ctx.translate(cx, yy); ctx.scale(pop, pop);
+      ctx.font = f(sz, true);
+      const wMain = ctx.measureText(main).width;
+      ctx.font = f(Math.round(sz * 0.68), true);
+      const wRew = ctx.measureText(rew).width;
+      const x0 = -(wMain + wRew) / 2;
+      ctx.save(); noGlow(ctx); ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+      ctx.fillStyle = 'rgba(0,12,8,0.38)'; ctx.fillRect(x0 - 14, -sz * 0.62, wMain + wRew + 28, sz * 1.24); ctx.restore();
+      ctx.textAlign = 'left';
+      ctx.font = f(sz, true); labelText(ctx, main, x0, 1, s.color, 9);
+      if (rew) { ctx.font = f(Math.round(sz * 0.68), true); labelText(ctx, rew, x0 + wMain, 2, s.refill ? REFILL : GB, 6); }
+      ctx.restore();
     });
+    ctx.restore();
+  }
+
+  // Reticle kill-flash: an expanding diamond ring around the center sight for
+  // 0.25 s on every confirmed kill (emerald; crimson-gold at x4.5+).
+  function drawKillFlash(ctx, g) {
+    const kf = C.killFlash;
+    if (!kf || !g) return;
+    const t = (performance.now() - kf.t) / 250;
+    if (t < 0 || t >= 1) return;
+    const cx = g.cx + (A.isFirstPerson() ? 0 : inertia.x), cy = g.cy + (A.isFirstPerson() ? 0 : inertia.y);
+    const col = kf.mult >= 4.5 ? BLAZE : kf.mult >= 3 ? GOLD : G;
+    ctx.save();
+    for (const [k, w] of [[0, 2.6], [0.35, 1.4]]) {
+      const tt = clamp(t - k * 0.4, 0, 1); if (tt <= 0) continue;
+      const r = 26 + 74 * smooth(tt, 0, 1);
+      ctx.globalAlpha = (1 - tt) * (k ? 0.6 : 1);
+      glow(ctx, col, 12); ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r, cy); ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // DANGER CLOSE pill: steady glowing amber pill near the bottom of the center HUD.
+  function drawDangerPill(ctx) {
+    if (!C.dangerClose || C.dead) return;
+    const txt = '[ DANGER CLOSE x1.5 ]', cx = HW / 2, cy = HH * 0.755;
+    ctx.save();
+    ctx.font = f(15, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(txt).width + 30, h = 24, r = h / 2;
+    const breathe = 0.8 + 0.2 * Math.sin(performance.now() / 380);
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2 + r, cy - r); ctx.lineTo(cx + w / 2 - r, cy - r); ctx.arc(cx + w / 2 - r, cy, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(cx - w / 2 + r, cy + r); ctx.arc(cx - w / 2 + r, cy, r, Math.PI / 2, Math.PI * 1.5); ctx.closePath();
+    noGlow(ctx); ctx.fillStyle = 'rgba(40,22,0,0.55)'; ctx.fill();
+    glow(ctx, AMBER, 10 * breathe); ctx.lineWidth = 1.6; ctx.stroke();
+    labelText(ctx, txt, cx, cy + 1, AMBER, 8 * breathe);
     ctx.restore();
   }
 

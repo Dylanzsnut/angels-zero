@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s31a';
-import { createHUD } from './src/hud.js?v=s31a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s31a';
-import { createCombat } from './src/combat.js?v=s31a';
-import { createEjection } from './src/eject.js?v=s31a';
-import { createAudio } from './src/audio.js?v=s31a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s31a';
-import { createCanopyFX } from './src/canopy.js?v=s31a';
-import { createNVG } from './src/nvg.js?v=s31a';
-import { createWorld, WORLD } from './src/world.js?v=s31a';
-import { createSurfaces } from './src/surfaces.js?v=s31a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s31a';
+import { createVFX } from './src/vfx.js?v=s31b';
+import { createHUD } from './src/hud.js?v=s31b';
+import { createCockpit3D } from './src/cockpit3d.js?v=s31b';
+import { createCombat } from './src/combat.js?v=s31b';
+import { createEjection } from './src/eject.js?v=s31b';
+import { createAudio } from './src/audio.js?v=s31b';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s31b';
+import { createCanopyFX } from './src/canopy.js?v=s31b';
+import { createNVG } from './src/nvg.js?v=s31b';
+import { createWorld, WORLD } from './src/world.js?v=s31b';
+import { createSurfaces } from './src/surfaces.js?v=s31b';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s31b';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1272,6 +1272,8 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'caution') audio.masterCaution();
   else if (type === 'style') audio.styleChime(scale);
   else if (type === 'whoosh') audio.missileWhoosh();
+  else if (type === 'steam') audio.steamHiss();
+  else if (type === 'clack') audio.flareClack();
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });

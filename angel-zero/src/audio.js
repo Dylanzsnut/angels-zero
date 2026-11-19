@@ -78,7 +78,9 @@ export function createAudio() {
     N.tunnel = filt('lowpass', 12000, 0.6);
     // master -> hearing tunnel -> compressor -> analyser -> speakers (one clean bus).
     N.analyser = ctx.createAnalyser(); N.analyser.fftSize = 2048; N.anaBuf = new Float32Array(N.analyser.fftSize);
-    cockpitLP.connect(master); master.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
+    // N.duck: brief -7.5 dB dip of the whole world bus so confirmation pings cut through afterburner.
+    N.duck = gain(1);
+    cockpitLP.connect(master); master.connect(N.duck); N.duck.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
     // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
     N.body = gain(muted ? 0 : volume); N.body.connect(comp);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
@@ -460,20 +462,60 @@ export function createAudio() {
     }
   }
 
-  // Style feed chime: crisp rising bell pair on the headset bus (tier 0 = soft
-  // single ping for DANGER CLOSE, 1 = two-note, 2 = bright three-note arpeggio).
-  function styleChime(tier = 1) {
+  // Style confirmation ping: crisp two-tone harmonic stab 1,320 -> 1,760 Hz
+  // (sine + triangle + octave sparkle) on the headset bus, which bypasses the
+  // cockpit low-pass and G-LOC tunnel; the world bus ducks ~-7.5 dB for 160 ms so
+  // it cuts through afterburner. `step` = combo step (pitch +1 semitone each,
+  // capped at +8); step 0 = single soft tone (DANGER CLOSE).
+  function duckWorld(depth = 0.56, hold = 0.12) {
+    if (!N.duck) return;
+    const t = ctx.currentTime, gp = N.duck.gain;
+    gp.cancelScheduledValues(t); gp.setValueAtTime(gp.value, t);
+    gp.linearRampToValueAtTime(depth, t + 0.015); gp.setValueAtTime(depth, t + hold); gp.linearRampToValueAtTime(1, t + hold + 0.18);
+  }
+  function styleChime(step = 1) {
     if (!ready) return;
-    const t = ctx.currentTime;
-    const notes = tier >= 2 ? [1318.5, 1760, 2637] : tier >= 1 ? [1568, 2349] : [1175];
+    const t = ctx.currentTime, k = Math.pow(2, Math.min(8, Math.max(0, step - 1)) / 12);
+    const notes = step > 0 ? [1320 * k, 1760 * k] : [1320];
+    duckWorld(step > 0 ? 0.42 : 0.75, 0.16);
     notes.forEach((f0, i) => {
-      const at = t + i * 0.07;
-      for (const [mul, amp] of [[1, 0.075], [2.76, 0.018]]) {                // fundamental + inharmonic bell partial
-        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f0 * mul;
+      const at = t + i * 0.085, len = i ? 0.34 : 0.13;
+      // Octave + 3rd partials sit above the 1.4-2.6 kHz F100 compressor whine band.
+      for (const [type, mul, amp] of [['sine', 1, 0.26], ['triangle', 1, 0.1], ['sine', 2, 0.12], ['sine', 3, 0.045]]) {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f0 * mul;
         const g = gain(0);
-        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(amp, at + 0.004); g.gain.exponentialRampToValueAtTime(0.0005, at + 0.42);
-        o.connect(g).connect(N.body); o.start(at); o.stop(at + 0.45);
+        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(amp, at + 0.003);
+        g.gain.setValueAtTime(amp, at + 0.03); g.gain.exponentialRampToValueAtTime(0.0005, at + len);
+        o.connect(g).connect(N.body); o.start(at); o.stop(at + len + 0.02);
       }
+    });
+  }
+  // Vulcan vent: pressurized steam hiss — white noise high-passed 2.4 kHz with a
+  // resonant 5.5 -> 3.2 kHz band sweep, sharp attack, 0.55 s release.
+  function steamHiss() {
+    if (!ready || !N.whiteBuf) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+    const hp = filt('highpass', 2400, 0.7), bp = filt('bandpass', 5500, 1.4), g = gain(0);
+    bp.frequency.setValueAtTime(5500, t); bp.frequency.exponentialRampToValueAtTime(3200, t + 0.6);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.32, t + 0.02); g.gain.setValueAtTime(0.3, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.66);
+    src.connect(hp).connect(bp).connect(g).connect(N.body); src.start(t, Math.random() * 2); src.stop(t + 0.7);
+  }
+  // Flare-reload clack: two crisp mechanical transients (noise click + damped
+  // 420 / 260 Hz body knock) 55 ms apart — the dispenser magazine seating.
+  function flareClack() {
+    if (!ready || !N.whiteBuf) return;
+    const t0 = ctx.currentTime + 0.05;
+    [[0, 420, 0.3], [0.055, 260, 0.36]].forEach(([dt, fb, amp]) => {
+      const at = t0 + dt;
+      const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+      const bp = filt('bandpass', 3800, 1.8), g = gain(0);
+      g.gain.setValueAtTime(amp, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.035);
+      src.connect(bp).connect(g).connect(N.body); src.start(at, Math.random() * 2); src.stop(at + 0.05);
+      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(fb, at); o.frequency.exponentialRampToValueAtTime(fb * 0.6, at + 0.08);
+      const og = gain(0); og.gain.setValueAtTime(amp * 0.6, at); og.gain.exponentialRampToValueAtTime(0.001, at + 0.09);
+      o.connect(og).connect(N.body); o.start(at); o.stop(at + 0.1);
     });
   }
   // CLOSE CALL: a bandit missile tearing past the canopy — band-passed noise
@@ -484,13 +526,18 @@ export function createAudio() {
     const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
     const bp = filt('bandpass', 3200, 2.2), g = gain(0);
     bp.frequency.setValueAtTime(3200, t); bp.frequency.exponentialRampToValueAtTime(380, t + 0.7);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
-    src.connect(bp).connect(g).connect(master); src.start(t, Math.random() * 2); src.stop(t + 0.9);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.85, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    src.connect(bp).connect(g).connect(N.body); src.start(t, Math.random() * 2); src.stop(t + 0.9);
     const o = ctx.createOscillator(); o.type = 'sawtooth';
     o.frequency.setValueAtTime(340, t); o.frequency.exponentialRampToValueAtTime(150, t + 0.6);
     const lp = filt('lowpass', 1400, 0.8), og = gain(0);
-    og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.09, t + 0.08); og.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
-    o.connect(lp).connect(og).connect(master); o.start(t); o.stop(t + 0.7);
+    og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.16, t + 0.08); og.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+    o.connect(lp).connect(og).connect(N.body);
+    // Supersonic crack ahead of the whoosh: a short low thump as the shock passes.
+    const th = ctx.createOscillator(); th.type = 'sine'; th.frequency.setValueAtTime(95, t); th.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+    const tg = gain(0); tg.gain.setValueAtTime(0.5, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    th.connect(tg).connect(N.body); th.start(t); th.stop(t + 0.25);
+    duckWorld(0.5, 0.3); o.start(t); o.stop(t + 0.7);
   }
 
   // Thunder: a sharp crack (nearby) into a long rolling low rumble of brown noise
@@ -691,7 +738,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, preload, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, preload, setVolume, setMuted,
     get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },
@@ -703,6 +750,14 @@ export function createAudio() {
       let s = 0; for (let i = 0; i < N.anaBuf.length; i++) s += N.anaBuf[i] * N.anaBuf[i];
       return Math.sqrt(s / N.anaBuf.length);
     },
-    get layers() { return N.dbg || null; }
+    get layers() { return N.dbg || null; },
+    // Output spectrum level (dB) at a frequency, for checking a cue against the engine floor.
+    bandDb(hz) {
+      if (!N.analyser) return -Infinity;
+      const fd = new Float32Array(N.analyser.frequencyBinCount); N.analyser.getFloatFrequencyData(fd);
+      const i = Math.round(hz / (ctx.sampleRate / 2) * fd.length);
+      return Math.max(fd[i - 1] ?? -200, fd[i], fd[i + 1] ?? -200);
+    },
+    get duck() { return N.duck ? N.duck.gain.value : 1; }
   };
 }

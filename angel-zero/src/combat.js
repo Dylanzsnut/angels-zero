@@ -866,9 +866,11 @@ export function createCombat(THREE, env) {
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
     if (how === 'CRASH') say('CRIPPLED BANDIT IMPACT — SPLASH ONE!', 2.2);
     else if (how !== 'RAM') say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
-    if (!byMissile && !how) awardStyle('GUNS_KILL');                      // shot down with the Vulcan
+    // Every kill bumps the chain: Vulcan kills are GUNS KILL, everything else
+    // TARGET DESTROYED (+0.5x, 12 s timer); ripple kills can add 4AAM SWEEP.
+    awardStyle(!byMissile && !how ? 'GUNS_KILL' : 'KILL');
     if (how === 'AAM4') noteSweepKill();
-    else refreshCombo();                                                  // every kill keeps the chain alive
+    C.killFlash = { t: performance.now(), mult: C.comboMult };
   }
 
   /* ================================== style combo multiplier + style feed */
@@ -877,9 +879,10 @@ export function createCombat(THREE, env) {
   // drops back to 1.0x when it runs out. Style plays add points, multiplier
   // and push-forward refills (gun vent, flares). DANGER CLOSE (< 180 ft AGL,
   // > 420 kt over water or in the NW canyon) multiplies scoring x1.5 while held.
-  const COMBO_MAX = 5, COMBO_T = 12, SWEEP_WIN = 2.5, CLOSE_R = 55, THREAD_CD = 10;
-  const DANGER_AGL = 180 * 0.3048, DANGER_SPD = 420 / 1.94384, THREAD_SPD = 380 / 1.94384;
+  const COMBO_MAX = 5, COMBO_T = 12, SWEEP_WIN = 2.5, CLOSE_R = 95, THREAD_CD = 10;
+  const DANGER_AGL = 220 * 0.3048, DANGER_SPD = 380 / 1.94384, THREAD_SPD = 380 / 1.94384;
   const STYLE = {
+    KILL:          { text: 'TARGET DESTROYED', pts: 0, mult: 0.5, color: '#58ff9a' },
     WING_RIP:      { text: 'WING RIP',      pts: 300, mult: 0.5,  color: '#ffd45a' },
     GUNS_KILL:     { text: 'GUNS KILL',     pts: 400, mult: 0.5,  color: '#58ff9a' },
     SWEEP:         { text: '4AAM SWEEP',    pts: 500, mult: 0.75, color: '#ffd45a' },
@@ -897,23 +900,33 @@ export function createCombat(THREE, env) {
     C.styleCounts[kind] = (C.styleCounts[kind] || 0) + 1;
     if (s.mult) { C.comboMult = Math.min(COMBO_MAX, +(C.comboMult + s.mult).toFixed(2)); C.comboTimer = COMBO_T; }
     if (s.pts) C.score += s.pts;
-    let refill = '';
+    const nowMs = performance.now();
+    if (!C.refillFlash) C.refillFlash = { gun: 0, flr: 0 };
+    let refill = '', vent = false, flr = false;
     if (kind === 'WING_RIP') {
       C.gunHeat *= 0.5;                                                   // vent half the barrel heat
       if (C.gunOverheat && C.gunHeat < GUN_RESUME) C.gunOverheat = false;
-      refill = 'GUN VENT  +1 FLR';
+      vent = true; C.refillFlash.gun = nowMs;
     }
     if (kind === 'WING_RIP' || kind === 'GUNS_KILL') {
       const had = C.flares;
       C.flares = Math.min(C.flareMax, C.flares + 1);
       if (C.flares >= C.flareMax) flareRecharge = 0;
-      if (kind === 'GUNS_KILL') refill = C.flares > had ? '+1 FLR' : '';
+      flr = C.flares > had;
+      if (flr) C.refillFlash.flr = nowMs;
+      refill = vent ? (flr ? 'HEAT -50% // +1 FLR' : 'HEAT -50% // FLR FULL') : flr ? '+1 FLR' : 'FLR FULL';
     }
     if (kind === 'DANGER_CLOSE') refill = 'SCORE x1.5';
-    C.styleFeed.push({ text: s.text, pts: s.pts, sub: sub || refill, color: s.color, born: performance.now(), mult: C.comboMult });
-    if (C.styleFeed.length > 5) C.styleFeed.shift();
-    if (env.onSfx) env.onSfx(kind === 'CLOSE_CALL' ? 'whoosh' : 'style', null, s.mult >= 0.75 ? 2 : s.mult > 0 ? 1 : 0);
-    if (env.onSfx && kind === 'CLOSE_CALL') env.onSfx('style', null, 1);
+    if (s.mult) refill = refill ? `${refill} // x${C.comboMult.toFixed(2).replace(/0$/, '')}` : `x${C.comboMult.toFixed(2).replace(/0$/, '')}`;
+    C.styleFeed.push({ text: s.text, pts: s.pts, sub: sub ? `${sub} // ${refill}` : refill, refill: vent || flr, color: s.color, born: nowMs, mult: C.comboMult });
+    if (C.styleFeed.length > 6) C.styleFeed.shift();
+    if (env.onSfx) {
+      if (kind === 'CLOSE_CALL') env.onSfx('whoosh');
+      // Confirmation ping pitched up with each combo step (0 = DANGER CLOSE soft tone).
+      env.onSfx('style', null, s.mult ? Math.round((C.comboMult - 1) / 0.5) : 0);
+      if (vent) env.onSfx('steam');
+      if (flr) env.onSfx('clack');
+    }
   }
   // 4AAM SWEEP: two or more ripple-salvo kills inside 2.5 s (one award per salvo).
   function noteSweepKill() {
@@ -2015,6 +2028,8 @@ export function createCombat(THREE, env) {
     pushEvent('DESTROYED', `${t.kind} DESTROYED`, t.ship ? 2500 : 1200, '#52ff9c');
     say(t.ship ? 'SHACK! DESTROYER IS GOING DOWN' : 'SHACK! SAM SITE DESTROYED', 2.4);
     if (C.groundTgt === t) { C.groundTgt = null; C.ccrpArmed = false; }
+    awardStyle('KILL');
+    C.killFlash = { t: performance.now(), mult: C.comboMult };
   }
   function damageSurface(t, n) {
     if (!t.alive) return;
