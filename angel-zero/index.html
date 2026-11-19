@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s29b';
-import { createHUD } from './src/hud.js?v=s29b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s29b';
-import { createCombat } from './src/combat.js?v=s29b';
-import { createEjection } from './src/eject.js?v=s29b';
-import { createAudio } from './src/audio.js?v=s29b';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s29b';
-import { createCanopyFX } from './src/canopy.js?v=s29b';
-import { createNVG } from './src/nvg.js?v=s29b';
-import { createWorld, WORLD } from './src/world.js?v=s29b';
-import { createSurfaces } from './src/surfaces.js?v=s29b';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s29b';
+import { createVFX } from './src/vfx.js?v=s30a';
+import { createHUD } from './src/hud.js?v=s30a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s30a';
+import { createCombat } from './src/combat.js?v=s30a';
+import { createEjection } from './src/eject.js?v=s30a';
+import { createAudio } from './src/audio.js?v=s30a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s30a';
+import { createCanopyFX } from './src/canopy.js?v=s30a';
+import { createNVG } from './src/nvg.js?v=s30a';
+import { createWorld, WORLD } from './src/world.js?v=s30a';
+import { createSurfaces } from './src/surfaces.js?v=s30a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s30a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -591,7 +591,7 @@ const state = {
   throttle: 0.65, afterburner: 0, pitchRate: 0, rollRate: 0, yawRate: 0,
   gLoad: 1, alpha: 0, speed: 200, mach: 0.6, heading: 0, pitch: 0, bank: 0, radalt: 1500,
   gStrain: 0, negGStrain: 0,                        // pilot G physiology: 0 fresh .. 1 G-LOC / redout
-  beta: 0, mass: 20400, cl: 0, cd: 0, stalled: false,   // sideslip, mass, aero coefficients, low-speed stall (hysteresis)
+  beta: 0, mass: 20400, cl: 0, cd: 0, stalled: false, fuel: 13455, fuelFlow: 0,   // internal fuel (lb) / total burn (pph)   // sideslip, mass, aero coefficients, low-speed stall (hysteresis)
   ctl: { pitch: 0, roll: 0, yaw: 0, airbrake: 0 }
 };
 
@@ -621,7 +621,7 @@ function resetAircraft() {
   state.quaternion.identity();
   state.throttle = 0.65; state.afterburner = 0;
   state.pitchRate = state.rollRate = state.yawRate = 0;
-  state.gLoad = 1; state.speed = 200; state.gStrain = 0; state.negGStrain = 0; state.stalled = false;
+  state.gLoad = 1; state.speed = 200; state.gStrain = 0; state.negGStrain = 0; state.stalled = false; state.fuel = 13455;
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
   applyPose();
@@ -1028,6 +1028,9 @@ function updatePhysics(dt) {
   state.throttle = clamp(state.throttle, 0, 1);
   const abWanted = (keys.shift || Q.has('ab')) ? 1 : 0;
   state.afterburner += (abWanted - state.afterburner) * Math.min(1, 4 * dt);
+  // Internal fuel: 13,455 lb; per-engine burn 700 pph idle + 4,300 x throttle + 17,000 x AB (cockpit gauges, FUEL LOW cautions).
+  state.fuelFlow = (combat.engineOut ? 1 : 2) * (700 + 4300 * state.throttle + 17000 * state.afterburner);
+  state.fuel = Math.max(0, state.fuel - state.fuelFlow * dt / 3600);
 
   // --- forces (body axes after this step's rotation)
   _fwd.set(0, 0, -1).applyQuaternion(q); _up.set(0, 1, 0).applyQuaternion(q); _right.set(1, 0, 0).applyQuaternion(q);
@@ -1268,6 +1271,7 @@ const nvg = createNVG(THREE, renderer);
 function setNVG(on, silent) {
   nvg.active = on;
   document.body.classList.toggle('nvg', nvg.active);
+  if (typeof cockpit !== 'undefined' && cockpit.setNVG) cockpit.setNVG(nvg.active);   // NVG-compatible instrument lighting
   atmosphere.update(0, vfx.mist, nvg.active);          // preset fill light x2.4 while on; exact preset when off
   if (!silent) { audio.nvg(nvg.active); combatSys.say(nvg.active ? 'NVG ON — AN/AVS-9' : 'NVG OFF', 1.0, '#52ff9c'); }
 }

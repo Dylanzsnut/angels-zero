@@ -242,6 +242,27 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   `[ 455 >` / `< 4256 ]` in both views, `▼ 347` heading without a box, 1 px
   ladders with shorter micro-ticks, open-corner `A/B` / `ARM` tags, rounded
   1 px radar frame, translucent glass-pill `PATCH NOTES` / `CONTROLS` buttons.
+- [x] **F-15C cockpit interior replication** *(build `s30a`, `src/cockpit3d.js`)*
+  — reference-matched analog panel: light military-grey structure (#8f99a1
+  crinkle coat), dark charcoal glare shield and sub-plates, white silkscreen,
+  hazard-striped EMERG LG / EMERG JETT / EMERG BK, one static 2048 px painted
+  faceplate + real 3D bezels, knobs, toggles, lamps. Live: VSD B-scope radar
+  (sweep, blips, designation / lock), round TEWS (RWR bearings), 3D ADI ball
+  (rolls + pitches with attitude), HSI (rotating rose, target bearing bug,
+  miles), ASI / Mach, AoA, G (with peak), ALT, VVI, clock, twin RPM / TEMP /
+  FUEL FLOW / NOZ POS, FUEL QTY, HYD — 16 dials in one atlas at 15 Hz, CRTs at
+  30 Hz. UFC / HUD SET with MASTER CAUTION + AI/SAM lamps, A/G-ADI-VI, gear
+  NOSE/LEFT/RIGHT + FLAP lamps, L/R ENG FIRE, red gear handle + SELECT JETT.
+  Amber 3x13 caution matrix lit by low fuel, over-G / G-strain, gun overheat,
+  engine out / fire, hydraulic leak, low altitude, stall. Side consoles
+  (painted switch panels + toggles), red IDLE / MIL / MAX throttle track,
+  right-wall canopy lever + white ball handle + coiled hose, tan ACES II seat
+  with yellow handles. Eye line -15 deg to frame the panel. NVG-compatible
+  instrument lighting (dimmed dials / CRTs / lamps, no glass glints).
+  Minimal fuel model added to back the gauges (13,455 lb internal; burn
+  700 + 4,300 x throttle + 17,000 x AB pph per engine; refills on respawn).
+  Verified headless: straight ahead, pull + roll + AB, NVG, dusk, DMG 90 %
+  cautions, chase / menu regressions, zero page console errors.
 - [x] **Animated 3D HOTAS** *(`src/cockpit3d.js`)* — center stick (ribbed boot,
   charcoal shaft, contoured grip, thumb rest, 4-way trim hat, red pickle,
   two-stage trigger) tilting +/-16 deg pitch / +/-18 deg roll from `state.ctl`,

@@ -2,8 +2,11 @@
 // Enclosed forward tub, beveled canopy bow (gasket, 16 hex bolts, lock hooks,
 // grab handles), ribbed glare shield, side consoles with switches, knobs, vents
 // and an annunciator block, an up-front controller with keypad, three recessed
-// MFDs with 20 bezel push-buttons each, a tapered chamfered combiner on thin
-// anodized posts, and an animated HOTAS (center stick + twin throttles).
+// reference-matched F-15C analog panel (VSD radar, ARMAMENT, ASI / AoA / G,
+// 3D ADI ball, HSI, round TEWS, ALT / VVI / clock, twin RPM / TEMP / FUEL FLOW
+// / NOZ POS, FUEL QTY, HYD, amber caution matrix), light-grey structure, tan
+// ACES II seat, a tapered chamfered combiner on thin anodized posts, and an
+// animated HOTAS (center stick + red-track twin throttles).
 // Surfaces use procedural 2048^2 crinkle-coat map / normalMap / roughnessMap.
 // The camera rides inside the rig with spring-loaded head inertia (<= 14 px).
 
@@ -15,7 +18,7 @@ export function createCockpit3D(THREE, env) {
   const clamp = THREE.MathUtils.clamp, smooth = THREE.MathUtils.smoothstep;
   const FONT = "'Share Tech Mono', 'Consolas', monospace";
   const STENCIL = "'Arial Narrow', 'Arial', sans-serif";
-  const PITCH_BASE = -12 * D2R;                      // eye line over the nose; frames the MFD row and the HOTAS grips
+  const PITCH_BASE = -15 * D2R;                      // eye line over the nose; frames the main panel and the HOTAS grips
 
   const rig = new THREE.Group();
   rig.visible = false;
@@ -72,14 +75,14 @@ export function createCockpit3D(THREE, env) {
       for (let x = 0; x < N; x++) {
         const i = y * N + x, k = i * 4;
         const v = H[i];
-        // base #1c2026 with grain variation
-        let rC = 28, gC = 32, bC = 38;
+        // base #8f99a1 light military grey with grain variation
+        let rC = 143, gC = 153, bC = 161;
         const tone = 0.86 + 0.22 * clamp(v, 0, 1);
         rC *= tone; gC *= tone; bC *= tone;
         let rough = 0.84 + 0.1 * (v - 0.5);
         if (v < 0) { rC *= 0.55; gC *= 0.55; bC *= 0.55; rough = 0.95; }
-        if (WEAR[i]) { rC = 92 + 20 * v; gC = 97 + 20 * v; bC = 104 + 20 * v; rough = 0.38; }       // brushed silver
-        if (RIV[i] === 1) { rC = 118; gC = 123; bC = 129; rough = 0.32; } else if (RIV[i] === 0.5) { rC *= 0.6; gC *= 0.6; bC *= 0.6; }
+        if (WEAR[i]) { rC = 168 + 20 * v; gC = 175 + 20 * v; bC = 182 + 20 * v; rough = 0.42; }    // scuffed paint edge
+        if (RIV[i] === 1) { rC = 196; gC = 202; bC = 207; rough = 0.32; } else if (RIV[i] === 0.5) { rC *= 0.6; gC *= 0.6; bC *= 0.6; }
         col.img.data[k] = rC; col.img.data[k + 1] = gC; col.img.data[k + 2] = bC; col.img.data[k + 3] = 255;
         const l = H[y * N + ((x - 1 + N) % N)], rr = H[y * N + ((x + 1) % N)], u = H[((y - 1 + N) % N) * N + x], d = H[((y + 1) % N) * N + x];
         let nx = (l - rr) * strength, ny = (u - d) * strength, nz = 1;
@@ -108,8 +111,8 @@ export function createCockpit3D(THREE, env) {
       envMap: envTex, envMapIntensity: opts.env ?? 0.5, side: opts.side ?? THREE.FrontSide
     });
   }
-  const bowMat = paint(10, 1.2, { color: 0xe6e9ee, metalness: 0.4 });
-  const shieldMat = paint(1.6, 1.6, { metalness: 0.15, env: 0.25, bump: 1.2 });
+  const bowMat = paint(10, 1.2, { color: 0xc4cbd0, metalness: 0.25 });
+  const shieldMat = paint(1.6, 1.6, { color: 0x3a4046, metalness: 0.15, env: 0.25, bump: 1.2 });   // dark charcoal glare shield
   const panelMat = paint(1.4, 0.8, { color: 0xeeeeee, metalness: 0.3 });
   const consoleMat = paint(0.6, 0.6, { metalness: 0.3 });
   const tubMat = paint(2, 2, { color: 0x9aa0a8, metalness: 0.2, env: 0.15, side: THREE.DoubleSide });
@@ -233,124 +236,304 @@ export function createCockpit3D(THREE, env) {
   }
 
   /* =================================================================
-     5. INSTRUMENT PANEL: UFC + KEYPAD + 3 RECESSED MFDs + 60 OSBs
+     5. F-15C MAIN INSTRUMENT PANEL (reference layout)
+     -----------------------------------------------------------------
+     One static 2048 x 1064 painted faceplate (light military grey, dark
+     sub-plates, white silkscreen, screw heads, hazard stripes) carries the
+     layout; real 3D bezels, knobs, toggles, lights and the ADI ball sit on
+     top. Live dials share one 1024^2 gauge atlas (15 Hz) and the CRTs share
+     one 1024^2 display atlas (VSD radar, round TEWS scope, HSI).
+       left : VSD radar, ARMAMENT / SELECT JETT, ASI-Mach, AoA, G meter,
+              EMERG LG, gear handle + NOSE/LEFT/RIGHT + FLAP lights
+       centre: UFC / HUD SET, 3D ADI ball, HSI, EMERG JETT / EMERG BK,
+              A/G - ADI - VI lights
+       right: round TEWS, ALT, VVI, clock, twin RPM / TEMP / FUEL FLOW /
+              NOZ POS columns, FUEL QTY, HYD / OIL
      ================================================================= */
-  const panel = new THREE.Group();
-  panel.position.set(0, -0.50, -0.58);
-  panel.rotation.x = -0.55;                          // face tilted up toward the pilot's eye line
-  rig.add(panel);
-  add(new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.44, 0.05), panelMat), panel);
-
   function screenTex(pxW, pxH) {
     const c = document.createElement('canvas'); c.width = pxW; c.height = pxH;
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
     return { c, ctx: c.getContext('2d', { willReadFrequently: true }), t, w: pxW, h: pxH };
   }
+  const PW = 1.04, PH = 0.56, PTOP = 0.22;                  // panel face (m), top edge local y
+  const panel = new THREE.Group();
+  panel.position.set(0, -0.50, -0.58);
+  panel.rotation.x = -0.55;                          // face tilted up toward the pilot's eye line
+  rig.add(panel);
+  const darkPlate = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.72, metalness: 0.25 });
+  const bezelMat2 = new THREE.MeshStandardMaterial({ color: 0x1d2125, roughness: 0.5, metalness: 0.5 });
+  const knobMat = new THREE.MeshStandardMaterial({ color: 0xa9bccb, roughness: 0.42, metalness: 0.25 });
+  const toggleMat = new THREE.MeshStandardMaterial({ color: 0xd6dadf, roughness: 0.25, metalness: 0.9, envMap: envTex });
+  const redKnobMat = new THREE.MeshStandardMaterial({ color: 0xb3121b, roughness: 0.38, metalness: 0.1, emissive: 0x200000 });
+  const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5, metalness: 0.1 });
   const glassSheen = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.07, roughness: 0.08, metalness: 0, envMap: envTex, envMapIntensity: 0.9, depthWrite: false });
+  // panel (x, y) in metres -> faceplate pixels
+  const FW = 2048, FH = Math.round(2048 * PH / PW);
+  const fx = x => (x + PW / 2) / PW * FW, fy = y => (PTOP - y) / PH * FH, fs = m => m / PW * FW;
+  const FACE_Z = 0.026;
+  const onFace = (mesh, x, y, z = 0) => { mesh.position.set(x, y, FACE_Z + z); panel.add(mesh); return mesh; };
 
-  // Recessed MFD: four-sided bezel well, screen at the back, 20 push-buttons, glass sheen.
-  const S_MFD = 0.118, WELL = 0.03, RIM = 0.024;
-  const osbGeos = [];
-  function mfd(x, y, px) {
-    const g = new THREE.Group(); g.position.set(x, y, 0.025); panel.add(g);
-    const outer = S_MFD + RIM * 2;
-    for (const [w, h, ox, oy] of [[outer, RIM, 0, (S_MFD + RIM) / 2], [outer, RIM, 0, -(S_MFD + RIM) / 2], [RIM, S_MFD, -(S_MFD + RIM) / 2, 0], [RIM, S_MFD, (S_MFD + RIM) / 2, 0]]) {
-      const b = add(new THREE.Mesh(new THREE.BoxGeometry(w, h, WELL), bezelMat), g);
-      b.position.set(ox, oy, WELL / 2);
-    }
-    const sc = screenTex(px, px);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(S_MFD, S_MFD), new THREE.MeshBasicMaterial({ map: sc.t, toneMapped: false }));
-    screen.position.z = 0.002; g.add(screen);
-    const sheen = new THREE.Mesh(new THREE.PlaneGeometry(S_MFD, S_MFD), glassSheen); sheen.position.z = 0.006; g.add(sheen);
-    for (let k = 0; k < 5; k++) {
-      const t = -S_MFD / 2 + S_MFD * (k + 0.5) / 5;
-      for (const [bx, by, bw, bh] of [[t, S_MFD / 2 + RIM / 2, 0.016, 0.012], [t, -S_MFD / 2 - RIM / 2, 0.016, 0.012], [-S_MFD / 2 - RIM / 2, t, 0.012, 0.016], [S_MFD / 2 + RIM / 2, t, 0.012, 0.016]]) {
-        osbGeos.push(new THREE.BoxGeometry(bw, bh, 0.008).translate(x + bx, y + by, 0.025 + WELL + 0.004));
+  // --- instrument positions (panel metres)
+  const G = {
+    asi: [-0.155, 0.045, 0.043], aoa: [-0.155, -0.055, 0.04], acc: [-0.155, -0.15, 0.04],
+    alt: [0.155, 0.05, 0.043], vvi: [0.155, -0.05, 0.04], clk: [0.155, -0.145, 0.037],
+    rpmL: [0.262, 0.063, 0.031], rpmR: [0.338, 0.063, 0.031], tmpL: [0.262, -0.01, 0.031], tmpR: [0.338, -0.01, 0.031],
+    ffL: [0.262, -0.083, 0.031], ffR: [0.338, -0.083, 0.031], nozL: [0.262, -0.156, 0.031], nozR: [0.338, -0.156, 0.031],
+    fuel: [0.44, -0.07, 0.042], hyd: [0.44, 0.05, 0.03]
+  };
+  const ADI = [0, 0.035, 0.058], HSI = [0, -0.125, 0.058], VSD = [-0.315, 0.145, 0.15], TEWS = [0.31, 0.158, 0.06];
+  const GAUGE_KEYS = Object.keys(G);                 // 16 cells of the gauge atlas
+
+  /* --- static faceplate ------------------------------------------- */
+  const face = canvasTex(FW, FH, (x, w, h) => {
+    const r = rng(77);
+    x.fillStyle = '#8f99a1'; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 9000; i++) { const v = 128 + Math.floor(r() * 40); x.fillStyle = `rgba(${v},${v + 8},${v + 14},0.18)`; x.fillRect(r() * w, r() * h, 2, 2); }   // crinkle speckle
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(0,0,0,0.10)'); g.addColorStop(0.15, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.14)');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    const seam = (x0, y0, x1, y1) => { x.strokeStyle = 'rgba(40,46,52,0.55)'; x.lineWidth = 3; x.strokeRect(fx(x0), fy(y1), fx(x1) - fx(x0), fy(y0) - fy(y1)); };
+    const screw = (px, py) => { x.fillStyle = '#c3cbd1'; x.beginPath(); x.arc(px, py, 7, 0, 7); x.fill(); x.strokeStyle = '#5c656c'; x.lineWidth = 2; x.stroke(); x.beginPath(); x.moveTo(px - 5, py); x.lineTo(px + 5, py); x.stroke(); };
+    const plate = (x0, y0, x1, y1, col = '#2b3036') => {
+      x.fillStyle = col; x.fillRect(fx(x0), fy(y1), fx(x1) - fx(x0), fy(y0) - fy(y1));
+      x.strokeStyle = 'rgba(0,0,0,0.6)'; x.lineWidth = 3; x.strokeRect(fx(x0), fy(y1), fx(x1) - fx(x0), fy(y0) - fy(y1));
+      for (const [sx, sy] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) screw(fx(sx) + (sx === x0 ? 12 : -12), fy(sy) + (sy === y1 ? 12 : -12));
+    };
+    const text = (t, xm, ym, px = 22, col = '#eef2f4', align = 'center', bold = true) => { x.fillStyle = col; x.font = `${bold ? 'bold ' : ''}${px}px ${STENCIL}`; x.textAlign = align; x.textBaseline = 'middle'; x.fillText(t, fx(xm), fy(ym)); };
+    const hazard = (x0, y0, x1, y1) => {
+      x.save(); x.beginPath(); x.rect(fx(x0), fy(y1), fx(x1) - fx(x0), fy(y0) - fy(y1)); x.clip();
+      x.fillStyle = '#f2c200'; x.fillRect(fx(x0), fy(y1), fx(x1) - fx(x0), fy(y0) - fy(y1));
+      x.fillStyle = '#121212'; for (let k = -40; k < 40; k++) { const bx = fx(x0) + k * 26; x.beginPath(); x.moveTo(bx, fy(y0)); x.lineTo(bx + 13, fy(y0)); x.lineTo(bx + 13 + 60, fy(y1)); x.lineTo(bx + 60, fy(y1)); x.closePath(); x.fill(); }
+      x.restore();
+    };
+    // section seams
+    seam(-0.52, -0.34, -0.215, 0.22); seam(-0.215, -0.34, -0.085, 0.22); seam(0.085, -0.34, 0.215, 0.22); seam(0.215, -0.34, 0.52, 0.22);
+    // UFC / HUD SET plate (dark) under the glare shield
+    plate(-0.165, 0.098, 0.165, 0.218);
+    text('I/P', -0.085, 0.207, 20); text('MODE 3/A', 0.03, 0.207, 20);
+    text('CHAN', -0.115, 0.163, 18); text('UHF 1', 0, 0.143, 18); text('HUD   SET', 0, 0.126, 20);
+    text('BRT', -0.12, 0.112, 15); text('SYM', -0.06, 0.112, 15); text('RTCL', 0, 0.112, 15); text('CAMERA', 0.06, 0.112, 15);
+    x.fillStyle = '#16191c';
+    for (let k = 0; k < 4; k++) x.fillRect(fx(-0.015 + k * 0.026) - 18, fy(0.199), 36, 34);      // mode-3/A code drums
+    x.fillRect(fx(-0.05) - 90, fy(0.172), 180, 30);                                              // freq window
+    x.fillRect(fx(-0.12) - 34, fy(0.158), 68, 28);                                               // channel window
+    x.font = `bold 26px ${STENCIL}`; x.fillStyle = '#e6e9ec'; x.textAlign = 'center';
+    for (let k = 0; k < 4; k++) x.fillText('7', fx(-0.015 + k * 0.026), fy(0.188));
+    x.fillText('2  2  0  .  0  0', fx(-0.05), fy(0.164)); x.fillText('0 2', fx(-0.12), fy(0.151));
+    // VSD + TEWS surrounds
+    plate(VSD[0] - 0.098, VSD[1] - 0.088, VSD[0] + 0.098, VSD[1] + 0.078, '#4a5158');
+    text('CONTR', VSD[0] - 0.035, VSD[1] + 0.068, 15); text('BRT', VSD[0] + 0.05, VSD[1] + 0.068, 15);
+    plate(TEWS[0] - 0.088, TEWS[1] - 0.075, TEWS[0] + 0.088, TEWS[1] + 0.065, '#4a5158');
+    text('VIDEO RECORD', -0.215 + 0.0, 0.205, 14, '#eef2f4');
+    // ARMAMENT panel
+    plate(-0.465, -0.115, -0.21, 0.068);
+    text('ARMAMENT', -0.30, 0.055, 22); text('MASTER', -0.245, 0.034, 15); text('ARM', -0.245, 0.022, 15); text('SAFE', -0.245, -0.005, 13);
+    text('GUN', -0.42, 0.048, 16); text('ROUNDS', -0.43, 0.03, 13); text('HIGH', -0.385, 0.04, 12); text('LOW', -0.385, 0.0, 12);
+    x.fillStyle = '#121518'; x.fillRect(fx(-0.455), fy(0.02), fs(0.05), fs(0.02));
+    const boxes = [['MRM', -0.36, 0.035], ['MRM', -0.29, 0.035], ['SW', -0.44, -0.02], ['SW', -0.22, -0.022], ['3 MK 82', -0.37, 0.0], ['1 FUEL', -0.32, 0.0], ['3 MK 82', -0.27, 0.0], ['MRM', -0.355, -0.04], ['MRM', -0.3, -0.04]];
+    for (const [t, bx, by] of boxes) { x.fillStyle = '#0b1a24'; x.fillRect(fx(bx) - 44, fy(by) - 15, 88, 30); x.strokeStyle = '#6b7780'; x.lineWidth = 2; x.strokeRect(fx(bx) - 44, fy(by) - 15, 88, 30); text(t, bx, by, 15, t.includes('MK') || t.includes('FUEL') ? '#5fb0ff' : '#e8ecee'); }
+    text('A/G SELECT', -0.43, -0.058, 12); text('INTERVAL', -0.345, -0.058, 12); text('QUANTITY', -0.28, -0.058, 12);
+    text('SELECT JETT', -0.42, -0.083, 13); text('MONITOR', -0.3, -0.083, 13); text('OPTIONS', -0.3, -0.103, 12);
+    x.strokeStyle = '#d23a3a'; x.lineWidth = 4; x.beginPath(); x.arc(fx(-0.42), fy(-0.1), fs(0.017), 0, 7); x.stroke();
+    // centre column placards
+    hazard(-0.085, 0.01, -0.06, 0.06); text('EMERG JETT', -0.072, 0.0, 12); text('STEER MODE', -0.072, -0.012, 11);
+    hazard(-0.085, -0.088, -0.06, -0.072); text('EMERG BK', -0.072, -0.095, 11);
+    for (const [t, ly] of [['A/G', 0.06], ['ADI', 0.033], ['VI', 0.006]]) { x.fillStyle = '#0c2414'; x.fillRect(fx(0.068), fy(ly) - 16, fs(0.03), 32); text(t, 0.083, ly, 17, '#3d6b4c'); }
+    text('BEACON', 0.083, -0.022, 12); text('RUD PED ADJ', 0.083, -0.04, 11); text('PULL', 0.083, -0.07, 12);
+    // left lower: EMERG LG + gear handle + flap lights
+    hazard(-0.505, -0.2, -0.43, -0.17); text('EMERG LG', -0.47, -0.21, 12); text('HOOK  UP/DN', -0.47, -0.16, 11);
+    for (const [t, lx, ly] of [['FLAP', -0.42, -0.24], ['FLAP', -0.42, -0.265], ['NOSE', -0.33, -0.235], ['LEFT', -0.36, -0.26], ['RIGHT', -0.30, -0.26]]) { x.fillStyle = '#0b2112'; x.fillRect(fx(lx) - 30, fy(ly) - 13, 60, 26); text(t, lx, ly, 14, '#2f6b45'); }
+    text('LDG GR', -0.33, -0.31, 13); text('ROUND OVER: GEAR LOCKED', -0.36, -0.205, 10, '#d23a3a');
+    // right side: fuel / jett placards
+    text('FUEL QTY', 0.44, -0.012, 13); text('INTERNAL', 0.44, -0.03, 10); text('JETT FUEL STARTER', 0.44, -0.135, 11); text('PULL', 0.44, -0.155, 12);
+    text('HYD', 0.44, 0.095, 12); text('L OIL PRESS  R', 0.44, 0.005, 10);
+    text('CANOPY UNLOCKED', 0.44, 0.205, 12, '#2f6b45');
+    // gauge rims: thin dark wells under each 3D bezel
+    for (const k of GAUGE_KEYS) { const [gx, gy, gr] = G[k]; x.fillStyle = '#151719'; x.beginPath(); x.arc(fx(gx), fy(gy), fs(gr * 1.12), 0, 7); x.fill(); }
+    for (const [gx, gy, gr] of [ADI, HSI]) { x.fillStyle = '#151719'; x.beginPath(); x.arc(fx(gx), fy(gy), fs(gr * 1.14), 0, 7); x.fill(); }
+    x.fillStyle = '#151719'; x.beginPath(); x.arc(fx(TEWS[0]), fy(TEWS[1]), fs(TEWS[2] * 1.1), 0, 7); x.fill();
+    x.fillRect(fx(VSD[0] - VSD[2] / 2) - 8, fy(VSD[1] + VSD[2] / 2) - 8, fs(VSD[2]) + 16, fs(VSD[2]) + 16);
+  });
+  face.t.anisotropy = 8;
+  onFace(new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshStandardMaterial({ map: face.t, roughness: 0.82, metalness: 0.12 })), 0, PTOP - PH / 2, -0.0005);
+  add(new THREE.Mesh(new THREE.BoxGeometry(PW + 0.02, PH, 0.05), consoleMat), panel).position.set(0, PTOP - PH / 2, 0);
+
+  /* --- live texture atlases --------------------------------------- */
+  const gaugeAtlas = canvasTex(1024, 1024, () => {});
+  const dispAtlas = canvasTex(1024, 1024, () => {});
+  const cellUV = (geo, col, row, n) => {               // map a geometry's 0..1 UVs onto atlas cell (col,row) of an n x n grid
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (col + uv.getX(i)) / n, 1 - (row + 1 - uv.getY(i)) / n);
+    return geo;
+  };
+  const gaugeMat = new THREE.MeshBasicMaterial({ map: gaugeAtlas.t, toneMapped: false });
+  const dispMat = new THREE.MeshBasicMaterial({ map: dispAtlas.t, toneMapped: false });
+  const bezelRing = (x, y, r, depth = 0.012) => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, r * 0.08 + 0.002, 8, 40), bezelMat2); onFace(ring, x, y, 0.004);
+    const sheen = new THREE.Mesh(new THREE.CircleGeometry(r, 32), glassSheen); onFace(sheen, x, y, 0.006);
+    return ring;
+  };
+  GAUGE_KEYS.forEach((k, i) => {
+    const [gx, gy, gr] = G[k];
+    onFace(new THREE.Mesh(cellUV(new THREE.CircleGeometry(gr, 40), i % 4, Math.floor(i / 4), 4), gaugeMat), gx, gy, 0.0015);
+    bezelRing(gx, gy, gr);
+    // bezel set knob at the lower right of the big flight instruments
+    if (['asi', 'alt', 'fuel'].includes(k)) onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.008, 0.012, 14).rotateX(Math.PI / 2), knobMat), gx + gr * 0.85, gy - gr * 0.85, 0.006);
+  });
+  // VSD (square CRT), TEWS (round CRT), HSI (round) from the display atlas (2 x 2 cells).
+  onFace(new THREE.Mesh(cellUV(new THREE.PlaneGeometry(VSD[2], VSD[2]), 0, 0, 2), dispMat), VSD[0], VSD[1], 0.001);
+  onFace(new THREE.Mesh(new THREE.PlaneGeometry(VSD[2], VSD[2]), glassSheen), VSD[0], VSD[1], 0.004);
+  for (const [w, h, ox, oy] of [[VSD[2] + 0.024, 0.012, 0, VSD[2] / 2 + 0.006], [VSD[2] + 0.024, 0.012, 0, -VSD[2] / 2 - 0.006], [0.012, VSD[2], -VSD[2] / 2 - 0.006, 0], [0.012, VSD[2], VSD[2] / 2 + 0.006, 0]])
+    onFace(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.016), bezelMat2), VSD[0] + ox, VSD[1] + oy, 0.006);
+  for (const sx of [-0.035, 0.05]) onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.008, 0.012, 14).rotateX(Math.PI / 2), knobMat), VSD[0] + sx, VSD[1] + VSD[2] / 2 + 0.02, 0.006);
+  onFace(new THREE.Mesh(cellUV(new THREE.CircleGeometry(TEWS[2], 48), 1, 0, 2), dispMat), TEWS[0], TEWS[1], 0.001);
+  bezelRing(TEWS[0], TEWS[1], TEWS[2]);
+  onFace(new THREE.Mesh(cellUV(new THREE.CircleGeometry(HSI[2], 48), 1, 1, 2), dispMat), HSI[0], HSI[1], 0.0015);
+  bezelRing(HSI[0], HSI[1], HSI[2]);
+  for (const sx of [-1, 1]) onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.012, 14).rotateX(Math.PI / 2), knobMat), HSI[0] + sx * HSI[2] * 0.9, HSI[1] - HSI[2] * 0.9, 0.006);
+
+  // 3D ADI ball: an equirectangular sky/ground sphere rolled about the view axis and pitched inside it.
+  const adiTex = canvasTex(1024, 512, (x, w, h) => {
+    x.fillStyle = '#d9dcdf'; x.fillRect(0, 0, w, h / 2);                     // sky (light grey / white)
+    x.fillStyle = '#4b4f54'; x.fillRect(0, h / 2, w, h / 2);                 // ground (dark grey)
+    x.strokeStyle = '#ffffff'; x.lineWidth = 6; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
+    x.font = `bold 20px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (let lon = 0; lon < 4; lon++) {
+      const cx = (0.25 + lon * 0.25) % 1 * w;
+      for (let p = -80; p <= 80; p += 10) {
+        if (!p) continue;
+        const py = h / 2 - p / 180 * h, l = p % 30 === 0 ? 90 : 50;
+        x.strokeStyle = x.fillStyle = p > 0 ? '#2b3036' : '#e8ecef'; x.lineWidth = 3;
+        x.beginPath(); x.moveTo(cx - l / 2, py); x.lineTo(cx + l / 2, py); x.stroke();
+        if (p % 30 === 0) { x.fillText(String(Math.abs(p) / 10), cx - l / 2 - 16, py); x.fillText(String(Math.abs(p) / 10), cx + l / 2 + 16, py); }
       }
     }
-    return sc;
+    x.font = `bold 34px ${STENCIL}`; x.fillStyle = '#2b3036'; x.fillText('CLI', 0.25 * w, h * 0.28); x.fillStyle = '#e8ecef'; x.fillText('DIVE', 0.25 * w, h * 0.72);
+  });
+  const adiOuter = new THREE.Group(), adiInner = new THREE.Group();
+  adiOuter.position.set(ADI[0], ADI[1], FACE_Z - 0.026); panel.add(adiOuter); adiOuter.add(adiInner);
+  const adiMat = new THREE.MeshStandardMaterial({ map: adiTex.t, roughness: 0.35, metalness: 0.05, emissive: 0xffffff, emissiveMap: adiTex.t, emissiveIntensity: 0.45 });   // internally lit ball
+  adiInner.add(new THREE.Mesh(new THREE.SphereGeometry(ADI[2] * 1.12, 48, 24), adiMat));
+  bezelRing(ADI[0], ADI[1], ADI[2]);
+  { // fixed orange aircraft symbol + bank pointer over the ball
+    const sym = new THREE.Mesh(new THREE.BoxGeometry(ADI[2] * 1.1, 0.0035, 0.002), new THREE.MeshBasicMaterial({ color: 0xff9a1a, toneMapped: false }));
+    onFace(sym, ADI[0], ADI[1], 0.012);
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.0035, 12), sym.material); onFace(dot, ADI[0], ADI[1], 0.0125);
   }
-  const mfdL = mfd(-0.205, 0.022, 384), mfdC = mfd(0, 0.022, 384), mfdR = mfd(0.205, 0.022, 384);
-  add(new THREE.Mesh(mergeGeometries(osbGeos), keyMat), panel);
 
-  // Up-front controller housing with LED readout and 3D keypad.
-  const ufcLED = screenTex(512, 96);
-  {
-    const g = new THREE.Group(); g.position.set(0, 0.166, 0.025); panel.add(g);
-    const hs = new THREE.Shape(); const W = 0.34, Hh = 0.095, c = 0.012;
-    hs.moveTo(-W / 2 + c, -Hh / 2); hs.lineTo(W / 2 - c, -Hh / 2); hs.lineTo(W / 2, -Hh / 2 + c); hs.lineTo(W / 2, Hh / 2 - c);
-    hs.lineTo(W / 2 - c, Hh / 2); hs.lineTo(-W / 2 + c, Hh / 2); hs.lineTo(-W / 2, Hh / 2 - c); hs.lineTo(-W / 2, -Hh / 2 + c); hs.closePath();
-    add(new THREE.Mesh(new THREE.ExtrudeGeometry(hs, { depth: 0.035, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2 }), bezelMat), g);
-    const led = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.04), new THREE.MeshBasicMaterial({ map: ufcLED.t, toneMapped: false }));
-    led.position.set(0, 0.026, 0.0405); g.add(led);
-    const keys = [], legends = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLR', '0', 'ENT'];
-    for (let i = 0; i < 12; i++) keys.push(new THREE.BoxGeometry(0.036, 0.017, 0.01).translate(-0.12 + (i % 6) * 0.048, -0.012 - Math.floor(i / 6) * 0.024, 0.044));
-    add(new THREE.Mesh(mergeGeometries(keys), keyMat), g);
-    const leg = canvasTex(1024, 128, (x, w, h) => {
-      x.clearRect(0, 0, w, h); x.fillStyle = '#e6ecf0'; x.font = `bold 46px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-      legends.forEach((l, i) => x.fillText(l, (i % 6 + 0.5) * w / 6, (Math.floor(i / 6) + 0.5) * h / 2));
-    }).t;
-    const lp = new THREE.Mesh(new THREE.PlaneGeometry(0.288, 0.048), new THREE.MeshBasicMaterial({ map: leg, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-    lp.position.set(0, -0.024, 0.0495); g.add(lp);
-    for (const sx of [-1, 1]) {                      // option-select rockers either side of the LED
-      const r = add(new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.012), keyMat), g); r.position.set(sx * 0.14, 0.026, 0.044);
-    }
-  }
-  placard('HUD BRT', 0.06, 0.012, panel, [0.25, 0.195, 0.0262], [0, 0, 0], 0.8);
-  { const knob = add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.02, 20).rotateX(Math.PI / 2), castMat), panel); knob.position.set(0.25, 0.163, 0.035); }
+  /* --- 3D switchgear on the face ------------------------------------ */
+  const knobs = [], toggles = [];
+  const knob = (x, y, r = 0.0085) => knobs.push(new THREE.CylinderGeometry(r, r * 1.12, 0.013, 16).rotateX(Math.PI / 2).translate(x, y, FACE_Z + 0.0065));
+  const toggle = (x, y) => {
+    toggles.push(new THREE.CylinderGeometry(0.006, 0.006, 0.004, 12).rotateX(Math.PI / 2).translate(x, y, FACE_Z + 0.002));
+    toggles.push(new THREE.CylinderGeometry(0.0016, 0.0024, 0.018, 8).rotateX(Math.PI / 2 - 0.45).translate(x, y + 0.004, FACE_Z + 0.01));
+    toggles.push(new THREE.SphereGeometry(0.0032, 8, 6).translate(x, y + 0.008, FACE_Z + 0.018));
+  };
+  for (const kx of [-0.13, -0.065, 0, 0.065]) knob(kx, 0.183, 0.009);                     // UFC channel / volume knobs
+  knob(0.135, 0.17, 0.012); for (const kx of [-0.12, -0.06, 0, 0.06]) toggle(kx, 0.112);
+  knob(-0.10, 0.104, 0.01); knob(0.0, 0.104, 0.01); knob(0.08, 0.104, 0.012);
+  toggle(-0.385, 0.02); toggle(-0.245, 0.01);                                            // GUN HIGH/LOW, MASTER ARM
+  for (const kx of [-0.375, -0.325, -0.275]) knob(kx, 0.017, 0.006);
+  knob(-0.43, -0.07, 0.012); toggle(-0.345, -0.072); toggle(-0.28, -0.072);
+  for (let k = 0; k < 4; k++) knob(-0.355 + k * 0.03, -0.095, 0.006);
+  knob(0.083, -0.007, 0.007);                                                             // beacon / rudder ped knobs
+  knob(0.44, -0.11, 0.012);                                                               // fuel qty selector
+  add(new THREE.Mesh(mergeGeometries(knobs), knobMat), panel);
+  add(new THREE.Mesh(mergeGeometries(toggles), toggleMat), panel);
+  // Red SELECT JETT knob, red gear handle, yellow PUSH TO JETT / EMERG BK / PULL handles.
+  onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.016, 20).rotateX(Math.PI / 2), redKnobMat), -0.42, -0.1, 0.008);
+  { const g = new THREE.Group(); onFace(g, -0.33, -0.285, 0);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.05, 10).rotateX(Math.PI / 2), toggleMat), g).position.z = 0.025;
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.022, 24).rotateX(Math.PI / 2), redKnobMat), g).position.z = 0.055; }
+  onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.012, 20).rotateX(Math.PI / 2), yellowMat), -0.072, 0.036, 0.006);
+  onFace(new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.022, 4, 10), yellowMat), -0.072, -0.116, 0.008);
+  onFace(new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.022, 4, 10), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6 })), 0.083, -0.09, 0.008);
+  onFace(new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.026, 4, 10), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6 })), 0.44, -0.18, 0.008);
+  onFace(new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.04, 0.012), yellowMat), -0.46, -0.185, 0.008);      // EMERG LG handle
+
+  // Lit lamps (emissive) driven every frame: MASTER CAUTION, AI/SAM, A/G-ADI-VI,
+  // gear NOSE/LEFT/RIGHT, FLAP x2, L/R engine FIRE push buttons.
+  const lamp = (x, y, w, h, col) => {
+    const m = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: col, emissiveIntensity: 0, roughness: 0.4 });
+    onFace(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.006), m), x, y, 0.003); return m;
+  };
+  const lamps = {
+    caution: lamp(-0.143, 0.19, 0.034, 0.024, 0xff3020), aisam: lamp(0.143, 0.19, 0.034, 0.024, 0xff3020),
+    ag: lamp(0.083, 0.06, 0.028, 0.014, 0x3dff7a), adi: lamp(0.083, 0.033, 0.028, 0.014, 0x3dff7a), vi: lamp(0.083, 0.006, 0.028, 0.014, 0x3dff7a),
+    nose: lamp(-0.33, -0.235, 0.028, 0.012, 0x3dff7a), left: lamp(-0.36, -0.26, 0.028, 0.012, 0x3dff7a), right: lamp(-0.30, -0.26, 0.028, 0.012, 0x3dff7a),
+    flap1: lamp(-0.42, -0.24, 0.028, 0.012, 0x3dff7a), flap2: lamp(-0.42, -0.265, 0.028, 0.012, 0x3dff7a),
+    fireL: lamp(-0.46, 0.17, 0.03, 0.03, 0xff2a14), fireR: lamp(-0.42, 0.17, 0.03, 0.03, 0xff2a14)
+  };
+  placard('L ENG FIRE', 0.05, 0.01, panel, [-0.46, 0.15, FACE_Z + 0.004], [0, 0, 0], 0.7);
+  placard('R ENG FIRE', 0.05, 0.01, panel, [-0.42, 0.15, FACE_Z + 0.004], [0, 0, 0], 0.7);
+  // UFC live digits (channel / mission clock) on a small LED strip.
+  const ufcLED = screenTex(512, 64);
+  const ufcMat = new THREE.MeshBasicMaterial({ map: ufcLED.t, toneMapped: false });
+  onFace(new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.015), ufcMat), 0.07, 0.164, 0.001);
 
   /* =================================================================
-     6. SIDE CONSOLES: switches, knobs, vents, annunciator block
+     6. CAUTION MATRIX, CONSOLES, CANOPY LEVER, SEAT
      ================================================================= */
-  const sides = [];
-  for (const sx of [-1, 1]) {
-    const g = new THREE.Group();
-    g.position.set(sx * 0.49, -0.50, -0.56);
-    g.rotation.set(0.30, -sx * 0.58, 0);
-    rig.add(g);
-    add(new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.46, 0.06), consoleMat), g);
-    const lip = add(new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.02, 0.09), castMat), g); lip.position.set(0, 0.23, 0.015);
-    // air vent: bezel ring + louvered disc
-    const vent = new THREE.Group(); vent.position.set(-sx * 0.07, sx < 0 ? 0.15 : -0.15, 0.035); g.add(vent);
-    add(new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.007, 10, 28), castMat), vent);
-    add(new THREE.Mesh(new THREE.CircleGeometry(0.026, 28), padMat), vent).position.z = -0.003;
-    for (let k = -1; k <= 1; k++) { const l = add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.005, 0.01), castMat), vent); l.position.set(0, k * 0.014, 0); l.rotation.x = 0.5; }
-    sides.push(g);
-  }
-  {
-    // Left console: master arm + toggle bank + rotary knobs.
-    const g = sides[0];
-    const parts = [];
-    for (let i = 0; i < 6; i++) {
-      const x = -0.1 + (i % 3) * 0.06, y = 0.02 - Math.floor(i / 3) * 0.09;
-      parts.push(new THREE.CylinderGeometry(0.011, 0.011, 0.012, 14).rotateX(Math.PI / 2).translate(x, y, 0.036));
-      parts.push(new THREE.CylinderGeometry(0.0035, 0.0028, 0.034, 8).rotateX(Math.PI / 2 - 0.5).translate(x, y + 0.008, 0.052));
-    }
-    add(new THREE.Mesh(mergeGeometries(parts), silverMat), g);
-    const ma = add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.02), hazardMat), g); ma.position.set(0.09, 0.02, 0.04);   // guarded MASTER ARM
-    placard('MASTER ARM', 0.09, 0.014, g, [0.09, 0.048, 0.0315]);
-    placard('ILS / TCN', 0.08, 0.014, g, [-0.04, -0.12, 0.0315]);
-    for (let k = 0; k < 2; k++) {
-      const knob = add(new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.02, 0.022, 20).rotateX(Math.PI / 2), castMat), g);
-      knob.position.set(-0.08 + k * 0.08, -0.165, 0.042);
-      const ptr = add(new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.016, 0.003), silverMat), knob); ptr.position.set(0, 0.008, 0.012);
-    }
-  }
-  // Right console: backlit annunciator block + MASTER CAUTION push-light.
-  const annun = screenTex(512, 256);
-  const cautionMat = new THREE.MeshStandardMaterial({ color: 0x3a2a08, emissive: 0xffb020, emissiveIntensity: 0, roughness: 0.4 });
-  {
-    const g = sides[1];
-    const a = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.1), new THREE.MeshBasicMaterial({ map: annun.t, toneMapped: false }));
-    a.position.set(0.0, 0.07, 0.0315); g.add(a);
-    const frame = add(new THREE.Mesh(new THREE.BoxGeometry(0.215, 0.115, 0.004), castMat), g); frame.position.set(0, 0.07, 0.029);
-    const mc = add(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.016), cautionMat), g); mc.position.set(0.0, 0.165, 0.04);
-    placard('CAUTION', 0.07, 0.014, g, [0.075, 0.165, 0.0315]);
-    const lbl = canvasTex(256, 96, (x, w, h) => { x.fillStyle = '#ffd77a'; x.font = `bold 34px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('MASTER', w / 2, 30); x.fillText('CAUTION', w / 2, 66); }).t;
-    const lp = new THREE.Mesh(new THREE.PlaneGeometry(0.066, 0.026), new THREE.MeshBasicMaterial({ map: lbl, transparent: true, toneMapped: false, depthWrite: false }));
-    lp.position.set(0, 0.165, 0.0485); g.add(lp);
-  }
+  // Angled lower-right caution / warning panel: 3 x 13 amber tiles lit by game state.
+  const CAUTIONS = ['SEAT NOT\nARMED', 'RADAR\nALT', 'AVIONICS\nFAULT', 'PROBE\nHEAT', 'ELEC SYS', 'SEC', 'EQUIP\nHOT', 'NWS\nFAIL', 'C ADC', 'IFF', 'R GEN', 'L GEN',
+    'CANOPY', 'UT HYD', 'ANTI\nSKID', 'FL HYD', 'EXT TANKS\nEMPTY', 'INLET\nICING', 'OXYGEN', 'L FUEL\nLOW', 'ENGINE\nANTI-ICE', 'R FUEL\nLOW', 'L FUEL\nPRESS', 'AIR DATA\nCOMPUTER',
+    'R FUEL\nPRESS', 'STORES\nCONFIG', 'DC\nOVERLOAD', 'HOOK', 'OVERHEAT', 'NUCLEAR', 'OXY\nLOW', 'EEC', 'FWD\nFUEL LOW', 'CABIN\nPRESS', 'BUC', 'AFT\nFUEL LOW', 'ATF NOT\nENGAGED', 'OVER G', 'LOW\nALT'];
+  const caution = screenTex(384, 1024);
+  const cautionMat2 = new THREE.MeshBasicMaterial({ map: caution.t, toneMapped: false });
+  { const g = new THREE.Group(); g.position.set(0.535, -0.5, -0.47); g.rotation.set(0.25, -0.62, 0); rig.add(g);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.32, 0.03), consoleMat), g);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.30), cautionMat2); m.position.z = 0.0155; g.add(m);
+    const hz = new THREE.Mesh(new THREE.PlaneGeometry(0.022, 0.07), new THREE.MeshStandardMaterial({ map: hazard, roughness: 0.6 })); hz.position.set(0.069, -0.06, 0.016); g.add(hz); }
 
+  // Side consoles alongside the seat: painted switch panels + 3D toggles/knobs.
+  function consoleTex(seed, titles) {
+    return canvasTex(512, 1024, (x, w, h) => {
+      const r = rng(seed);
+      x.fillStyle = '#8f99a1'; x.fillRect(0, 0, w, h);
+      const rows = titles.length;
+      titles.forEach((t, i) => {
+        const y0 = 12 + i * (h - 24) / rows, ph = (h - 24) / rows - 10;
+        x.fillStyle = '#2b3036'; x.fillRect(10, y0, w - 20, ph);
+        x.strokeStyle = '#111'; x.lineWidth = 3; x.strokeRect(10, y0, w - 20, ph);
+        x.fillStyle = '#eef2f4'; x.font = `bold 22px ${STENCIL}`; x.textAlign = 'center'; x.fillText(t, w / 2, y0 + ph - 10);
+        x.font = `14px ${STENCIL}`;
+        for (let k = 0; k < 6; k++) {
+          const cx = 50 + (k % 3) * 150 + r() * 20, cy = y0 + 30 + Math.floor(k / 3) * (ph - 60) / 2 + r() * 10;
+          if (r() < 0.55) { x.fillStyle = '#c9cfd4'; x.beginPath(); x.arc(cx, cy, 9, 0, 7); x.fill(); x.fillStyle = '#eef2f4'; x.fillText(r() < 0.5 ? 'ON' : 'AUTO', cx, cy - 16); x.fillText('OFF', cx, cy + 22); }
+          else { x.fillStyle = '#a9bccb'; x.beginPath(); x.arc(cx, cy, 15, 0, 7); x.fill(); x.strokeStyle = '#2b3036'; x.lineWidth = 3; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + 12 * Math.cos(r() * 6), cy + 12 * Math.sin(r() * 6)); x.stroke(); }
+        }
+      });
+    });
+  }
+  const consoles = [];
+  for (const sx of [-1, 1]) {
+    const g = new THREE.Group(); g.position.set(sx * 0.46, -0.6, -0.12); g.rotation.set(-Math.PI / 2 + 0.12, 0, sx * -0.18); rig.add(g);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.62, 0.06), consoleMat), g).position.z = -0.03;
+    const tex = consoleTex(sx < 0 ? 11 : 23, sx < 0 ? ['GND PWR', 'BIT / AVIONICS', 'IFF', 'TEWS / RAD 2', 'EXT LT', 'CAS', 'TCN'] : ['ECS', 'OXYGEN REGULATOR', 'ENGINE', 'NAV CONTROL', 'TEWS', 'COMPASS', 'CMD  DISP SEL']);
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.6), new THREE.MeshStandardMaterial({ map: tex.t, roughness: 0.8, metalness: 0.1 })); top.position.z = 0.0005; g.add(top);
+    const tg = [];
+    for (let i = 0; i < 18; i++) { const px = -0.09 + (i % 3) * 0.075, py = -0.27 + Math.floor(i / 3) * 0.088;
+      tg.push(new THREE.CylinderGeometry(0.0015, 0.0022, 0.016, 6).rotateX(Math.PI / 2 - 0.4).translate(px, py, 0.008)); }
+    add(new THREE.Mesh(mergeGeometries(tg), toggleMat), g);
+    consoles.push(g);
+  }
+  // Right sidewall: black canopy control lever, white-ball emergency handle, coiled hose.
+  { const g = new THREE.Group(); g.position.set(0.62, -0.36, -0.08); rig.add(g);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.26), new THREE.MeshStandardMaterial({ color: 0x23272b, roughness: 0.55, metalness: 0.3 })), g).position.set(0, 0, -0.04);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 20).rotateZ(Math.PI / 2), bezelMat2), g).position.set(0, 0, 0.1);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.034, 6).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xb08a6a, metalness: 0.6, roughness: 0.4 })), g).position.set(-0.002, 0, 0.1);
+    placard('CANOPY CONTROL', 0.12, 0.012, g, [-0.016, -0.04, -0.02], [0, -Math.PI / 2, 0], 0.8);
+    const ball = add(new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.25 })), g); ball.position.set(-0.04, -0.1, 0.0);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.07, 8).rotateZ(0.6), toggleMat), g).position.set(-0.025, -0.075, 0.0);
+    const pts = []; for (let i = 0; i <= 120; i++) { const t = i / 120, a = t * Math.PI * 16; pts.push(new THREE.Vector3(-0.05 + 0.012 * Math.cos(a), -0.12 - t * 0.2, 0.12 + 0.012 * Math.sin(a) + t * 0.05)); }
+    add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 240, 0.0045, 6), new THREE.MeshStandardMaterial({ color: 0x8b8f86, roughness: 0.7 })), g); }
+  // ACES II seat: tan cushion with yellow arming handles each side.
+  { const seat = new THREE.Group(); seat.position.set(0, -0.82, 0.12); rig.add(seat);
+    const cushion = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.32, 4, 12).rotateZ(Math.PI / 2).scale(1, 0.55, 1), new THREE.MeshStandardMaterial({ color: 0xb89b72, roughness: 0.95 }));
+    cushion.scale.set(1, 1, 3.4); seat.add(cushion);
+    for (const sx of [-1, 1]) {
+      const h = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 20, Math.PI), yellowMat); h.rotation.set(0, Math.PI / 2, 0); h.position.set(sx * 0.25, 0.02, -0.12); seat.add(h);
+    }
+    placard('EMERGENCY MANUAL CHUTE', 0.12, 0.02, seat, [0.2, 0.06, 0.05], [-Math.PI / 2, 0, 0], 0.7); }
   /* =================================================================
      7. COMBINER ASSEMBLY: cast arms, bolts, collimator housing, glass
      ================================================================= */
@@ -438,7 +621,7 @@ export function createCockpit3D(THREE, env) {
   const gripMat = new THREE.MeshStandardMaterial({ color: 0x1d2024, roughness: 0.78, metalness: 0.08 });
   const pickleMat = new THREE.MeshStandardMaterial({ color: 0xc8141c, roughness: 0.4, metalness: 0.1, emissive: 0x300000 });
   const stick = new THREE.Group(); stick.name = 'HOTAS_Stick';
-  stick.position.set(0, -0.667, -0.365);                    // floor gimbal between the pilot's knees
+  stick.position.set(0, -0.73, -0.31);                 // floor gimbal between the knees, below the HSI                    // floor gimbal between the pilot's knees
   rig.add(stick);
   const gimbal = new THREE.Group(); stick.add(gimbal);
   {
@@ -473,10 +656,19 @@ export function createCockpit3D(THREE, env) {
 
   // Left console throttle quadrant.
   const quad = new THREE.Group(); quad.name = 'HOTAS_Throttle';
-  quad.position.set(-0.27, -0.45, -0.44); quad.rotation.y = 0.28;
+  quad.position.set(-0.43, -0.55, -0.27); quad.rotation.set(0.12, 0.18, 0);      // on the left console, beside the seat
   rig.add(quad);
   add(new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.05, 0.19), consoleMat), quad);                        // housing
-  { const slot = add(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.004, 0.16), padMat), quad); slot.position.y = 0.0255; }
+  { const track = canvasTex(256, 512, (x, w, h) => {
+      x.fillStyle = '#23272b'; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#9b1a1f'; x.fillRect(40, 30, w - 80, h - 60);
+      x.strokeStyle = '#e8d8d8'; x.lineWidth = 3;
+      for (const [t, yy] of [['MAX', 70], ['MIL', 230], ['IDLE', 430]]) { x.beginPath(); x.moveTo(40, yy + 22); x.lineTo(w - 40, yy + 22); x.stroke(); x.save(); x.translate(w / 2, yy); x.rotate(-Math.PI / 2); x.fillStyle = '#f2e6e6'; x.font = `bold 34px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 0, 0); x.restore(); }
+      x.fillStyle = '#0d0f11'; x.fillRect(w / 2 - 10, 40, 20, h - 80);
+    });
+    const slot = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.17), new THREE.MeshStandardMaterial({ map: track.t, roughness: 0.6 }));
+    slot.rotation.x = -Math.PI / 2; slot.position.y = 0.0256; quad.add(slot);
+    placard('FRICTION LEVER', 0.07, 0.01, quad, [0.0, 0.0262, 0.092], [-Math.PI / 2, 0, 0], 0.8); }
   placard('IDLE', 0.03, 0.008, quad, [0.045, 0.0262, 0.07], [-Math.PI / 2, 0, 0], 0.9);
   placard('AB', 0.02, 0.008, quad, [0.045, 0.0262, -0.075], [-Math.PI / 2, 0, 0], 0.9);
   const throttles = [];
@@ -525,14 +717,18 @@ export function createCockpit3D(THREE, env) {
   const sunHome = sunLight.position.clone();
 
   /* =================================================================
-     9. LIVE SCREENS (repaint on change; ADI every frame)
+     9. LIVE INSTRUMENTS (atlas repaint: dials 15 Hz, CRTs 30 Hz, ADI ball
+        and lamps every frame, caution matrix on change)
      ================================================================= */
-  const eng = { nlL: 68, nlR: 68, egtL: 420, egtR: 420 };
+  const eng = { nlL: 68, nlR: 68, egtL: 420, egtR: 420, noz: 80 };
   function updateEngines(dt) {
     const k = Math.min(1, dt * 1.5), t = S.throttle, ab = S.afterburner;
     const nl = 62 + 32 * t + 6 * ab, egt = 400 + 430 * t + 180 * ab;
-    eng.nlL += (nl - eng.nlL) * k; eng.nlR += (nl * 0.996 - eng.nlR) * k * 0.92;
-    eng.egtL += (egt - eng.egtL) * k * 0.8; eng.egtR += (egt + 7 - eng.egtR) * k * 0.76;
+    const outL = C.engineOut === 'L', outR = C.engineOut === 'R';
+    eng.nlL += ((outL ? 18 : nl) - eng.nlL) * k; eng.nlR += ((outR ? 18 : nl * 0.996) - eng.nlR) * k * 0.92;
+    eng.egtL += ((outL ? 260 : egt) - eng.egtL) * k * 0.8; eng.egtR += ((outR ? 260 : egt + 7) - eng.egtR) * k * 0.76;
+    const base = 80 - 70 * smooth(t, 0.15, 0.75);                    // F100 nozzle: open at idle, tight at MIL, wide in AB
+    eng.noz += ((base + (100 - base) * ab) - eng.noz) * Math.min(1, dt * 3);
   }
   function missionClock(now) {
     const t = Math.floor(now);
@@ -540,161 +736,205 @@ export function createCockpit3D(THREE, env) {
   }
   const painted = {};
   const changed = (id, key) => (painted[id] === key ? false : (painted[id] = key, true));
-  function glowText(x, txt, px, py, col) {
-    x.fillStyle = col; x.globalAlpha = 0.35;
-    for (const [dx, dy] of [[-1.5, 0], [1.5, 0], [0, -1.5], [0, 1.5]]) x.fillText(txt, px + dx, py + dy);
-    x.globalAlpha = 1; x.fillText(txt, px, py);
-  }
-  function osbLegends(x, s, top, bottom, col = 'rgba(77,255,145,0.75)') {
-    x.font = `16px ${FONT}`; x.fillStyle = col; x.textAlign = 'center';
-    top.forEach((t, i) => { x.textBaseline = 'top'; x.fillText(t, s * (i + 0.5) / 5, 4); });
-    bottom.forEach((t, i) => { x.textBaseline = 'bottom'; x.fillText(t, s * (i + 0.5) / 5, s - 4); });
-  }
 
   function paintUFC(now) {
-    const clock = missionClock(now), alt = Math.round(S.position.y * 3.28084 / 10) * 10;
-    if (!changed('ufc', clock + alt)) return;
+    const clock = missionClock(now);
+    if (!changed('ufc', clock)) return;
     const { ctx: x, w, h } = ufcLED;
-    x.fillStyle = '#020803'; x.fillRect(0, 0, w, h);
-    x.fillStyle = 'rgba(70,255,140,0.05)'; for (let i = 0; i < w; i += 4) x.fillRect(i, 0, 1, h);   // LED segment grid
-    x.font = `34px ${FONT}`; x.textBaseline = 'middle';
-    x.textAlign = 'left'; glowText(x, 'UHF1 251.000', 14, 26, '#46ff8c');
-    x.textAlign = 'right'; glowText(x, 'STPT 01', w - 14, 26, '#46ff8c');
-    x.textAlign = 'left'; glowText(x, 'T ' + clock, 14, 70, '#46ff8c');
-    x.textAlign = 'right'; glowText(x, 'ALT ' + alt, w - 14, 70, '#46ff8c');
+    x.fillStyle = '#0a0c0d'; x.fillRect(0, 0, w, h);
+    x.font = `bold 44px ${FONT}`; x.textBaseline = 'middle'; x.fillStyle = '#e8ecef'; x.textAlign = 'center';
+    x.fillText('T ' + clock, w / 2, h / 2 + 2);
     ufcLED.t.needsUpdate = true;
   }
 
-  function paintTEWS(frame) {
-    if (frame % 3) return;                           // threat display refresh 20 Hz
-    const { ctx: x, w: s } = mfdL;
-    x.fillStyle = '#010604'; x.fillRect(0, 0, s, s);
-    osbLegends(x, s, ['TEWS', 'MODE', 'RNG', 'DCLT', 'BIT'], ['AUTO', 'PRI', 'UNK', 'SEP', 'SWAP']);
-    const cx = s / 2, cy = s / 2 + 6, R = s * 0.36, hRad = S.heading * D2R;
-    x.strokeStyle = 'rgba(77,255,145,0.45)'; x.lineWidth = 1.5;
-    for (const f of [0.33, 0.66, 1]) { x.beginPath(); x.arc(cx, cy, R * f, 0, Math.PI * 2); x.stroke(); }
-    for (let a = 0; a < 360; a += 30) { const r = a * D2R; x.beginPath(); x.moveTo(cx + Math.sin(r) * R, cy - Math.cos(r) * R); x.lineTo(cx + Math.sin(r) * (R + 8), cy - Math.cos(r) * (R + 8)); x.stroke(); }
-    x.fillStyle = '#4dff91'; x.font = `22px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.beginPath(); x.moveTo(cx, cy - 9); x.lineTo(cx + 7, cy + 8); x.lineTo(cx - 7, cy + 8); x.closePath(); x.fill();
-    const threat = (pos, sym, colr, ring) => {
-      const rx = pos.x - S.position.x, rz = pos.z - S.position.z;
-      const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
-      const d = Math.hypot(sx, sy), b = Math.atan2(sx, -sy);
-      const rr = R * clamp(0.25 + 0.75 * (1 - d / 37000), 0.2, 1) * ring;   // nearer = more lethal = closer to centre ring
-      const px = cx + Math.sin(b) * (R - rr + R * 0.15), py = cy - Math.cos(b) * (R - rr + R * 0.15);
-      x.fillStyle = x.strokeStyle = colr;
-      x.fillText(sym, px, py);
-      return { px, py };
+  // Generic analog dial painted into a 256 px atlas cell.
+  function dial(x, ox, oy, o) {
+    const S2 = 256, cx = ox + S2 / 2, cy = oy + S2 / 2, R = S2 * 0.46;
+    x.save();
+    x.beginPath(); x.arc(cx, cy, R + 4, 0, Math.PI * 2); x.fillStyle = '#0c0e10'; x.fill();
+    const ang = v => ((o.a0 + (o.a1 - o.a0) * clamp((v - o.min) / (o.max - o.min), 0, 1)) - 90) * D2R;
+    // arcs (green / amber / red bands)
+    for (const [lo, hi, col] of o.bands || []) { x.strokeStyle = col; x.lineWidth = 7; x.beginPath(); x.arc(cx, cy, R - 6, ang(lo), ang(hi)); x.stroke(); }
+    x.strokeStyle = '#eef2f4'; x.fillStyle = '#eef2f4';
+    for (let v = o.min; v <= o.max + 1e-6; v += o.minor) {
+      const a = ang(v), major = Math.abs((v - o.min) / o.major - Math.round((v - o.min) / o.major)) < 1e-3, l = major ? 16 : 8;
+      x.lineWidth = major ? 3 : 1.6;
+      x.beginPath(); x.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); x.lineTo(cx + Math.cos(a) * (R - l), cy + Math.sin(a) * (R - l)); x.stroke();
+      if (major && o.label) { x.font = `bold 24px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(o.label(v), cx + Math.cos(a) * (R - 32), cy + Math.sin(a) * (R - 32)); }
+    }
+    x.font = `bold 17px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    (o.title || '').split('\n').forEach((t, i) => x.fillText(t, cx, cy + (o.titleY ?? 34) + i * 18));
+    if (o.window) { x.fillStyle = '#1b1f22'; x.fillRect(cx - 46, cy - 52, 92, 26); x.fillStyle = '#eef2f4'; x.font = `bold 20px ${FONT}`; x.fillText(o.window, cx, cy - 38); }
+    for (const n of o.needles || []) {
+      const a = ang(n.v), L = R * (n.len ?? 0.82);
+      x.strokeStyle = x.fillStyle = n.col || '#ffffff'; x.lineWidth = n.w || 6; x.lineCap = 'round';
+      x.beginPath(); x.moveTo(cx - Math.cos(a) * 14, cy - Math.sin(a) * 14); x.lineTo(cx + Math.cos(a) * L, cy + Math.sin(a) * L); x.stroke();
+    }
+    x.fillStyle = '#2b3036'; x.beginPath(); x.arc(cx, cy, 9, 0, Math.PI * 2); x.fill();
+    x.restore();
+  }
+  let gMaxSeen = 1;
+  function paintGauges(frame) {
+    if (frame % 4) return;                                           // 15 Hz analog refresh
+    const x = gaugeAtlas.x, kts = S.speed * 1.94384, altFt = S.position.y * 3.28084, vs = S.velocity.y * 196.85;
+    gMaxSeen = Math.max(gMaxSeen, S.gLoad);
+    const pphE = (outSide) => outSide ? 0 : 700 + 4300 * S.throttle + 17000 * S.afterburner;
+    const ffL = pphE(C.engineOut === 'L'), ffR = pphE(C.engineOut === 'R');
+    const fuel = S.fuel ?? 0, hydP = C.hydraulic ? 1.2 + 0.25 * Math.sin(frame * 0.07) : 3.0;
+    const d = new Date();
+    const cells = {
+      asi: { min: 0, max: 1000, a0: -150, a1: 150, major: 100, minor: 50, label: v => String(v / 100), title: 'KNOTS\nx100', titleY: -4, window: 'M ' + S.mach.toFixed(2), needles: [{ v: kts }] },
+      aoa: { min: 0, max: 45, a0: -135, a1: 135, major: 10, minor: 5, label: v => String(v), title: 'ANGLE OF\nATTACK', bands: [[25, 32, '#ffb020'], [32, 45, '#e0302a']], needles: [{ v: Math.max(0, S.alpha / D2R) }] },
+      acc: { min: -4, max: 10, a0: -150, a1: 150, major: 2, minor: 1, label: v => String(v), title: 'ACCEL\ng UNITS', bands: [[7.5, 10, '#e0302a']], needles: [{ v: gMaxSeen, col: '#ff4a3a', w: 3, len: 0.9 }, { v: S.gLoad }] },
+      alt: { min: 0, max: 1000, a0: 0, a1: 360, major: 100, minor: 20, label: v => (v < 1000 ? String(v / 100) : ''), title: 'ALT', titleY: 30, window: String(Math.max(0, Math.round(altFt / 10) * 10)).padStart(5, '0'), needles: [{ v: ((altFt % 1000) + 1000) % 1000 }] },
+      vvi: { min: -6000, max: 6000, a0: -170, a1: 10, major: 2000, minor: 1000, label: v => String(Math.abs(v / 1000)), title: 'CLIMB\nx1000 FPM', titleY: 20, needles: [{ v: clamp(vs, -6000, 6000) }] },
+      clk: { min: 0, max: 12, a0: 0, a1: 360, major: 1, minor: 0.5, label: v => (v > 0 && v < 12 ? String(v) : v === 0 ? '12' : ''), title: '', needles: [{ v: (d.getHours() % 12) + d.getMinutes() / 60, len: 0.5, w: 7 }, { v: d.getMinutes() / 5, len: 0.78, w: 5 }, { v: d.getSeconds() / 5, len: 0.85, w: 2, col: '#ff4a3a' }] },
+      rpmL: { min: 0, max: 110, a0: -135, a1: 135, major: 10, minor: 5, label: v => (v % 20 === 0 ? String(v) : ''), title: 'PERCENT\nRPM  L', bands: [[96, 110, '#e0302a']], needles: [{ v: eng.nlL }] },
+      rpmR: { min: 0, max: 110, a0: -135, a1: 135, major: 10, minor: 5, label: v => (v % 20 === 0 ? String(v) : ''), title: 'PERCENT\nRPM  R', bands: [[96, 110, '#e0302a']], needles: [{ v: eng.nlR }] },
+      tmpL: { min: 200, max: 1200, a0: -135, a1: 135, major: 200, minor: 100, label: v => String(v / 100), title: 'TEMP\n°C x100  L', bands: [[980, 1200, '#e0302a']], needles: [{ v: eng.egtL }] },
+      tmpR: { min: 200, max: 1200, a0: -135, a1: 135, major: 200, minor: 100, label: v => String(v / 100), title: 'TEMP\n°C x100  R', bands: [[980, 1200, '#e0302a']], needles: [{ v: eng.egtR }] },
+      ffL: { min: 0, max: 20000, a0: -135, a1: 135, major: 5000, minor: 2500, label: v => String(v / 1000), title: 'FUEL FLOW\nPPH  L', window: String(Math.round(ffL / 100) * 100), needles: [{ v: ffL }] },
+      ffR: { min: 0, max: 20000, a0: -135, a1: 135, major: 5000, minor: 2500, label: v => String(v / 1000), title: 'FUEL FLOW\nPPH  R', window: String(Math.round(ffR / 100) * 100), needles: [{ v: ffR }] },
+      nozL: { min: 0, max: 100, a0: -135, a1: 135, major: 20, minor: 10, label: v => String(v), title: 'NOZ POS\n% OPEN  L', needles: [{ v: C.engineOut === 'L' ? 100 : eng.noz }] },
+      nozR: { min: 0, max: 100, a0: -135, a1: 135, major: 20, minor: 10, label: v => String(v), title: 'NOZ POS\n% OPEN  R', needles: [{ v: C.engineOut === 'R' ? 100 : eng.noz }] },
+      fuel: { min: 0, max: 14000, a0: -135, a1: 135, major: 2000, minor: 1000, label: v => String(v / 1000), title: 'INTERNAL\nLBS x1000', bands: [[0, 2000, '#e0302a']], window: String(Math.round(fuel / 10) * 10), needles: [{ v: fuel }] },
+      hyd: { min: 0, max: 4, a0: -135, a1: 135, major: 1, minor: 0.5, label: v => String(v), title: 'HYD\nx1000 PSI', bands: [[0, 1.5, '#e0302a']], needles: [{ v: hydP }] }
     };
+    GAUGE_KEYS.forEach((k, i) => dial(x, (i % 4) * 256, Math.floor(i / 4) * 256, cells[k]));
+    gaugeAtlas.t.needsUpdate = true;
+  }
+
+  // CRT displays: VSD radar (0,0), round TEWS (1,0), HSI (1,1) in 512 px cells.
+  function paintDisplays(frame, now) {
+    if (frame % 2) return;
+    const x = dispAtlas.x, hRad = S.heading * D2R;
+    const rel = p => { const rx = p.x - S.position.x, rz = p.z - S.position.z; return { sx: rx * Math.cos(hRad) + rz * Math.sin(hRad), sy: -rx * Math.sin(hRad) + rz * Math.cos(hRad) }; };
+    // --- VSD: azimuth (-60..60 deg) x range (0..20 NM) B-scope with a sweeping beam
+    x.save(); x.beginPath(); x.rect(0, 0, 512, 512); x.clip();
+    x.fillStyle = '#020a05'; x.fillRect(0, 0, 512, 512);
+    x.strokeStyle = 'rgba(70,255,140,0.28)'; x.lineWidth = 1.5;
+    for (let i = 1; i < 4; i++) { x.beginPath(); x.moveTo(40, 40 + i * 108); x.lineTo(472, 40 + i * 108); x.stroke(); x.beginPath(); x.moveTo(40 + i * 108, 40); x.lineTo(40 + i * 108, 472); x.stroke(); }
+    x.strokeRect(40, 40, 432, 432);
+    const sweep = Math.sin(now * 2.1);                                           // beam: +/-60 deg
+    const bx = 256 + sweep * 216;
+    const gr = x.createLinearGradient(bx - 40, 0, bx, 0); gr.addColorStop(0, 'rgba(70,255,140,0)'); gr.addColorStop(1, 'rgba(70,255,140,0.22)');
+    x.fillStyle = gr; x.fillRect(bx - 40, 40, 40, 432);
+    x.strokeStyle = '#46ff8c'; x.lineWidth = 2; x.beginPath(); x.moveTo(bx, 40); x.lineTo(bx, 472); x.stroke();
+    x.fillStyle = '#46ff8c'; x.font = `22px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'top';
+    x.fillText('RWS  20', 46, 8); x.textAlign = 'right'; x.fillText(C.weapon === 'BOMB' ? 'A/G' : C.weapon === 'AAM4' ? 'TWS' : 'A/A', 466, 8);
+    x.textAlign = 'center'; x.fillText(String(Math.round(S.heading)).padStart(3, '0'), 256, 480);
     for (const e of env.getEnemies()) {
       if (!e.alive) continue;
-      const p = threat(e.pos, 'F', '#4dff91', 1);
-      if (C.lockTarget === e) { x.lineWidth = 2; x.beginPath(); x.moveTo(p.px, p.py - 15); x.lineTo(p.px + 15, p.py); x.lineTo(p.px, p.py + 15); x.lineTo(p.px - 15, p.py); x.closePath(); x.stroke(); }
-    }
-    for (const m of env.missiles) if (m.active && m.enemy) threat(m.mesh.position, 'M', '#ff4d3d', 1.25);
-    mfdL.t.needsUpdate = true;
-  }
-
-  function paintADI() {
-    const { ctx: x, w: s } = mfdC;
-    x.fillStyle = '#020405'; x.fillRect(0, 0, s, s);
-    const cx = s / 2, cy = s * 0.46, R = s * 0.32, ppd = R / 35;
-    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.clip();
-    x.translate(cx, cy); x.rotate(S.bank);
-    const hy = S.pitch / D2R * ppd;
-    x.fillStyle = '#2f86e8'; x.fillRect(-s, hy - s * 2, s * 2, s * 2);
-    x.fillStyle = '#7a4a1c'; x.fillRect(-s, hy, s * 2, s * 2);
-    x.strokeStyle = x.fillStyle = '#ffffff'; x.lineWidth = 3;
-    x.beginPath(); x.moveTo(-s, hy); x.lineTo(s, hy); x.stroke();
-    x.lineWidth = 2; x.font = `16px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'middle';
-    for (let m = -60; m <= 60; m += 10) { if (!m) continue; const y = hy - m * ppd, l = R * 0.3; x.beginPath(); x.moveTo(-l, y); x.lineTo(l, y); x.stroke(); x.fillText(String(Math.abs(m)), l + 4, y); }
-    x.restore();
-    x.strokeStyle = '#d8dde2'; x.lineWidth = 3; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
-    x.lineWidth = 2;
-    for (const a of [-60, -30, -20, -10, 0, 10, 20, 30, 60]) { const r = a * D2R - Math.PI / 2, l = a % 30 === 0 ? 14 : 8; x.beginPath(); x.moveTo(cx + Math.cos(r) * R, cy + Math.sin(r) * R); x.lineTo(cx + Math.cos(r) * (R + l), cy + Math.sin(r) * (R + l)); x.stroke(); }
-    x.fillStyle = '#ffbf3f';
-    const pr = S.bank - Math.PI / 2;
-    x.save(); x.translate(cx + Math.cos(pr) * (R - 3), cy + Math.sin(pr) * (R - 3)); x.rotate(S.bank); x.beginPath(); x.moveTo(0, 0); x.lineTo(-8, 14); x.lineTo(8, 14); x.closePath(); x.fill(); x.restore();
-    x.strokeStyle = '#ffbf3f'; x.lineWidth = 5;
-    x.beginPath(); x.moveTo(cx - R * 0.6, cy); x.lineTo(cx - R * 0.2, cy); x.lineTo(cx - R * 0.1, cy + 10); x.moveTo(cx + R * 0.6, cy); x.lineTo(cx + R * 0.2, cy); x.lineTo(cx + R * 0.1, cy + 10); x.stroke();
-    // heading strip (tactical)
-    const hy0 = s * 0.86, ppd2 = 4;
-    x.save(); x.beginPath(); x.rect(s * 0.15, hy0 - 22, s * 0.7, 40); x.clip();
-    x.strokeStyle = x.fillStyle = '#4dff91'; x.lineWidth = 1.5; x.font = `18px ${FONT}`; x.textAlign = 'center';
-    for (let hd = Math.floor((S.heading - 45) / 5) * 5; hd <= S.heading + 45; hd += 5) {
-      const px = cx + (hd - S.heading) * ppd2, n = ((hd % 360) + 360) % 360;
-      x.beginPath(); x.moveTo(px, hy0 + 8); x.lineTo(px, hy0 + (n % 10 ? 3 : -2)); x.stroke();
-      if (n % 30 === 0) x.fillText(n === 0 ? 'N' : n === 90 ? 'E' : n === 180 ? 'S' : n === 270 ? 'W' : String(n / 10).padStart(2, '0'), px, hy0 - 12);
+      const { sx, sy } = rel(e.pos), d = Math.hypot(sx, sy), az = Math.atan2(sx, -sy) / D2R;
+      if (Math.abs(az) > 60 || d > 20 * 1852) continue;
+      const px = 256 + az / 60 * 216, py = 472 - d / (20 * 1852) * 432;
+      const locked = C.lockTarget === e || (C.multi && C.multi.includes(e) && C.multiState[C.multi.indexOf(e)] === 'LOCK');
+      x.fillStyle = locked ? '#ffd23a' : '#46ff8c'; x.fillRect(px - 7, py - 5, 14, 10);
+      if (C.designated === e) { x.strokeStyle = '#46ff8c'; x.lineWidth = 2; x.strokeRect(px - 13, py - 11, 26, 22); }
     }
     x.restore();
-    osbLegends(x, s, ['ADI', 'TAC', 'HSI', 'NAV', 'MENU'], ['BARO', 'RALT', 'DCLT', 'BRT', 'SWAP']);
-    mfdC.t.needsUpdate = true;
+    // --- TEWS round scope: threat bearings from the RWR picture
+    x.save(); x.translate(512, 0);
+    x.fillStyle = '#04100a'; x.fillRect(0, 0, 512, 512);
+    const cx = 256, cy = 256, R = 230;
+    x.strokeStyle = 'rgba(70,255,140,0.4)'; x.lineWidth = 2;
+    for (const f of [0.33, 0.66, 1]) { x.beginPath(); x.arc(cx, cy, R * f, 0, Math.PI * 2); x.stroke(); }
+    for (let a = 0; a < 360; a += 30) { const r = a * D2R; x.beginPath(); x.moveTo(cx + Math.sin(r) * R * 0.92, cy - Math.cos(r) * R * 0.92); x.lineTo(cx + Math.sin(r) * R, cy - Math.cos(r) * R); x.stroke(); }
+    x.fillStyle = '#46ff8c'; x.beginPath(); x.moveTo(cx, cy - 12); x.lineTo(cx + 9, cy + 10); x.lineTo(cx - 9, cy + 10); x.closePath(); x.fill();
+    x.font = `bold 34px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const r of C.rwr || []) {
+      const rr = r.kind === 'msl' ? R * 0.3 : r.kind === 'lock' ? R * 0.55 : R * 0.82;
+      const px = cx + Math.sin(r.b) * rr, py = cy - Math.cos(r.b) * rr;
+      const flash = r.kind === 'msl' || r.kind === 'lock' ? Math.floor(now * 6) % 2 : 1;
+      x.fillStyle = r.kind === 'msl' ? '#ff4a3a' : r.kind === 'lock' ? '#ffb020' : '#46ff8c';
+      if (flash) x.fillText(r.kind === 'msl' ? 'M' : '29', px, py);
+      if (r.kind !== 'paint') { x.strokeStyle = x.fillStyle; x.lineWidth = 3; x.beginPath(); x.arc(px, py, 26, 0, Math.PI * 2); x.stroke(); }
+    }
+    x.restore();
+    // --- HSI: rotating compass rose, lubber line, bearing bug to the target
+    x.save(); x.translate(512, 512);
+    x.fillStyle = '#16191c'; x.fillRect(0, 0, 512, 512);
+    x.save(); x.translate(256, 256); x.rotate(-hRad);
+    x.strokeStyle = x.fillStyle = '#eef2f4'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (let a = 0; a < 360; a += 5) {
+      const r = a * D2R, l = a % 30 === 0 ? 26 : a % 10 === 0 ? 16 : 9;
+      x.lineWidth = a % 30 === 0 ? 4 : 2;
+      x.beginPath(); x.moveTo(Math.sin(r) * 230, -Math.cos(r) * 230); x.lineTo(Math.sin(r) * (230 - l), -Math.cos(r) * (230 - l)); x.stroke();
+      if (a % 30 === 0) {
+        x.save(); x.translate(Math.sin(r) * 186, -Math.cos(r) * 186); x.rotate(r);
+        x.font = `bold ${a % 90 === 0 ? 40 : 30}px ${STENCIL}`;
+        x.fillText(a === 0 ? 'N' : a === 90 ? 'E' : a === 180 ? 'S' : a === 270 ? 'W' : String(a / 10), 0, 0); x.restore();
+      }
+    }
+    // bearing bug: designated air target, else the designated / nearest surface target
+    const tgt = (C.designated && C.designated.alive && C.designated.pos) || (C.groundTgt && C.groundTgt.pos) || null;
+    if (tgt) {
+      const b = Math.atan2(tgt.x - S.position.x, -(tgt.z - S.position.z));
+      x.fillStyle = '#ff4a3a'; x.save(); x.rotate(b); x.fillRect(-10, -232, 20, 26); x.restore();
+    }
+    x.restore();
+    x.fillStyle = '#ff9a1a'; x.beginPath(); x.moveTo(256, 30); x.lineTo(246, 52); x.lineTo(266, 52); x.closePath(); x.fill();   // lubber line
+    x.strokeStyle = '#eef2f4'; x.lineWidth = 4; x.beginPath(); x.moveTo(256, 200); x.lineTo(256, 312); x.moveTo(216, 256); x.lineTo(296, 256); x.stroke();
+    x.font = `bold 26px ${FONT}`; x.fillStyle = '#eef2f4'; x.textAlign = 'left'; x.textBaseline = 'top';
+    const miles = tgt ? Math.hypot(tgt.x - S.position.x, tgt.z - S.position.z) / 1852 : 0;
+    x.fillText(String(Math.round(miles)).padStart(4, '0'), 14, 10); x.font = `16px ${FONT}`; x.fillText('MILES', 14, 40);
+    x.textAlign = 'right'; x.font = `bold 26px ${FONT}`; x.fillText(String(Math.round(S.heading)).padStart(3, '0'), 498, 10); x.font = `16px ${FONT}`; x.fillText('COURSE', 498, 40);
+    x.restore();
+    dispAtlas.t.needsUpdate = true;
   }
 
-  function paintStores() {
-    const key = [C.missiles, C.missileReload > 0, C.ammo, C.dead, Math.round(eng.nlL), Math.round(eng.egtL / 5), S.afterburner > 0.3].join(',');
-    if (!changed('stores', key)) return;
-    const { ctx: x, w: s } = mfdR;
-    x.fillStyle = '#01040a'; x.fillRect(0, 0, s, s);
-    osbLegends(x, s, ['STORES', 'ENG', 'FUEL', 'A/G', 'A/A'], ['JETT', 'SEL', 'MODE', 'DCLT', 'SWAP'], 'rgba(63,216,255,0.8)');
-    const cyan = '#3fd8ff';
-    // top-down airframe with stations (nose up)
-    const cx = s * 0.5, cy = s * 0.36, sc = s * 0.17;
-    const P = [[0, -1], [0.1, -0.55], [0.2, -0.2], [0.95, 0.3], [0.95, 0.42], [0.25, 0.45], [0.55, 0.8], [0.55, 0.92], [0.15, 0.92], [0.1, 1]];
-    x.strokeStyle = cyan; x.lineWidth = 2;
-    x.beginPath(); P.forEach(([px, py], i) => i ? x.lineTo(cx + px * sc, cy + py * sc) : x.moveTo(cx + px * sc, cy + py * sc));
-    for (let i = P.length - 1; i >= 0; i--) x.lineTo(cx - P[i][0] * sc, cy + P[i][1] * sc); x.closePath(); x.stroke();
-    [[-0.62, 0.3], [0.62, 0.3], [-0.45, 0.32], [0.45, 0.32], [-0.22, 0.05], [0.22, 0.05]].forEach(([px, py], i) => {
-      const on = i < C.missiles && C.missileReload <= 0;
-      x.fillStyle = cyan; x.beginPath(); x.rect(cx + px * sc - 4, cy + py * sc - 9, 8, 18); on ? x.fill() : x.stroke();
-    });
-    x.font = `20px ${FONT}`; x.textBaseline = 'middle';
-    const live = !C.dead && (C.missiles > 0 || C.ammo > 0);
-    x.textAlign = 'left'; x.fillStyle = live ? '#4dff91' : '#ffbf3f'; x.fillText(live ? 'MASS LIVE' : 'MASS SAFE', 16, s * 0.62);
-    x.textAlign = 'right'; x.fillStyle = cyan; x.fillText('GUN ' + C.ammo, s - 16, s * 0.62);
-    // engine NL / EGT bars
-    const bars = [['NL L', eng.nlL / 110], ['NL R', eng.nlR / 110], ['EGT L', eng.egtL / 1100], ['EGT R', eng.egtR / 1100]];
-    bars.forEach(([lab, v], i) => {
-      const y = s * 0.70 + i * 22, bx = 96, bw = s - 120;
-      x.textAlign = 'left'; x.fillStyle = cyan; x.font = `16px ${FONT}`; x.fillText(lab, 16, y);
-      x.strokeStyle = 'rgba(63,216,255,0.5)'; x.strokeRect(bx, y - 6, bw, 12);
-      x.fillStyle = (S.afterburner > 0.3 && i < 2) || v > 0.86 ? '#ffbf3f' : cyan; x.fillRect(bx, y - 6, bw * clamp(v, 0, 1), 12);
-    });
-    mfdR.t.needsUpdate = true;
-  }
-
-  const TILES = [['MASTER\nCAUTION', 'amber'], ['FIRE L', 'red'], ['FIRE R', 'red'], ['LOW FUEL', 'amber'], ['A/P', 'green'], ['IFF', 'green'], ['RWR', 'amber'], ['HYD', 'amber']];
-  const TILE_COL = { amber: ['#ffb020', '#3a2706'], red: ['#ff3b30', '#3a0b08'], green: ['#3dff8a', '#08301a'] };
-  function annunciatorState(now) {
-    const flash = Math.floor(now * 2.5) % 2 === 0;
-    const caution = !C.dead && (C.health < 100 || C.missileWarning > 0 || S.alpha > env.STALL_AOA * 0.9);
+  // Caution / warning matrix: lit by fuel, G, battle damage and system state.
+  function cautionState(now) {
+    const dmg = 100 - C.health, low = (S.fuel ?? 99999) < 2000, flash = Math.floor(now * 3) % 2 === 0;
     return {
-      'MASTER\nCAUTION': caution && flash,
-      'FIRE L': !!C.engineFire && C.engineOut === 'L' && flash, 'FIRE R': !!C.engineFire && C.engineOut === 'R' && flash,
-      'LOW FUEL': false,                              // no fuel model yet: tile stays dark
-      'A/P': false,                                   // no autopilot: tile stays dark
-      'IFF': !C.dead,
-      'RWR': C.missileWarning > 0 || !!(env.getEnemies().some(e => e.alive && e.pos.distanceTo(S.position) < 6000)),
-      'HYD': !!C.hydraulic && (Math.floor(now * 7.3) % 5 !== 0)            // leaking: flickering caution
+      'AVIONICS\nFAULT': dmg >= 60, 'ELEC SYS': dmg >= 85, 'EQUIP\nHOT': !!C.gunOverheat, 'L GEN': C.engineOut === 'L', 'R GEN': C.engineOut === 'R',
+      'UT HYD': !!C.hydraulic, 'FL HYD': !!C.hydraulic && dmg >= 50, 'OXYGEN': (S.gStrain || 0) > 0.72, 'L FUEL\nLOW': low, 'R FUEL\nLOW': low,
+      'FWD\nFUEL LOW': low, 'AFT\nFUEL LOW': low, 'OVERHEAT': !!C.engineFire && flash, 'OVER G': S.gLoad > 8.6 || (S.gStrain || 0) > 0.85,
+      'LOW\nALT': (S.radalt ?? 999) < 150 && !C.dead, 'STORES\nCONFIG': C.weapon === 'BOMB' && C.bombReload > 0, 'IFF': C.dead,
+      'AIR DATA\nCOMPUTER': !!S.stalled, 'L FUEL\nPRESS': C.engineOut === 'L', 'R FUEL\nPRESS': C.engineOut === 'R'
     };
   }
-  function paintAnnunciator(now) {
-    const st = annunciatorState(now);
-    if (!changed('annun', JSON.stringify(st))) return;
-    const { ctx: x, w, h } = annun;
-    x.fillStyle = '#0b0d0f'; x.fillRect(0, 0, w, h);
-    TILES.forEach(([lab, colKey], i) => {
-      const cw = w / 4, ch = h / 2, tx = (i % 4) * cw + 6, ty = Math.floor(i / 4) * ch + 6, tw = cw - 12, th = ch - 12;
-      const [lit, dim] = TILE_COL[colKey], on = st[lab];
-      x.fillStyle = on ? lit : dim; x.fillRect(tx, ty, tw, th);
-      if (on) { const g = x.createRadialGradient(tx + tw / 2, ty + th / 2, 4, tx + tw / 2, ty + th / 2, tw * 0.7); g.addColorStop(0, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(tx, ty, tw, th); }
-      x.fillStyle = on ? '#1a1200' : 'rgba(255,255,255,0.22)';
-      x.font = `bold 24px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  let cautionLit = 0;
+  function paintCaution(now) {
+    const st = cautionState(now);
+    const key = CAUTIONS.map(c => (st[c] ? 1 : 0)).join('');
+    cautionLit = key.split('1').length - 1;
+    if (!changed('caution', key)) return;
+    const { ctx: x, w, h } = caution;
+    x.fillStyle = '#121416'; x.fillRect(0, 0, w, h);
+    const cols = 3, rows = Math.ceil(CAUTIONS.length / cols), cw = w / cols, ch = h / rows;
+    CAUTIONS.forEach((lab, i) => {
+      const tx = (i % cols) * cw + 4, ty = Math.floor(i / cols) * ch + 4, tw = cw - 8, th = ch - 8, on = !!st[lab];
+      x.fillStyle = on ? '#ffa31a' : '#2a1a0c'; x.fillRect(tx, ty, tw, th);
+      if (on) { const g = x.createRadialGradient(tx + tw / 2, ty + th / 2, 3, tx + tw / 2, ty + th / 2, tw * 0.7); g.addColorStop(0, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(tx, ty, tw, th); }
+      x.fillStyle = on ? '#1a0e00' : 'rgba(255,170,80,0.42)';
+      x.font = `bold 15px ${STENCIL}`; x.textAlign = 'center'; x.textBaseline = 'middle';
       const lines = lab.split('\n');
-      lines.forEach((l, k) => x.fillText(l, tx + tw / 2, ty + th / 2 + (k - (lines.length - 1) / 2) * 26));
+      lines.forEach((l, k) => x.fillText(l, tx + tw / 2, ty + th / 2 + (k - (lines.length - 1) / 2) * 16));
     });
-    annun.t.needsUpdate = true;
-    cautionMat.emissiveIntensity = st['MASTER\nCAUTION'] ? 2.2 : 0.0;
+    caution.t.needsUpdate = true;
+  }
+  // NVG-compatible lighting: unlit instrument faces, CRTs and lamps are dimmed
+  // while the goggles are on so the tube gain does not bloom them to white.
+  let nvgDim = 1;
+  function setNVG(on) {
+    nvgDim = on ? 0.16 : 1;
+    for (const m of [gaugeMat, dispMat, ufcMat, cautionMat2, adiMat]) m.color.setScalar(on ? 0.16 : 1);
+    knobMat.color.set(on ? 0x39424a : 0xa9bccb); toggleMat.color.set(on ? 0x555a5f : 0xd6dadf);
+    glassSheen.visible = !on;                         // env-map glints would bloom under the tube gain
+    adiMat.emissiveIntensity = on ? 0.06 : 0.45;
+  }
+  function updateLamps(now) {
+    const flash = Math.floor(now * 2.5) % 2 === 0, set = (m, on, k = 2.4) => { m.emissiveIntensity = on ? k * nvgDim : 0; };
+    const masterCaution = !C.dead && (cautionLit > 0 || C.health < 100 || C.missileWarning > 0);
+    set(lamps.caution, masterCaution && flash); set(lamps.aisam, (C.rwrLevel || 0) >= 2 && flash);
+    set(lamps.ag, C.weapon === 'BOMB', 1.6); set(lamps.adi, !C.dead, 1.6); set(lamps.vi, false);
+    const droop = Math.max(smooth(-S.speed * 1.94384, -260, -170), smooth(S.alpha, 0.12, 0.24));
+    set(lamps.flap1, droop > 0.3, 1.6); set(lamps.flap2, droop > 0.3, 1.6);
+    set(lamps.nose, false); set(lamps.left, false); set(lamps.right, false);                 // gear up and locked in flight
+    set(lamps.fireL, !!C.engineFire && C.engineOut === 'L' && flash, 3); set(lamps.fireR, !!C.engineFire && C.engineOut === 'R' && flash, 3);
+    adiOuter.rotation.z = -S.bank;                       // ball rolls about the view axis ...
+    adiInner.rotation.x = S.pitch;                       // ... and pitches inside the roll
   }
 
   /* =================================================================
@@ -763,12 +1003,12 @@ export function createCockpit3D(THREE, env) {
 
     updateEngines(dt);
     updateHOTAS(dt);
-    paintUFC(now); paintTEWS(frame); paintADI(); paintStores(); paintAnnunciator(now);
+    paintUFC(now); paintGauges(frame); paintDisplays(frame, now); paintCaution(now); updateLamps(now);
   }
 
   const _w = new THREE.Vector3();
   return {
-    rig, setActive, update, missionClock,
+    rig, setActive, update, missionClock, setNVG,
     get active() { return active; },
     get hotas() {
       return { pitch: +(hotas.pitch / D2R).toFixed(1), roll: +(hotas.roll / D2R).toFixed(1), trig: +hotas.trig.toFixed(2), pickle: +hotas.pickle.toFixed(2),
