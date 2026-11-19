@@ -307,6 +307,46 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     screenshots of x3.0 gold / x4.0 / x5.0 crimson tiers, refill flashes and
     kill ring in chase + cockpit; zero page console errors (headless wingtest,
     cockpit, menu).
+- [x] **Adaptive 3-layer combat soundtrack + reactive AWACS / enemy comms**
+  *(build `s32a`, `src/audio.js` music section, new `src/radio.js`, `src/hud.js`)*
+  - 136 BPM D-minor step sequencer, lookahead-scheduled on `ctx.currentTime`
+    (25 ms timer + every audio frame top up 0.3 s), 8-bar Dm | Dm | Bb | Bb |
+    C | C | A | A loop (bass D2 -> Bb1 -> C2 -> A1).
+    L1 PATROL (airborne): pulsing 8th sub-bass, dark detuned stereo saw pad
+    through a sweeping low-pass, sonar ping. L2 FURBALL (bandit < 3 km, leaves
+    > 3.4 km, or combo >= x1.5): kick + gated snare, 16th saw arp bass with
+    filter pluck. L3 ACE (combo >= x3.0): detuned brass lead (saws + sub
+    square, filter swell, per-note delayed vibrato, dotted-8th delay) + 16th
+    closed hats. Layers crossfade `setTargetAtTime(0.6 s)`, 4 s hold before
+    stepping down.
+  - Bus: layers -> musicGain (K toggle) -> musicDuck (0.65 while a radio
+    transmission is keyed) -> music bus 0.62 -> master -> G-LOC tunnel, so it
+    follows volume / mute and muffles with blackout.
+  - `K` and a `[ MUSIC: ON / OFF ] K` button on the shared briefing / pause
+    panel (default ON every session; not persisted); K listed in the keybind
+    matrix. `__audioDebug().music` reports layer, live layer gains, bar /
+    step, notes scheduled, duck, lookahead.
+  - Radio (`src/radio.js`): priority queue (4 deep, stale entries expire),
+    one transmission at a time, 3.5 s between key-ups + 1 s open air after
+    each, per-line cooldowns; VHF squelch (high-passed static + 1,850 Hz
+    roger beep) on key-up and key-down. AWACS OVERLORD (emerald): launch
+    picture call, new-wave call, "Good kill! Keep the pressure on!", "Watch
+    that altitude, Eagle!" (< 250 ft descending), BRIDGE THREAD line. Enemy
+    (crimson, only while bandits are alive): WING RIP Mayday / "ripped Lead's
+    wing" lines, 3-kill chain or x2.5 panic lines (once per combo chain),
+    4AAM SWEEP "scatter".
+  - HUD: top-center subtitle box (center ~9 %), 1 px translucent frame, keyed
+    mic bar, << CALLSIGN >> badge, typed text (42 cps) with caret, fade in /
+    out; upper center banners are pushed below it.
+  - Not wired (no backing system yet): Ace Boss phase / arrival line, bomber
+    and base-under-attack alerts. Layer 3 currently triggers from combo only.
+  - Verified in the pane: launch -> L2 at 2.6 km with AWACS picture call
+    (duck 0.65); bandits pushed to 15 km -> L1; bandit at 2 km -> L2; combo
+    x3 -> L3 (gains 0.9 / 0.99 / 0.88); K toggles bus 1 -> 0 and the button
+    label; priority ordering (WING RIP line ahead of an earlier BRIDGE line);
+    3 kills -> "Good kill" then BANDIT LEAD panic; enemy box + center
+    callouts on screen together without overlap; zero page console errors
+    (headless wingtest, cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

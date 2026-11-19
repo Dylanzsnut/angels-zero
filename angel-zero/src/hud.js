@@ -1222,7 +1222,7 @@ export function createHUD(THREE, A) {
   function drawCenterBanners(ctx, g) {
     const now = performance.now();
     const cx = g ? g.cx : HW / 2;
-    const upperY = g ? Math.max(30, g.minY - 24) : HH * 0.21;
+    const upperY = Math.max(g ? Math.max(30, g.minY - 24) : HH * 0.21, radioBottom ? radioBottom + 20 : 0);
     const lowerY = g ? g.cy + g.boxH * 0.27 : HH * 0.75;
 
     if (alertOn()) {
@@ -1426,6 +1426,7 @@ export function createHUD(THREE, A) {
     }
 
     if (A.getMode && A.getMode() === 'EJECT') {
+      drawRadio(hctx);
       drawTopLeft(hctx);
       drawComms(hctx, HH * 0.80);
       return;
@@ -1446,6 +1447,7 @@ export function createHUD(THREE, A) {
     }
 
     if (!C.dead) drawTargets(hctx);
+    drawRadio(hctx);
     drawTopLeft(hctx);
     if (!C.dead) drawKillFlash(hctx, g);
     drawSquareRadar(hctx);
@@ -1496,6 +1498,61 @@ export function createHUD(THREE, A) {
       ctx.font = f(sz, true); labelText(ctx, main, x0, 1, s.color, 9);
       if (rew) { ctx.font = f(Math.round(sz * 0.68), true); labelText(ctx, rew, x0 + wMain, 2, s.refill ? REFILL : GB, 6); }
       ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  // Radio subtitle box (top-center, centre at ~9 % of the viewport): 1 px
+  // translucent frame, << CALLSIGN >> badge (AWACS emerald / hostile crimson),
+  // typed text with a caret, 0.2 s fade-in / 0.35 s fade-out. Upper center
+  // banners are pushed below it while it is up.
+  let radioBottom = 0;
+  const RADIO_ALLY = '#58ff9a', RADIO_HOSTILE = '#ff5566';
+  function wrapLines(ctx, text, maxW) {
+    const words = text.split(' '), lines = [];
+    let line = '';
+    for (const w of words) {
+      const t = line ? line + ' ' + w : w;
+      if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+  function drawRadio(ctx) {
+    radioBottom = 0;
+    const r = C.radio;
+    if (!r) return;
+    const col = r.side === 'enemy' ? RADIO_HOSTILE : RADIO_ALLY;
+    const a = clamp(r.age / 0.2, 0, 1) * (1 - (r.fade || 0));
+    if (a <= 0.01) return;
+    const badge = `<< ${r.call} >>`;
+    const boxW = Math.max(Math.min(360, HW - 32), Math.min(640, HW - 480)), padX = 14;   // clear of the top-left / top-right clusters
+    ctx.save();
+    ctx.font = f(12, true);
+    const bw = ctx.measureText(badge).width;
+    ctx.font = f(16, false);
+    const lines = wrapLines(ctx, r.text, boxW - padX * 2 - bw - 14);
+    const boxH = 16 + lines.length * 20;
+    const cx = HW / 2, cy = Math.max(HH * 0.09, boxH / 2 + 10), x0 = cx - boxW / 2, y0 = cy - boxH / 2;
+    radioBottom = y0 + boxH;
+    ctx.globalAlpha = a;
+    noGlow(ctx);
+    ctx.fillStyle = 'rgba(0, 10, 8, 0.52)'; ctx.fillRect(x0, y0, boxW, boxH);
+    ctx.strokeStyle = r.side === 'enemy' ? 'rgba(255, 85, 102, 0.45)' : 'rgba(88, 255, 154, 0.4)'; ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
+    glow(ctx, col, 4); ctx.fillRect(x0, y0, 3, boxH);                    // keyed-mic bar
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    ctx.font = f(12, true); labelText(ctx, badge, x0 + padX, y0 + 10, col, 5);
+    // Typed reveal at the transmission's characters-per-second.
+    let shown = Math.floor(r.text.length * clamp(r.age / Math.max(0.01, r.typeT), 0, 1));
+    ctx.font = f(16, false);
+    const tx = x0 + padX + bw + 14;
+    lines.forEach((ln, i) => {
+      const part = ln.slice(0, Math.max(0, shown)); shown -= ln.length + 1;
+      if (part) labelText(ctx, part, tx, y0 + 7 + i * 20, '#e6fff0', 3);
+      if (shown < 0 && shown > -ln.length - 2 && Math.floor(performance.now() / 260) % 2) {   // caret while typing
+        const cw = ctx.measureText(part).width; glow(ctx, col, 3); ctx.fillRect(tx + cw + 2, y0 + 9 + i * 20, 7, 14);
+      }
     });
     ctx.restore();
   }

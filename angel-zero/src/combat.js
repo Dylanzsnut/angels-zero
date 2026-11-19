@@ -520,6 +520,7 @@ export function createCombat(THREE, env) {
       e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
     }
     say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
+    if (env.onRadio) env.onRadio('WAVE', { wave: C.wave });
   }
 
   const _t = new THREE.Vector3(), _a = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
@@ -871,6 +872,7 @@ export function createCombat(THREE, env) {
     awardStyle(!byMissile && !how ? 'GUNS_KILL' : 'KILL');
     if (how === 'AAM4') noteSweepKill();
     C.killFlash = { t: performance.now(), mult: C.comboMult };
+    if (env.onRadio) env.onRadio('KILL', { how });
   }
 
   /* ================================== style combo multiplier + style feed */
@@ -900,6 +902,7 @@ export function createCombat(THREE, env) {
     C.styleCounts[kind] = (C.styleCounts[kind] || 0) + 1;
     if (s.mult) { C.comboMult = Math.min(COMBO_MAX, +(C.comboMult + s.mult).toFixed(2)); C.comboTimer = COMBO_T; }
     if (s.pts) C.score += s.pts;
+    if (env.onRadio && kind !== 'KILL' && kind !== 'GUNS_KILL') env.onRadio(kind, { sub });
     const nowMs = performance.now();
     if (!C.refillFlash) C.refillFlash = { gun: 0, flr: 0 };
     let refill = '', vent = false, flr = false;

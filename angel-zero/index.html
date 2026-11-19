@@ -94,6 +94,8 @@
   #menu button { font-family:inherit; cursor:pointer; }
   #menu .mute { padding:5px 10px; background:rgba(4,20,26,.7); color:#c8ffe3; border:1px solid rgba(82,255,156,.42); font-size:12px; font-weight:600; letter-spacing:2px; }
   #menu .mute:hover { border-color:#52ff9c; }
+  #menu .music-btn { color:#52ff9c; box-shadow:0 0 8px rgba(82,255,156,.22) inset; }
+  #menu .music-btn.off { color:#7f9a8c; border-color:rgba(127,154,140,.42); box-shadow:none; }
   #menu .btns { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-left:auto; }
   #menu .secondary-btn { display:none; padding:10px 16px; font-size:14px; font-weight:700; letter-spacing:2.4px; color:#ffd27d; background:rgba(40,24,4,.58); border:1px solid rgba(255,184,56,.6); }
   #menu .secondary-btn.show { display:inline-block; }
@@ -213,6 +215,7 @@
             <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Missile Seeker / Cycle Target</span></div>
             <div class="bind"><span class="k"><kbd>Z</kbd></span><span class="a">ALQ-135 ECM Jammer</span></div>
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
+            <div class="bind"><span class="k"><kbd>K</kbd></span><span class="a">Combat music on / off</span></div>
             <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
             <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Deploy flares</span></div>
             <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
@@ -229,6 +232,7 @@
           <input type="range" id="vol" min="0" max="100" step="1" />
           <span id="volVal">70</span>
           <button class="mute" id="muteBtn" type="button">MUTE [M]</button>
+          <button class="mute music-btn" id="musicBtn" type="button" aria-pressed="true">[ MUSIC: ON ] K</button>
         </div>
         <div class="btns">
           <button class="secondary-btn" id="restartBtn" type="button">[ RESTART MISSION ]</button>
@@ -295,18 +299,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s31b';
-import { createHUD } from './src/hud.js?v=s31b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s31b';
-import { createCombat } from './src/combat.js?v=s31b';
-import { createEjection } from './src/eject.js?v=s31b';
-import { createAudio } from './src/audio.js?v=s31b';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s31b';
-import { createCanopyFX } from './src/canopy.js?v=s31b';
-import { createNVG } from './src/nvg.js?v=s31b';
-import { createWorld, WORLD } from './src/world.js?v=s31b';
-import { createSurfaces } from './src/surfaces.js?v=s31b';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s31b';
+import { createVFX } from './src/vfx.js?v=s32a';
+import { createHUD } from './src/hud.js?v=s32a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s32a';
+import { createCombat } from './src/combat.js?v=s32a';
+import { createEjection } from './src/eject.js?v=s32a';
+import { createAudio } from './src/audio.js?v=s32a';
+import { createRadio } from './src/radio.js?v=s32a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s32a';
+import { createCanopyFX } from './src/canopy.js?v=s32a';
+import { createNVG } from './src/nvg.js?v=s32a';
+import { createWorld, WORLD } from './src/world.js?v=s32a';
+import { createSurfaces } from './src/surfaces.js?v=s32a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s32a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -696,6 +701,7 @@ const previewRowEl = document.getElementById('previewRow');
 const camOrbitBtn = document.getElementById('camOrbitBtn');
 const camCockpitBtn = document.getElementById('camCockpitBtn');
 const volSlider = document.getElementById('vol'), volVal = document.getElementById('volVal'), muteBtn = document.getElementById('muteBtn');
+const musicBtn = document.getElementById('musicBtn');
 
 let supportsDisplayTransition;
 function canTransitionDisplay() {
@@ -737,6 +743,15 @@ function syncAudioUI() {
   volVal.textContent = volSlider.value;
   muteBtn.textContent = audio.muted ? 'UNMUTE [M]' : 'MUTE [M]';
   muteBtn.setAttribute('aria-pressed', audio.muted ? 'true' : 'false');
+  musicBtn.textContent = `[ MUSIC: ${audio.musicOn ? 'ON' : 'OFF'} ] K`;
+  musicBtn.setAttribute('aria-pressed', audio.musicOn ? 'true' : 'false');
+  musicBtn.classList.toggle('off', !audio.musicOn);
+}
+// K / [ MUSIC ] button: adaptive soundtrack on/off (defaults ON every session).
+function toggleMusic() {
+  const on = audio.toggleMusic();
+  syncAudioUI();
+  if (appMode === 'PLAY') combatSys.say(on ? 'MUSIC ON' : 'MUSIC OFF', 1.0, '#52ff9c');
 }
 function setMenuPreview(cockpitOn) {
   menuPreviewCockpit = !!cockpitOn;
@@ -775,6 +790,7 @@ function launchSortie() {
   setView(Q.has('cockpit') || menuPreviewCockpit);
   hideMenu();
   combatSys.say('ALPHA 1, CLEARED HOT — SPLASH THE BANDITS', 3);
+  radioSys.reset(); radioSys.event('LAUNCH');
 }
 function pauseSim() {
   if (appMode !== 'PLAY') return;
@@ -802,6 +818,7 @@ function restartMission() {
   combatSys.update(4.1, 0, { playerActive: false, firing: false });
   resumeSim();
   combatSys.say('MISSION RESTARTED — WEAPONS FREE', 2.4);
+  radioSys.reset(); radioSys.event('LAUNCH');
 }
 launchBtn.addEventListener('click', e => { e.stopPropagation(); if (appMode === 'MENU') launchSortie(); else resumeSim(); });
 restartBtn.addEventListener('click', e => { e.stopPropagation(); restartMission(); });
@@ -810,6 +827,7 @@ camCockpitBtn.addEventListener('click', e => { e.stopPropagation(); setMenuPrevi
 hBadge.addEventListener('click', e => { e.stopPropagation(); pauseSim(); });
 volSlider.addEventListener('input', () => { audio.setVolume(Number(volSlider.value) / 100); syncAudioUI(); });
 muteBtn.addEventListener('click', e => { e.stopPropagation(); audio.toggleMute(); syncAudioUI(); });
+musicBtn.addEventListener('click', e => { e.stopPropagation(); toggleMusic(); });
 for (const el of [menuEl, hBadge]) el.addEventListener('mousedown', e => e.stopPropagation());
 
 addEventListener('mousemove', e => {
@@ -820,11 +838,12 @@ addEventListener('mousemove', e => {
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (appMode === 'MENU' || appMode === 'PAUSED') {
-    if (k === 'enter' && !['restartBtn', 'camOrbitBtn', 'camCockpitBtn', 'muteBtn'].includes(document.activeElement?.id)) {
+    if (k === 'enter' && !['restartBtn', 'camOrbitBtn', 'camCockpitBtn', 'muteBtn', 'musicBtn'].includes(document.activeElement?.id)) {
       e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim();
     }
     else if ((k === 'h' || k === 'escape') && appMode === 'PAUSED' && !e.repeat) resumeSim();
     else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
+    else if (k === 'k' && !e.repeat) toggleMusic();
     if (e.code === 'Space') e.preventDefault();
     return;
   }
@@ -853,6 +872,7 @@ addEventListener('keydown', e => {
   if ((k === 'x' || k === 'g') && !e.repeat) combatSys.dispenseFlares();
   if (k === 'c' && !e.repeat) combatSys.designateInSight();
   if (k === 'n' && !e.repeat) setNVG(!nvg.active);
+  if (k === 'k' && !e.repeat) toggleMusic();
   if (k === 'q' && !e.repeat) startRoll(-1);
   if (k === 'e' && !e.repeat) triggerEject('manual');
   if (k === 'backspace' && flightMode === 'FLY') { e.preventDefault(); resetAircraft(); }
@@ -1221,6 +1241,7 @@ if (DEBUG) window.__dbgInput = (nx, ny, k = {}) => { mouse.nx = nx; mouse.ny = n
 // debug: advance the sim + audio mix n frames (for checks in a throttled / hidden tab)
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
+  music: audio.music, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 function updateAudio() {
@@ -1242,8 +1263,15 @@ function updateAudio() {
     rain: weather.rainHere,
     gLoad: flightMode === 'FLY' ? state.gLoad : 1, aoa: flightMode === 'FLY' ? state.alpha * 180 / Math.PI : 0,
     gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72,
-    kts: state.speed * 1.94384
+    kts: state.speed * 1.94384,
+    music: { airborne: flightMode === 'FLY', banditDist: nearestBandit(), combo: combat.comboMult || 1 }
   });
+}
+// Range (m) to the closest live bandit, for the music intensity (furball < 3 km).
+function nearestBandit() {
+  let d = Infinity;
+  for (const e of combatSys.enemies) if (e.alive) d = Math.min(d, e.pos.distanceTo(state.position));
+  return d;
 }
 // Loudest falling bomb: level by distance to the listener, fall = fraction of its time of fall.
 function bombWhistle() {
@@ -1288,11 +1316,15 @@ function setNVG(on, silent) {
   atmosphere.update(0, vfx.mist, nvg.active);          // preset fill light x2.4 while on; exact preset when off
   if (!silent) { audio.nvg(nvg.active); combatSys.say(nvg.active ? 'NVG ON — AN/AVS-9' : 'NVG OFF', 1.0, '#52ff9c'); }
 }
-const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight,
+// Reactive AWACS / enemy radio comms (src/radio.js), fed by combat events.
+let radioSys = null;
+function onRadio(kind, d) { if (radioSys) radioSys.event(kind, d); }
+const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio,
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx });
 const missiles = combatSys.missiles;
+radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
   fx: { explosion: combatSys.explosion, splash: combatSys.splash, emitFire: combatSys.emitFire, emitSmoke: combatSys.emitSmoke } });
 /* ---- time of day: presets, randomised every sortie, briefing selector ---- */
@@ -1654,6 +1686,7 @@ function stepSim(dt) {
   if (DEBUG_HOLD) for (const k of DEBUG_HOLD) keys[k] = true;   // test hook: ?hold=s,a,...
   if (flightMode === 'FLY') updatePhysics(dt);
   combatSys.update(dt, simTime, { playerActive: flightMode === 'FLY', firing: keys.fire || DEBUG_FIRE });
+  radioSys.update(dt, flightMode === 'FLY');
   if (flightMode === 'EJECT' && eject.update(dt)) finishEject();
 }
 function animate() {
