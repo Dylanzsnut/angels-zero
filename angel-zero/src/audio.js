@@ -167,6 +167,14 @@ export function createAudio() {
     N.rain.connect(N.rainBP).connect(N.rainGain).connect(cockpitLP);
     N.rainLow = loopNoise(brown); N.rainLowLP = filt('lowpass', 380, 0.7); N.rainLowGain = gain(0);
     N.rainLow.connect(N.rainLowLP).connect(N.rainLowGain).connect(master);
+    // Canopy rain layer (inside the canopy, so it skips the cockpit low-pass): a bus of
+    // acrylic droplet taps (scheduled micro-bursts, see canopyRain()) + a speed-driven
+    // high-velocity rain wash. Full in the cockpit, -65 % in chase view.
+    N.canopyBus = gain(0); N.canopyBus.connect(master);
+    N.canopyTapBus = gain(1); N.canopyTapBus.connect(N.canopyBus);
+    N.canopyHiss = loopNoise(white); N.canopyHissBP = filt('bandpass', 2200, 1.1); N.canopyHissGain = gain(0);
+    N.canopyHiss.connect(N.canopyHissBP).connect(N.canopyHissGain).connect(N.canopyBus);
+    N.canopyNext = 0; N.canopyTaps = 0;
 
     // Twin F100-PW-220 core: detuned saw + triangle (82 / 84.5 Hz idle -> ~165 Hz MIL),
     // compressor whine (1.4-2.6 kHz sine), sub-bass 55 Hz afterburner rumble.
@@ -837,6 +845,44 @@ export function createAudio() {
     n.connect(bp).connect(ng).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 0.07);
   }
 
+  /* ------------------------------------------- canopy rain-impact layer */
+  // Active while rain > 0 or in cloud > 0.35. Droplet patter: randomised 4-12 ms
+  // resonant band-pass bursts (2.0-5.2 kHz) like rain tapping hard polycarbonate,
+  // scheduled ~60 ms ahead at a rate set by moisture and airspeed. Past ~220 kt the
+  // taps blend into a taut high-velocity rain wash (band-pass 1.5 -> 4.4 kHz with
+  // speed). View-aware: full in the cockpit, attenuated 65 % in chase view.
+  function canopyRain(p, rn, kts) {
+    const cl = Math.min(1, Math.max(0, p.cloud || 0));
+    const wet = Math.max(rn, cl > 0.35 ? (cl - 0.35) / 0.65 * 0.7 : 0);
+    const active = wet > 0.01 && p.engineOn;
+    const spdK = sm(kts, 220, 520);
+    set(N.canopyBus.gain, active ? (p.cockpit ? 1 : 0.35) : 0, 0.25);
+    set(N.canopyTapBus.gain, 1 - 0.75 * spdK, 0.3);                  // taps smear into the wash at speed
+    set(N.canopyHissBP.frequency, 1500 + 2900 * sm(kts, 150, 650), 0.3);
+    set(N.canopyHissBP.Q, 0.9 + 0.8 * spdK, 0.3);
+    set(N.canopyHissGain.gain, active ? wet * (0.012 + 0.11 * spdK) : 0, 0.3);
+    const now = ctx.currentTime;
+    if (!active) { N.canopyNext = now; N.canopyRate = 0; return; }
+    const rate = wet * (35 + 130 * sm(kts, 0, 300));                  // taps per second
+    N.canopyRate = rate;
+    if (N.canopyNext < now) N.canopyNext = now;
+    let n = 0;
+    while (N.canopyNext < now + 0.06 && n < 24) {
+      const t = N.canopyNext;
+      const len = 0.004 + Math.random() * 0.008;                     // 4-12 ms
+      const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = 2000 + Math.random() * 3200; bp.Q.value = 6 + Math.random() * 10;   // resonant acrylic tick
+      const g = ctx.createGain(); g.gain.value = 0;
+      const peak = (0.05 + Math.random() * 0.11) * (0.55 + 0.45 * wet);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + 0.0008); g.gain.exponentialRampToValueAtTime(0.0005, t + len);
+      src.connect(bp).connect(g).connect(N.canopyTapBus);
+      src.start(t, Math.random() * 3, len + 0.01); src.stop(t + len + 0.02);
+      N.canopyTaps++; n++;
+      N.canopyNext += -Math.log(1 - Math.random()) / Math.max(rate, 1);    // Poisson arrivals
+    }
+  }
+
   /* ------------------------------------------------------ continuous mix */
   function update(p) {
     if (!ready) return;
@@ -930,6 +976,7 @@ export function createAudio() {
     set(N.rainGain.gain, 0.11 * rn * (p.cockpit ? 1 : 0.6), 0.4);
     set(N.rainBP.frequency, p.cockpit ? 1700 : 3200, 0.3);
     set(N.rainLowGain.gain, 0.07 * rn * (p.cockpit ? 1.2 : 0.5), 0.4);
+    canopyRain(p, rn, kts);
     // Damp in-cloud wind rush: louder and brighter with airspeed (fast cloud pass = roar).
     const cl = Math.min(1, Math.max(0, p.cloud || 0)), spdK = sm(kts, 180, 560);
     set(N.cloudGain.gain, 0.32 * cl * (0.45 + 0.35 * spdK + 0.2 * Math.min(1, th + ab)), 0.25);
@@ -984,6 +1031,12 @@ export function createAudio() {
       return Math.sqrt(s / N.anaBuf.length);
     },
     get layers() { return N.dbg || null; },
+    // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
+    get canopyRain() {
+      if (!N.canopyBus) return null;
+      return { bus: +N.canopyBus.gain.value.toFixed(3), tapBus: +N.canopyTapBus.gain.value.toFixed(2), hiss: +N.canopyHissGain.gain.value.toFixed(4),
+        hissHz: Math.round(N.canopyHissBP.frequency.value), rate: Math.round(N.canopyRate || 0), taps: N.canopyTaps };
+    },
     // Output spectrum level (dB) at a frequency, for checking a cue against the engine floor.
     bandDb(hz) {
       if (!N.analyser) return -Infinity;

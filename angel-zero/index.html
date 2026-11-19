@@ -427,23 +427,24 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s41a';
-import { createHUD } from './src/hud.js?v=s41a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s41a';
-import { createCombat } from './src/combat.js?v=s41a';
-import { createEjection } from './src/eject.js?v=s41a';
-import { createAudio } from './src/audio.js?v=s41a';
-import { createRadio } from './src/radio.js?v=s41a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s41a';
-import { createLivery } from './src/livery.js?v=s41a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s41a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s41a';
-import { createCanopyFX } from './src/canopy.js?v=s41a';
-import { createNVG } from './src/nvg.js?v=s41a';
-import { createWorld, WORLD } from './src/world.js?v=s41a';
-import { createSurfaces } from './src/surfaces.js?v=s41a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s41a';
-import { createFreeLook } from './src/freelook.js?v=s41a';
+import { createVFX } from './src/vfx.js?v=s42a';
+import { createHUD } from './src/hud.js?v=s42a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s42a';
+import { createCombat } from './src/combat.js?v=s42a';
+import { createEjection } from './src/eject.js?v=s42a';
+import { createAudio } from './src/audio.js?v=s42a';
+import { createRadio } from './src/radio.js?v=s42a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s42a';
+import { createLivery } from './src/livery.js?v=s42a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s42a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s42a';
+import { createCanopyFX } from './src/canopy.js?v=s42a';
+import { createNVG } from './src/nvg.js?v=s42a';
+import { createWorld, WORLD } from './src/world.js?v=s42a';
+import { createSurfaces } from './src/surfaces.js?v=s42a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s42a';
+import { createFreeLook } from './src/freelook.js?v=s42a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s42a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1774,12 +1775,17 @@ function updateCameraAndVisuals(dt, now) {
   vfx.setEngineOut(flightMode === 'FLY' && combat.engineOut ? (combat.engineOut === 'L' ? 0 : 1) : -1);
   vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson });
   // Weather: rain volume, lightning, gusts; overcast / haze / flash feed the atmosphere, clouds and sea.
-  weather.update(dt, state.velocity, Math.min(1, navLevel));
+  weather.update(dt, state.velocity, Math.min(1, navLevel), firstPerson && flightMode === 'FLY');
   atmosphere.setWeather({ overcast: weather.current.overcast, fogMul: weather.current.fogMul, flash: weather.flash });
   vfx.setCloudFlash(weather.flash);
   oceanUniforms.uChop.value = weather.current.chop;
   // Cloud fly-through: white-out fog + sky horizon around the camera (src/atmosphere.js).
   atmosphere.update(dt, vfx.mist, nvg.active);
+  // 3D bubble canopy glass: glare / sheen lighting + water driven by rain, cloud and airspeed.
+  canopyGlass.update({ dt, time: simTime, rain: flightMode === 'FLY' ? weather.rainHere : 0,
+    cloud: flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0, kts: state.speed * 1.94384, rollRate: state.rollRate,
+    sunCol: sunLight.color, sunK: Math.min(1.3, sunLight.intensity / 3.4) * atmosphere.sunVisible, sky: atmosphere.sky.material.uniforms.uMid.value,
+    gain: 0.15 + 0.85 * Math.min(1, hemiLight.intensity / 1.5), nvg: nvg.active, visible: firstPerson && flightMode === 'FLY' });
   updateNavLights(simTime);
   world.update(dt, simTime, Math.max(0.1, navLevel), renderer, camera);
   if (surfaces) surfaces.update(dt, { pitch: state.ctl.pitch, roll: state.ctl.roll, yaw: state.ctl.yaw, airbrake: state.ctl.airbrake,
@@ -1816,6 +1822,7 @@ if (DEBUG) window.__dbgInput = (nx, ny, k = {}) => { mouse.nx = nx; mouse.ny = n
 // debug: advance the sim + audio mix n frames (for checks in a throttled / hidden tab)
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
+  canopyRain: audio.canopyRain, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
   music: audio.music, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
@@ -2018,6 +2025,8 @@ todBtn.addEventListener('click', e => {
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
   missiles, STALL_AOA, getEnemies: () => combatSys.enemies });
 cockpit.setFreeLook(freeLook.view);
+const canopyGlass = createCanopyGlass(THREE, { parent: cockpit.rig, sunDir: SUN_DIR, fogColor: scene.fog.color });
+if (DEBUG && Q.has('noglass')) canopyGlass.glass.visible = false;     // A/B check of the 3D canopy glass
 const hud = createHUD(THREE, {
   canvas: document.getElementById('hud'), state, combat, camera, missiles, mouse, EYE, STALL_AOA,
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
@@ -2037,6 +2046,21 @@ if (DEBUG && Q.has('alert')) hud.setAlertState('MISSILE_ALERT');
    ============================================================================ */
 const statusEl = document.getElementById('status');
 const nozzleLocal = [];
+// Exterior canopy (chase view): smoked acrylic with a faint gold anti-glare coating,
+// clearcoat sky / env reflection and a glossy Fresnel rim that turns the glass
+// near-opaque and bright at grazing angles, so it reads as solid polished glass.
+const exteriorCanopyMat = new THREE.MeshPhysicalMaterial({
+  color: 0x1a242c, roughness: 0.06, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.03,
+  specularIntensity: 1, specularColor: new THREE.Color(0xffd9a0), iridescence: 0.22, iridescenceIOR: 1.45,
+  envMap: envTex, envMapIntensity: 1.6, transparent: true, opacity: 0.52, depthWrite: false, side: THREE.DoubleSide
+});
+exteriorCanopyMat.onBeforeCompile = sh => {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `#include <opaque_fragment>
+    { float fr = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.0);
+      gl_FragColor.rgb += vec3(0.62, 0.7, 0.8) * fr * 0.32;
+      gl_FragColor.a = mix(gl_FragColor.a, 0.92, fr); }`);
+};
+airframeMats.add(exteriorCanopyMat);
 const loader = new GLTFLoader();
 loader.load('assets/angels_zero_jet.glb', gltf => {
   model = gltf.scene;
@@ -2049,6 +2073,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     if (PLACEHOLDER_NAME.test(o.name) || PLACEHOLDER_MAT.test(matName)) { removed.push(o); return; }
     if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
     const glass = o.name === 'Canopy_Glass' || /glass/i.test(matName);
+    if (glass) { o.material = exteriorCanopyMat; o.renderOrder = 4; cockpitHidden.push(o); return; }
     for (const m of mats) {
       if (!m) continue;
       m.side = THREE.DoubleSide;
@@ -2240,7 +2265,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         gust: +weather.gust.g.toFixed(2), fog: +scene.fog.density.toFixed(6), layers: vfx.cloudLayers, cov: vfx.cloudCoverage,
         canopy: { wet: +canopyFx.wetness.toFixed(2), drops: canopyFx.dropCount, riv: canopyFx.rivuletCount } }),
       'nav', JSON.stringify({ level: +navLevel.toFixed(2), lights: navLights.length, strobe: +navStat.strobe.toFixed(2), beacon: +navStat.beacon.toFixed(2),
-        lit: navLights.filter(n => n.sp.visible).length }), 'look', JSON.stringify(freeLook.stats));
+        lit: navLights.filter(n => n.sp.visible).length }), 'look', JSON.stringify(freeLook.stats), 'canopy', JSON.stringify({ glass: canopyGlass.stats, rainCulled: weather.rainCulled,
+        nearestRain: +weather.nearestVisible().toFixed(2), audio: audio.canopyRain }));
   }
   if (DEBUG && Q.has('pause')) pauseSim();
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));

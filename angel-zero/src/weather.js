@@ -74,7 +74,12 @@ export function createWeather(THREE, env) {
   let time = 0, rainHere = 0, rainLevelSmooth = 0;
 
   // dt, playerVel (world m/s), alt (m) of the camera; nightK 0..1 (darker drops).
-  function update(dt, playerVel, nightK = 0) {
+  // fp: cockpit view -- any streak passing within EYE_CLEAR of the eye is culled so
+  // exterior rain never crosses the panel, combiner or canopy bow (the glass shader
+  // draws the water that actually lands on the canopy).
+  const EYE_CLEAR = 2.8;
+  let culled = 0;
+  function update(dt, playerVel, nightK = 0, fp = false) {
     time += dt;
     if (blend < 1) {
       blend = Math.min(1, blend + dt / 2);
@@ -100,6 +105,7 @@ export function createWeather(THREE, env) {
       const cr = bright * 0.92, cg = bright * 0.96, cb = bright;
       const aMax = (0.22 + 0.33 * rainLevelSmooth) * (1 - 0.35 * nightK);
       base.copy(cam);
+      culled = 0;
       for (let i = 0; i < N; i++) {
         let x = drops[i * 3] + wind.x * dt, y = drops[i * 3 + 1] - fall * dt, z = drops[i * 3 + 2] + wind.z * dt;
         // World-fixed drops, wrapped into the box around the moving camera.
@@ -112,7 +118,13 @@ export function createWeather(THREE, env) {
         pos[o + 3] = x - dir.x * L; pos[o + 4] = y - dir.y * L; pos[o + 5] = z - dir.z * L;
         // Fade drops right at the eye (canopy) and toward the box edge.
         const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const a = i < nDraw ? aMax * smooth(d, 3.5, 9) * (1 - smooth(d, 48, 66)) : 0;
+        let a = i < nDraw ? aMax * smooth(d, 3.5, 9) * (1 - smooth(d, 48, 66)) : 0;
+        if (fp && a > 0) {
+          // Closest approach of the streak (head -> head - dir * L) to the eye.
+          const t = Math.min(L, Math.max(0, dx * dir.x + dy * dir.y + dz * dir.z));
+          const qx = dx - dir.x * t, qy = dy - dir.y * t, qz = dz - dir.z * t;
+          if (qx * qx + qy * qy + qz * qz < EYE_CLEAR * EYE_CLEAR) { a = 0; culled++; }
+        }
         col[c] = cr; col[c + 1] = cg; col[c + 2] = cb; col[c + 3] = a;
         col[c + 4] = cr; col[c + 5] = cg; col[c + 6] = cb; col[c + 7] = 0;
       }
@@ -163,6 +175,21 @@ export function createWeather(THREE, env) {
     get gust() { return gust; },
     get lightningCount() { return lightning.count; },
     get rainVisible() { return rainMesh.visible; },
-    get rainMesh() { return rainMesh; }
+    get rainMesh() { return rainMesh; },
+    get rainCulled() { return culled; },              // streaks culled around the cockpit eye last frame
+    // Debug / verification: closest visible streak to the camera (metres).
+    nearestVisible() {
+      let best = Infinity;
+      const c = camera.position;
+      for (let i = 0; i < N; i++) {
+        if (col[i * 8 + 3] <= 0) continue;
+        const o = i * 6, hx = pos[o] - c.x, hy = pos[o + 1] - c.y, hz = pos[o + 2] - c.z;
+        const ex = pos[o + 3] - pos[o], ey = pos[o + 4] - pos[o + 1], ez = pos[o + 5] - pos[o + 2];
+        const l2 = ex * ex + ey * ey + ez * ez || 1;
+        const t = Math.min(1, Math.max(0, -(hx * ex + hy * ey + hz * ez) / l2));
+        best = Math.min(best, Math.hypot(hx + ex * t, hy + ey * t, hz + ez * t));
+      }
+      return best;
+    }
   };
 }

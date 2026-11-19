@@ -1,13 +1,9 @@
 // ANGELS ZERO — canopy condensation / cloud moisture overlay.
 // A lightweight 2D overlay between the WebGL canvas and the HUD:
-//  - 1st person: water droplets bead on the canopy glass and stream backward
-//    (radially out from the flight-path centre, up over the canopy bow) with
-//    speed set by airspeed, leaving short wet streaks; a faint moisture film
-//    lingers a few seconds after leaving the cloud.
+//  - 1st person: only a faint moisture film that lingers a few seconds after
+//    leaving cloud / rain. The droplets themselves are drawn on the 3D bubble
+//    canopy glass (src/canopyglass.js) so they sit on the curved acrylic.
 //  - 3rd person: soft peripheral mist streaks rushing past the camera.
-//  - Rain (1st person): raindrops splat and immediately race back over the
-//    curved glass, plus thin airstream rivulets sweeping outward from the
-//    flight-path centre; clears when the jet climbs out of the rain.
 // Only paints while wet, so it costs nothing in clear air.
 
 export function createCanopyFX() {
@@ -27,25 +23,10 @@ export function createCanopyFX() {
   addEventListener('resize', resize);
 
   const drops = [], streaks = [], rivulets = [];
-  let rainAcc = 0, rivAcc = 0, rainLvl = 0;
-  let wet = 0, spawnAcc = 0, mistAcc = 0, painted = false;
+  let rainLvl = 0;
+  let wet = 0, mistAcc = 0, painted = false;
   const rand = Math.random;
 
-  function spawnDrop() {
-    // Beads appear anywhere on the windscreen, a little denser near the centre.
-    const a = rand() * Math.PI * 2, r = Math.pow(rand(), 0.8) * 0.85;
-    drops.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7 - 0.05, size: 1.4 + rand() * 3.2, age: 0,
-      stick: 0.25 + rand() * 0.6, life: 1.6 + rand() * 1.8, trail: [] });
-  }
-  function spawnRainDrop() {
-    const a = rand() * Math.PI * 2, r = Math.pow(rand(), 0.6) * 0.9;
-    drops.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7 - 0.05, size: 0.9 + rand() * 2.2, age: 0,
-      stick: 0.03 + rand() * 0.12, life: 0.55 + rand() * 0.7, trail: [], rain: true });
-  }
-  function spawnRivulet() {
-    const a = rand() * Math.PI * 2;
-    rivulets.push({ a, r: 0.12 + rand() * 0.35, v: 2.2 + rand() * 2.0, len: 0.05 + rand() * 0.1, w: 0.6 + rand() * 1.4, age: 0, life: 0.25 + rand() * 0.3 });
-  }
   function spawnStreak() {
     const a = rand() * Math.PI * 2;
     streaks.push({ a, r: 0.55 + rand() * 0.3, v: 1.6 + rand() * 1.6, len: 0.08 + rand() * 0.12, age: 0, life: 0.35 + rand() * 0.3 });
@@ -62,13 +43,9 @@ export function createCanopyFX() {
       return;
     }
     if (fp) {
-      spawnAcc += dt * 140 * Math.max(0, density) * sp;
-      while (spawnAcc >= 1 && drops.length < 140) { spawnAcc -= 1; spawnDrop(); }
-      rainAcc += dt * 260 * rainLvl * (0.6 + 0.4 * sp);
-      while (rainAcc >= 1 && drops.length < 220) { rainAcc -= 1; spawnRainDrop(); }
-      rivAcc += dt * 70 * rainLvl * sp;
-      while (rivAcc >= 1 && rivulets.length < 90) { rivAcc -= 1; spawnRivulet(); }
-      streaks.length = 0;
+      // Cockpit: droplets / rivulets now live on the 3D canopy glass (src/canopyglass.js);
+      // this overlay only keeps the faint moisture film.
+      drops.length = 0; rivulets.length = 0; streaks.length = 0;
     } else {
       drops.length = 0; rivulets.length = 0;
       mistAcc += dt * 90 * density * sp;

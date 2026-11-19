@@ -747,6 +747,43 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     it, 4,000 ft day, 12,000 ft (inside the cloud-deck band), 25,000 ft,
     overcast 4,000 ft, night 1,000 ft (moon glitter path, small fin strobes);
     zero page / shader errors.
+- [x] **Bubble canopy glass, sliding raindrops, canopy rain SFX** *(build `s42a`, new `src/canopyglass.js`, `src/weather.js`, `src/canopy.js`, `src/audio.js`, `index.html`)*
+  - Rain clipping: in the cockpit any exterior rain streak whose segment passes
+    within 2.8 m of the eye is culled (closest-approach test per streak); the
+    canopy glass draws after the rain (renderOrder 5 vs 3), opaque cockpit
+    parts depth-occlude it. Verified nearest visible streak 3.9 m at 500 kt.
+  - 3D bubble canopy (cockpit rig frame): parametric superellipse shell from the
+    nose coaming up over the bow and back past the seat, closing on the rails,
+    with dark rubber / metal seals along rails, coaming and rear edge.
+  - Glass ShaderMaterial (premultiplied alpha, depthWrite off): crisp + broad
+    GGX sun glare arcs on the curved normals, milky forward scatter toward the
+    sun, reflected horizon-haze band + sky zenith band sweeping over the arch,
+    cool Fresnel sheen pow(1 - |N.V|, 3.2) hugging rails / coaming (forward
+    sightline clear), procedural micro-scratches lit only inside the glare,
+    faint emerald HUD bounce under the combiner; dimmed under NVG.
+  - Water: glass coordinates run from the nose coaming up and back over the
+    arch (arc length in metres). Two flow-scrolled droplet layers (impact pop,
+    lensed sky, dark refraction rim, sun glint, wet trails) + cloud mist
+    streaks. Slide speed integrates airspeed: slow beads below ~120 kt, 9 m/s
+    streaks stretched up to 6.5x at dogfight speed; roll rate throws water
+    sideways. Moisture ramps when inCloud > 0.3, evaporates in ~2.5 s.
+  - 2D canopy overlay no longer paints drops in the cockpit (keeps the film);
+    chase-view mist streaks unchanged.
+  - Exterior canopy (chase): MeshPhysicalMaterial smoked acrylic, clearcoat,
+    gold-tinted specular, light iridescence, env reflection, Fresnel rim that
+    turns the glass bright / near-opaque at grazing angles.
+  - Canopy rain audio bus (bypasses the cockpit low-pass): Poisson-scheduled
+    4-12 ms resonant band-pass taps at 2.0-5.2 kHz (rate by moisture + speed)
+    blending past 220 kt into a high-velocity wash (band-pass 1.5 -> 4.4 kHz);
+    active with rain > 0 or cloud > 0.35; full in cockpit, -65 % in chase.
+    `__audioDebug().canopyRain` = { bus, tapBus, hiss, hissHz, rate, taps }.
+  - Debug: `?noglass` hides the glass (A/B); warp log `canopy {...}` adds glass
+    stats, culled streaks, nearest visible streak and the audio bus.
+  - Verified headless: clear golden hour / day cockpit (glare + reflections),
+    free-look side view, chase exterior canopy, OVERCAST // RAIN cockpit at
+    500 kt (stretched streaks) and 110 kt (round beads); pane: audio running,
+    bus 0.84 cockpit / ramping to 0.35 chase, taps ~100/s, wash 3.4 kHz at
+    500 kt; zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
