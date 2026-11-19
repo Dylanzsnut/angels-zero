@@ -446,6 +446,7 @@ export function createCombat(THREE, env) {
       wingParts[side].center = c;
     }
     nozzles = nozzleLocal.map(n => n.clone());
+    tintFleet();                                                // per-instance colour: crimson Ace livery
     glowMesh = new THREE.InstancedMesh(glowGeo, new THREE.MeshBasicMaterial({ color: 0xff6a1e, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }), WAVE_SIZE * 2);
     glowMesh.frustumCulled = false;
     scene.add(glowMesh);
@@ -477,13 +478,14 @@ export function createCombat(THREE, env) {
     extends: 0, flares: 0, spoofs: 0, rams: 0, impacts: 0, maxBank: 0, maxG: 0, abT: 0, trails: 0 };
   let aiFlareSalvo = 0, aiPassive = false;                     // aiPassive: debug terrain test (no engaging)
 
+  const TYPES = ['SU-30SM', 'MIG-29A', 'SU-35S', 'F-15J', 'SU-33', 'TYPHOON'];
   function makeEnemy(i) {
     return {
       id: i, alive: false, mode: 'PATROL', tac: 'PATROL', tacT: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1),
       quat: new THREE.Quaternion(), speed: 210, bank: 0, hp: 100, heading: 0, center: new THREE.Vector3(), radius: 2500, dir: 1, alt: 1000,
       burst: 0, burstCD: 2 + rand() * 2, tracerAcc: 0, bLock: 0, mslCD: 10 + rand() * 10, evadeDir: 1,
       wreck: null, label: 'BANDIT ' + String(i + 1).padStart(2, '0'),
-      type: ['SU-30SM', 'MIG-29A', 'SU-35S', 'F-15J', 'SU-33', 'TYPHOON'][i % 6],
+      type: TYPES[i % 6], ace: false, hpMax: 100,
       acc: new THREE.Vector3(), prev: new THREE.Vector3(),
       cruise: 210, abSpeed: 300, ab: 0, gNow: 1, reactT: null, threatTm: null,
       rollPhase: 0, rollDir: 1, splitS: false, merge: 0, mergeDir: new THREE.Vector3(0, 1, 0), mergeRoll: 0,
@@ -504,8 +506,63 @@ export function createCombat(THREE, env) {
       crippled: null, crippleT: 0, rollVel: 0, dipV: 0, zoneLog: null });
   }
 
+  /* ------------------------------------------------ mission phases + Ace */
+  // Three-phase cycle: PHASE 1 and PHASE 2 are six-bandit waves; PHASE 3 is the
+  // Ace sortie: SCARLET 1 (crimson-tinted Su-35S, red wingtip vapour) plus two
+  // escorts. The Ace always engages, pulls 9 G, reacts in ~0.2 s, locks 40 %
+  // faster, carries 6 flare salvos (4 s re-arm, 70 % spoof), has 360 HP and
+  // 70-hit wings, takes missile hits as 150 HP damage instead of dying, and
+  // catches fire only after 5 engine hits. Killing it pays ACE KILL; then the
+  // cycle restarts at PHASE 1.
+  const ACE = { label: 'SCARLET 1', type: 'SU-35S', hp: 360, wing: 70, cruise: 470, ab: 760, flares: 6, msl: 150 };
+  const ACE_TINT = new THREE.Color(1.0, 0.22, 0.26), BASE_TINT = new THREE.Color(1, 1, 1);
+  Object.assign(C, { phase: 0, ace: null, aceDowns: 0 });
+  function makeAce(e) {
+    e.ace = true; e.label = ACE.label; e.type = ACE.type;
+    e.hp = e.hpMax = ACE.hp; e.wingL = e.wingR = ACE.wing; e.flaresLeft = ACE.flares;
+    e.cruise = ACE.cruise * KT; e.abSpeed = ACE.ab * KT; e.speed = e.cruise;
+    e.mslCD = 5 + rand() * 3; e.burstCD = 1.5; e.aceTaunt = false;
+    C.ace = { label: ACE.label, type: ACE.type, hp: e.hp, hpMax: e.hpMax, alive: true };
+    tintFleet();
+  }
+  function clearAce(e) { if (!e.ace) return; e.ace = false; e.label = 'BANDIT ' + String(e.id + 1).padStart(2, '0'); e.type = TYPES[e.id % 6]; e.hpMax = 100; tintFleet(); }
+  function tintFleet() {
+    if (!fleet.length) return;
+    enemies.forEach((e, i) => { for (const f of fleet) f.inst.setColorAt(i, e.ace ? ACE_TINT : BASE_TINT); });
+    for (const f of fleet) if (f.inst.instanceColor) f.inst.instanceColor.needsUpdate = true;
+  }
+  // Missiles / bombs: one-shot kills on ordinary bandits; the Ace soaks 150 HP per hit.
+  function heavyHit(e, how) {
+    if (!e.ace) { destroyEnemy(e, true, how); return; }
+    e.hp -= ACE.msl; e.rollVel += (rand() - 0.5) * 1.2; e.dipV -= 6;
+    if (e.hp <= 0) { destroyEnemy(e, true, how); return; }
+    C.hitFlash = 0.2;
+    pushEvent('DAMAGED', `[ ACE HIT ] ${e.label} — ${Math.round(100 * e.hp / e.hpMax)}%`, 0, '#ff5566');
+    say(`DIRECT HIT — ${e.label} STILL FLYING!`, 1.8, '#ff5566');
+    aceHurt(e);
+  }
+  function aceHurt(e) {
+    if (C.ace) C.ace.hp = Math.max(0, e.hp);
+    if (!e.aceTaunt && e.hp < e.hpMax * 0.5 && env.onRadio) { e.aceTaunt = true; env.onRadio('ACE_HURT', { label: e.label }); }
+  }
+  // Red wingtip vapour: the Ace's signature trail.
+  function aceTrail(e, dt) {
+    e.aceAcc = (e.aceAcc || 0) + dt * 36;
+    while (e.aceAcc >= 1) {
+      e.aceAcc -= 1;
+      for (const sx of [-6.4, 6.4]) {
+        const p = _s.set(sx, 0.1, 2.2).applyQuaternion(e.quat).add(e.pos);
+        smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: e.vel.x * 0.6, vy: e.vel.y * 0.6, vz: e.vel.z * 0.6, life: 1.1 + 0.6 * e.ab, s0: 0.7, s1: 2.6, r: 0.95, g: 0.16, b: 0.22, a: 0.42, drag: 1.4 });
+      }
+    }
+  }
+
   function spawnWave() {
     C.wave++;
+    C.phase = ((C.wave - 1) % 3) + 1;
+    if (C.phase === 3) { spawnAceWave(); return; }
+    for (const e of enemies) clearAce(e);
+    C.ace = null;
     for (const e of enemies) {
       const a = (e.id / WAVE_SIZE) * Math.PI * 2 + rand() * 0.6;
       const d = 6000 + rand() * 6000;
@@ -519,8 +576,34 @@ export function createCombat(THREE, env) {
       e.burst = 0; e.burstCD = 2 + rand() * 3; e.bLock = 0; e.mslCD = 6 + rand() * 6;
       e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
     }
-    say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
-    if (env.onRadio) env.onRadio('WAVE', { wave: C.wave });
+    say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `PHASE ${C.phase} // WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
+    if (env.onRadio) env.onRadio('WAVE', { wave: C.wave, phase: C.phase });
+  }
+  // PHASE 3: SCARLET 1 from ahead at 10 km, two escorts on its wings, rest of the slots empty.
+  function spawnAceWave() {
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion).setY(0);
+    if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
+    fwd.normalize();
+    const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    enemies.forEach((e, i) => {
+      clearAce(e);
+      if (i > 2) { e.alive = false; e.wreck = null; return; }
+      resetAI(e);
+      const off = i === 0 ? 0 : (i === 1 ? -1 : 1) * 900;
+      e.pos.copy(S.position).addScaledVector(fwd, 10000 + (i ? 700 : 0)).addScaledVector(side, off);
+      e.alt = Math.max(S.position.y, 1500) + (i ? -150 : 250);
+      e.pos.y = Math.max(e.alt, groundLevel(e.pos.x, e.pos.z) + 300);
+      e.center.copy(e.pos); e.radius = 2500; e.dir = i === 2 ? -1 : 1;
+      e.fwd.copy(fwd).negate();
+      e.hp = e.hpMax = 100; e.alive = true; e.wreck = null;
+      e.burst = 0; e.burstCD = 3 + rand() * 2; e.bLock = 0; e.mslCD = 8 + rand() * 6;
+      if (i === 0) makeAce(e);
+      e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
+    });
+    writeFleet();
+    say(`PHASE 3 — ACE INBOUND: ${ACE.label} + 2 ESCORTS`, 3.2, '#ff5566');
+    pushEvent('DAMAGED', `[ PHASE 3 ] ACE ${ACE.label} INBOUND`, 0, '#ff5566');
+    if (env.onRadio) env.onRadio('ACE_INBOUND', { wave: C.wave, phase: 3, label: ACE.label });
   }
 
   const _t = new THREE.Vector3(), _a = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
@@ -557,7 +640,7 @@ export function createCombat(THREE, env) {
   // Bandit countermeasures: a 6-flare salvo from the tail; each player missile
   // tracking this bandit inside 1.2 NM rolls once: 45 % it chases a flare.
   function banditFlares(e) {
-    e.flaresLeft--; e.flareCD = AI_FLR_CD; ai.flares++;
+    e.flaresLeft--; e.flareCD = e.ace ? 4 : AI_FLR_CD; ai.flares++;
     const salvo = 'e' + (++aiFlareSalvo);
     const right = _s.set(1, 0, 0).applyQuaternion(e.quat).clone(), up = new THREE.Vector3(0, 1, 0).applyQuaternion(e.quat);
     const out = [];
@@ -571,7 +654,7 @@ export function createCombat(THREE, env) {
     let spoofed = 0;
     for (const m of missiles) {
       if (!m.active || m.enemy || m.target !== e || m.lostTrack || m.mesh.position.distanceTo(e.pos) > 1.2 * NM) continue;
-      if (rand() < AI_FLR_P) {
+      if (rand() < (e.ace ? 0.7 : AI_FLR_P)) {
         const f = out[(rand() * out.length) | 0];
         m.target = f; m.losPrev.copy(f.pos).sub(m.mesh.position).normalize(); spoofed++; ai.spoofs++;
       }
@@ -595,7 +678,7 @@ export function createCombat(THREE, env) {
     const defending = e.tac === 'EVADE_BREAK' || e.tac === 'BARREL_ROLL';
     if (e.tacT > 0) e.tacT -= dt;
     if (threat) {
-      if (e.reactT === null) e.reactT = 0.35 + rand() * 0.4;              // human reaction delay
+      if (e.reactT === null) e.reactT = e.ace ? 0.12 + rand() * 0.12 : 0.35 + rand() * 0.4;   // human reaction delay (Ace ~0.2 s)
       else if (e.reactT > 0) { e.reactT -= dt; if (e.reactT <= 0) startDefence(e, tm, tmD); }
       else if (!defending || e.tacT <= 0) startDefence(e, tm, tmD);      // keep defending while the threat lasts
       else if (tm && e.flaresLeft > 0 && e.flareCD <= 0 && tmD < 1200) banditFlares(e);
@@ -607,7 +690,7 @@ export function createCombat(THREE, env) {
     }
     if (e.tac === 'EXTEND_CLIMB' && e.tacT <= 0) e.tac = 'PATROL';
     if (e.tac === 'PATROL' || e.tac === 'ENGAGE') {
-      e.tac = playerActive && dist < PURSUE_RANGE && !aiPassive ? 'ENGAGE' : 'PATROL';
+      e.tac = playerActive && (dist < PURSUE_RANGE || e.ace) && !aiPassive ? 'ENGAGE' : 'PATROL';   // the Ace hunts from any range
       // Overshoot: the bandit has flown past the player inside 250 m -> extend and come back.
       if (e.tac === 'ENGAGE' && dist < 250 && e.fwd.dot(toP) < 0) { e.tac = 'EXTEND_CLIMB'; e.tacT = 2.5 + rand(); ai.extends++; }
     }
@@ -669,6 +752,7 @@ export function createCombat(THREE, env) {
       desired.normalize().addScaledVector(UP, 0.4);
       maxG = 5; useAB = true;
     }
+    if (e.ace && e.tac !== 'PATROL') { maxG += 2; if (e.tac === 'ENGAGE') useAB = useAB || dist > 900; }   // 9 G Ace
     if (desired.lengthSq() < 1e-6) desired.copy(e.fwd);
     desired.normalize();
 
@@ -802,7 +886,8 @@ export function createCombat(THREE, env) {
     // Player inside thick cloud: the bandit's seeker loses the picture (-1.5/s).
     const hidden = C.playerCloud > CLOUD_T;
     // ALQ-135 jamming: bandit radar locks take 2.5x longer to build.
-    const lockTime = B_LOCK_TIME * (C.ecmState === 'ACTIVE' ? ECM_SLOW : 1);
+    const lockTime = B_LOCK_TIME * (C.ecmState === 'ACTIVE' ? ECM_SLOW : 1) * (e.ace ? 0.6 : 1);
+    if (e.ace) aceTrail(e, dt);
     e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / lockTime : -LOCK_DECAY * dt), 0, 1);
     if (engaging) {
       if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300 && dist > 150) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
@@ -810,7 +895,8 @@ export function createCombat(THREE, env) {
       if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
         // Full lock: aggressive, accurate shot.
         if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_FULL)) {
-          e.mslCD = 14 + rand() * 8; say('MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d');
+          e.mslCD = e.ace ? 8 + rand() * 4 : 14 + rand() * 8;
+          say(e.ace ? `${e.label} — FOX TWO! BREAK! BREAK!` : 'MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d');
         }
       } else if (e.bLock >= B_SOFT && e.bLock < 1 && e.mslCD <= 0 && dist > 900 && rand() < 0.12 * dt) {
         // Impatient bandit fires early on a soft lock: weak, easily defeated shot.
@@ -871,6 +957,12 @@ export function createCombat(THREE, env) {
     // TARGET DESTROYED (+0.5x, 12 s timer); ripple kills can add 4AAM SWEEP.
     awardStyle(!byMissile && !how ? 'GUNS_KILL' : 'KILL');
     if (how === 'AAM4') noteSweepKill();
+    if (e.ace) {
+      C.aceDowns++; if (C.ace) { C.ace.alive = false; C.ace.hp = 0; }
+      awardStyle('ACE_KILL', e.label);
+      pushEvent('DESTROYED', `ACE ${e.label} DESTROYED`, 5000, '#ff3b5c');
+      say(`${e.label} IS DOWN — ACE DESTROYED!`, 3.2, '#ff3b5c');
+    }
     C.killFlash = { t: performance.now(), mult: C.comboMult };
     if (env.onRadio) env.onRadio('KILL', { how });
   }
@@ -885,6 +977,7 @@ export function createCombat(THREE, env) {
   const DANGER_AGL = 220 * 0.3048, DANGER_SPD = 380 / 1.94384, THREAD_SPD = 380 / 1.94384;
   const STYLE = {
     KILL:          { text: 'TARGET DESTROYED', pts: 0, mult: 0.5, color: '#58ff9a' },
+    ACE_KILL:      { text: 'ACE KILL',      pts: 5000, mult: 1.0, color: '#ff3b5c' },
     WING_RIP:      { text: 'WING RIP',      pts: 300, mult: 0.5,  color: '#ffd45a' },
     GUNS_KILL:     { text: 'GUNS KILL',     pts: 400, mult: 0.5,  color: '#58ff9a' },
     SWEEP:         { text: '4AAM SWEEP',    pts: 500, mult: 0.75, color: '#ffd45a' },
@@ -1047,7 +1140,7 @@ export function createCombat(THREE, env) {
       e.hp -= 3; e.rollVel += (Math.random() - 0.5) * 0.3;               // stabilator hits: shake, minor structure
     } else if (zone === 'ENG') {
       e.hp -= 6; e.engHits++;
-      if (!e.engineFire && e.engHits >= 2) {
+      if (!e.engineFire && e.engHits >= (e.ace ? 5 : 2)) {
         e.engineFire = true; e.speedCap = 0.6; ai.engineHits = (ai.engineHits || 0) + 1;
         pushEvent('DAMAGED', `[ ENGINE HIT ] ${e.type}`, 200, '#ffbf3f'); C.score += 200;
         say('[ ENGINE HIT ] — ' + e.type + ' ON FIRE', 1.6, '#ffbf3f');
@@ -1056,6 +1149,7 @@ export function createCombat(THREE, env) {
       e.hp -= 10;
     }
     e.zoneLog = zone;
+    if (e.ace && e.hp > 0) aceHurt(e);
     if (e.hp <= 0) destroyEnemy(e, false);
   }
   function severWing(e, side) {
@@ -1557,7 +1651,7 @@ export function createCombat(THREE, env) {
             if (range < fuse) {
               if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true; }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
-              else { explosion(pos, 0.8); destroyEnemy(tgt, true, m.aam ? 'AAM4' : undefined); }
+              else { explosion(pos, 0.8); heavyHit(tgt, m.aam ? 'AAM4' : undefined); }
               logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
@@ -1791,7 +1885,7 @@ export function createCombat(THREE, env) {
   function detonateBomb(pos, water) {
     impactFx(pos, water, 1);
     // Blast: bandits caught low over the impact are destroyed.
-    for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) destroyEnemy(e, true);
+    for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) heavyHit(e);
     for (const t of surface) {                                   // Mk-82: lethal at the target, graded out to the blast radius
       if (!t.alive) continue;
       const d = Math.hypot(t.pos.x - pos.x, t.pos.z - pos.z);
@@ -2257,6 +2351,8 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
+    // Debug: jump the phase cycle straight to PHASE 3 (Ace + escorts).
+    spawnAce() { C.wave = Math.ceil(C.wave / 3) * 3 + 2; spawnWave(); },
     designateGround(t) { C.groundTgt = t || null; C.ccrpArmed = false; },
     get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
@@ -2344,6 +2440,8 @@ export function createCombat(THREE, env) {
         gun: { heat: +C.gunHeat.toFixed(2), over: C.gunOverheat, overheats: C.overheats || 0, ammo: C.ammo },
         style: { mult: C.comboMult, timer: +C.comboTimer.toFixed(1), bonus: C.comboBonus, danger: C.dangerClose, counts: C.styleCounts,
           feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares },
+        phase: { phase: C.phase, wave: C.wave, ace: C.ace, aceDowns: C.aceDowns,
+          aceE: (() => { const a = enemies.find(x => x.ace); return a ? { tac: a.tac, hp: Math.round(a.hp), wingL: a.wingL, wingR: a.wingR, kt: Math.round(a.speed / KT), g: +a.gNow.toFixed(1), flr: a.flaresLeft, alive: a.alive } : null; })() },
         ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,
           ccrp: C.ccrp ? { along: Math.round(C.ccrp.along), cross: Math.round(C.ccrp.cross), ttr: +C.ccrp.ttr.toFixed(1), rng: Math.round(C.ccrp.range) } : null,
           armed: !!C.ccrpArmed, rel: C.ccrpRelease || null },

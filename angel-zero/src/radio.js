@@ -14,13 +14,14 @@ export function createRadio(env) {
   C.radio = null;
   C.radioLog = [];
   const pick = a => a[Math.floor(Math.random() * a.length)];
+  const spoken = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());   // SCARLET 1 -> Scarlet 1
   const banditsUp = () => env.getEnemies().filter(e => e.alive).length;
 
   function push(side, call, text, pri = 1, key = text, cd = 0) {
     if (cd && clock < (cool[key] || -1)) return false;
     if ((cur && cur.text === text) || queue.some(q => q.text === text)) return false;
     if (cd) cool[key] = clock + cd;
-    queue.push({ side, call, text, pri, born: clock, ttl: pri >= 3 ? 6 : 9 });
+    queue.push({ side, call, text, pri, born: clock, ttl: pri >= 4 ? 12 : pri >= 3 ? 6 : 9 });   // phase / Ace calls wait their turn
     queue.sort((a, b) => b.pri - a.pri || a.born - b.born);
     if (queue.length > 4) queue.length = 4;
     return true;
@@ -35,7 +36,21 @@ export function createRadio(env) {
         awacs(`Overlord to Alpha 1, picture is hot. ${banditsUp()} bandits over the archipelago. Weapons free.`, 2);
         break;
       case 'WAVE':
-        if (d.wave > 1) awacs(`Overlord: new bandit flight inbound, wave ${d.wave}. Engage at will, Eagle.`, 2, 'wave', 5);
+        if (d.wave <= 1) break;
+        if (d.phase === 2) awacs(`Overlord: phase two. Second bandit flight inbound, wave ${d.wave}. Engage at will, Eagle.`, 2, 'wave', 5);
+        else awacs(`Overlord: picture's reset. Fresh bandit flight on radar, wave ${d.wave}. Weapons free.`, 2, 'wave', 5);
+        break;
+      // PHASE 3: the Ace sortie.
+      case 'ACE_INBOUND':
+        awacs(`Overlord: phase three. High-speed bogey inbound with two escorts. Callsign ${spoken(d.label)}. That's their ace. Watch yourself, Eagle.`, 4);
+        push('enemy', d.label, 'All units clear the airspace. That Eagle is mine.', 4);
+        break;
+      case 'ACE_HURT':
+        enemy(d.label, "You're good, Eagle... but this sky belongs to me!", 3, 'acehurt', 30);
+        break;
+      case 'ACE_KILL':
+        awacs(`${d.sub ? spoken(d.sub) : 'Their ace'} is down! Outstanding flying, Eagle!`, 4);
+        enemy('HOSTILE-2', 'Scarlet 1 is gone?! Everyone bug out!', 3);
         break;
       case 'KILL': {
         chainKills++;

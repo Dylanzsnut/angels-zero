@@ -493,10 +493,11 @@ export function createHUD(THREE, A) {
       const range = e.pos.distanceTo(S.position);
       const { p, on } = onScreenOf(e.pos, e === prim);
       if (!on) {
-        offRing.push({ pos: e.pos, isPrim: e === prim, isThreat: (e.bLock || 0) >= 0.45, range, label: e.type || e.label });
+        offRing.push({ pos: e.pos, isPrim: e === prim, isThreat: e.ace || (e.bLock || 0) >= 0.45, range, label: e.ace ? 'ACE ' + e.label : e.type || e.label });
         continue;
       }
 
+      if (e.ace) drawAceMark(ctx, e, p, now);
       const info = trackInfo(e);
       if (!info) {
         const isNext = e === nextTgt;
@@ -893,7 +894,17 @@ export function createHUD(THREE, A) {
     }
     const alive = A.getEnemies().filter(e => e.alive).length;
     ctx.font = f(12, true);
-    labelText(ctx, 'BANDITS ' + alive, x, y + 40 + comboH, G, 3);
+    const ph = C.phase ? `PHASE ${C.phase}  ` : '';
+    labelText(ctx, ph + 'BANDITS ' + alive, x, y + 40 + comboH, C.phase === 3 ? BLAZE : G, 3);
+    // PHASE 3: Ace structural integrity bar.
+    if (C.ace && C.ace.alive) {
+      const yy = y + 58 + comboH, frac = clamp(C.ace.hp / (C.ace.hpMax || 1), 0, 1);
+      ctx.font = f(11, true); labelText(ctx, 'ACE ' + C.ace.label, x, yy, BLAZE, 4);
+      const bx = x + 78, bw = 84;
+      noGlow(ctx); ctx.fillStyle = 'rgba(30, 0, 6, 0.6)'; ctx.fillRect(bx - 1, yy + 3, bw + 2, 6);
+      glow(ctx, BLAZE, 6); ctx.fillStyle = BLAZE; ctx.fillRect(bx, yy + 4, bw * frac, 4);
+      comboH += 18;
+    }
     let ey = y + 62 + comboH;
     let by = y + 58 + comboH;
     if (A.isNVG && A.isNVG()) { drawNVGBadge(ctx, x, by); ey += 26; by += 26; }
@@ -1499,6 +1510,24 @@ export function createHUD(THREE, A) {
       if (rew) { ctx.font = f(Math.round(sz * 0.68), true); labelText(ctx, rew, x0 + wMain, 2, s.refill ? REFILL : GB, 6); }
       ctx.restore();
     });
+    ctx.restore();
+  }
+
+  // PHASE 3 Ace marker: slow-rotating crimson double diamond around the jet,
+  // "ACE // SCARLET 1" tag above and a structural HP bar below.
+  function drawAceMark(ctx, e, p, now) {
+    const range = e.pos.distanceTo(S.position);
+    const s = clamp(16000 / Math.max(range, 350), 20, 34) + 8;
+    const frac = clamp(e.hp / (e.hpMax || 1), 0, 1);
+    ctx.save();
+    glow(ctx, BLAZE, 8); ctx.lineWidth = 1.5;
+    diamond(ctx, p.x, p.y, s, now / 900);
+    ctx.globalAlpha = 0.55; diamond(ctx, p.x, p.y, s + 6, -now / 1300); ctx.globalAlpha = 1;
+    ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    labelText(ctx, `ACE // ${e.label}`, p.x, p.y - s - 18, BLAZE, 6);
+    const bw = 64, bx = p.x - bw / 2, by = p.y + s + 8;
+    noGlow(ctx); ctx.fillStyle = 'rgba(30, 0, 6, 0.6)'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
+    glow(ctx, BLAZE, 6); ctx.fillStyle = BLAZE; ctx.fillRect(bx, by, bw * frac, 4);
     ctx.restore();
   }
 

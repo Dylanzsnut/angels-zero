@@ -548,7 +548,7 @@ export function createAudio() {
   // (bass D2 -> Bb1 -> C2 -> A1).
   //   L1 PATROL  pulsing sub-bass, dark filtered stereo pad, sonar ping (airborne)
   //   L2 FURBALL kick + gated snare, driving 16th saw arp bass (bandit < 3 km or x1.5)
-  //   L3 ACE     detuned brass lead w/ vibrato + dotted-8th delay, 16th hats (x3.0)
+  //   L3 ACE     detuned brass lead w/ vibrato + dotted-8th delay, 16th hats (x3.0 or Ace alive)
   // Layers crossfade with setTargetAtTime(0.6 s). Bus: layers -> musicGain (K
   // toggle) -> musicDuck (radio -35 %) -> master -> G-LOC tunnel, so the music
   // muffles with blackout and follows master volume / mute.
@@ -678,14 +678,14 @@ export function createAudio() {
     while (mNext < now + LOOK) { scheduleStep(mStep, mNext); mNext += STEP; mStep = (mStep + 1) % LOOP; }
   }
   // Intensity: 0 off / 1 patrol (airborne) / 2 furball (bandit < 3 km, leaves
-  // > 3.4 km, or combo >= x1.5) / 3 ace (combo >= x3.0); 4 s hold before dropping.
+  // > 3.4 km, or combo >= x1.5) / 3 ace (combo >= x3.0 or the PHASE 3 Ace alive); 4 s hold before dropping.
   N.mTgt = [0, 0, 0];
   function updateMusic(p) {
     if (!N.mL) return;
     const d = p.banditDist ?? Infinity, combo = p.combo || 1;
     mNear = mNear ? d < 3400 : d < 3000;
     let lvl = 0;
-    if (p.airborne) { lvl = 1; if (mNear || combo >= 1.5) lvl = 2; if (combo >= 3) lvl = 3; }
+    if (p.airborne) { lvl = 1; if (mNear || combo >= 1.5) lvl = 2; if (combo >= 3 || p.ace) lvl = 3; }   // Ace phase = climax
     const now = ctx.currentTime;
     if (lvl >= mLvl || now - mLvlT > 4) { if (lvl !== mLvl) mLvlT = now; mLvl = lvl; }
     const tg = [mLvl >= 1 ? 0.9 : 0, mLvl >= 2 ? 1 : 0, mLvl >= 3 ? 1 : 0];

@@ -338,8 +338,8 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   - HUD: top-center subtitle box (center ~9 %), 1 px translucent frame, keyed
     mic bar, << CALLSIGN >> badge, typed text (42 cps) with caret, fade in /
     out; upper center banners are pushed below it.
-  - Not wired (no backing system yet): Ace Boss phase / arrival line, bomber
-    and base-under-attack alerts. Layer 3 currently triggers from combo only.
+  - Not wired (no backing system yet): bomber and base-under-attack alerts.
+    (The Ace phase and its lines landed in `s32b`, below.)
   - Verified in the pane: launch -> L2 at 2.6 km with AWACS picture call
     (duck 0.65); bandits pushed to 15 km -> L1; bandit at 2 km -> L2; combo
     x3 -> L3 (gains 0.9 / 0.99 / 0.88); K toggles bus 1 -> 0 and the button
@@ -347,6 +347,38 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     3 kills -> "Good kill" then BANDIT LEAD panic; enemy box + center
     callouts on screen together without overlap; zero page console errors
     (headless wingtest, cockpit, menu).
+- [x] **Mission phases + PHASE 3 Ace boss: SCARLET 1** *(build `s32b`)*
+  - Three-phase cycle on the wave counter: PHASE 1 / PHASE 2 are six-bandit
+    waves, PHASE 3 spawns SCARLET 1 (Su-35S) 10 km ahead with two escorts;
+    after the Ace falls the cycle restarts at PHASE 1 (`combat.phase`,
+    `combat.ace`, `combat.aceDowns`).
+  - Ace: always engages from any range, +2 G (9 G) in every combat state,
+    0.12-0.24 s reactions, bandit radar lock 40 % faster, missile re-attack
+    8-12 s, 470 / 760 kt cruise / burner, 6 flare salvos with 4 s re-arm and
+    70 % spoof, 360 HP core, 70-hit wings, engine fire only after 5 engine
+    hits; AIM-9 / 4AAM / bomb hits deal 150 HP instead of a one-shot kill
+    (three missiles to kill), wing severance still cripples it.
+  - Look: per-instance crimson livery (InstancedMesh `setColorAt`, all 52
+    fleet meshes), red wingtip vapour trail; HUD crimson rotating double
+    diamond + `ACE // SCARLET 1` tag + HP bar on the target, `ACE` off-screen
+    pointer, top-left `PHASE n  BANDITS m` (crimson in PHASE 3) + Ace HP bar.
+  - Rewards: ACE KILL style (+5,000, +1.0x) on top of the kill; center
+    callout, event, comms.
+  - Music: layer 3 (ACE climax) while the Ace is alive, independent of combo.
+  - Radio: AWACS phase-two / new-picture wave calls; PHASE 3 AWACS warning
+    ("That's their ace. Watch yourself, Eagle.") then SCARLET 1: "All units
+    clear the airspace. That Eagle is mine."; below 50 % HP taunt; on the
+    kill AWACS "Scarlet 1 is down!" + escort "Everyone bug out!".
+  - Debug: `?ace` (start in PHASE 3), `combatSys.spawnAce()`, `phase` block in
+    the combat log.
+  - Verified in the pane: natural cycle (cleared phase 1 and 2 -> PHASE 3
+    with Ace + 2 escorts and both radio lines in order); fresh `?ace` run 40 s:
+    Ace in ENGAGE 93 % of the time, max 9.0 G, 671 kt, gun pass to 39 m
+    (player 100 -> 58 %); three real AIM-9 hits 360 -> 210 -> 60 -> kill;
+    taunt from real gun hits at 176 HP; ACE KILL +5,000, kill radio lines,
+    next wave PHASE 1 with normal labels and no tint; music layer 3 with combo
+    at 1.0x; crimson instance colour on the Ace slot only; zero page console
+    errors (headless `ace`, wingtest, cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -438,7 +470,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
-· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
+· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts)
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
 

@@ -299,19 +299,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s32a';
-import { createHUD } from './src/hud.js?v=s32a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s32a';
-import { createCombat } from './src/combat.js?v=s32a';
-import { createEjection } from './src/eject.js?v=s32a';
-import { createAudio } from './src/audio.js?v=s32a';
-import { createRadio } from './src/radio.js?v=s32a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s32a';
-import { createCanopyFX } from './src/canopy.js?v=s32a';
-import { createNVG } from './src/nvg.js?v=s32a';
-import { createWorld, WORLD } from './src/world.js?v=s32a';
-import { createSurfaces } from './src/surfaces.js?v=s32a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s32a';
+import { createVFX } from './src/vfx.js?v=s32b';
+import { createHUD } from './src/hud.js?v=s32b';
+import { createCockpit3D } from './src/cockpit3d.js?v=s32b';
+import { createCombat } from './src/combat.js?v=s32b';
+import { createEjection } from './src/eject.js?v=s32b';
+import { createAudio } from './src/audio.js?v=s32b';
+import { createRadio } from './src/radio.js?v=s32b';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s32b';
+import { createCanopyFX } from './src/canopy.js?v=s32b';
+import { createNVG } from './src/nvg.js?v=s32b';
+import { createWorld, WORLD } from './src/world.js?v=s32b';
+import { createSurfaces } from './src/surfaces.js?v=s32b';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s32b';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1264,7 +1264,7 @@ function updateAudio() {
     gLoad: flightMode === 'FLY' ? state.gLoad : 1, aoa: flightMode === 'FLY' ? state.alpha * 180 / Math.PI : 0,
     gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72,
     kts: state.speed * 1.94384,
-    music: { airborne: flightMode === 'FLY', banditDist: nearestBandit(), combo: combat.comboMult || 1 }
+    music: { airborne: flightMode === 'FLY', banditDist: nearestBandit(), combo: combat.comboMult || 1, ace: !!(combat.ace && combat.ace.alive) }
   });
 }
 // Range (m) to the closest live bandit, for the music intensity (furball < 3 km).
@@ -1541,6 +1541,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
   if (DEBUG && Q.has('merge')) combatSys.placeHeadOn(0, Number(Q.get('merge')) || 1500, false);   // head-on merge
   if (DEBUG && Q.has('ram')) combatSys.placeHeadOn(0, Number(Q.get('ram')) || 900, true);         // deliberate ram (no break)
+  if (DEBUG && Q.has('ace')) combatSys.spawnAce();                  // ?ace: start in PHASE 3 (Ace + escorts)
   if (DEBUG && Q.has('wingtest')) { const [sd, d] = Q.get('wingtest').split(','); combatSys.wingTest(0, (sd || 'L').toUpperCase(), Number(d) || 450); }   // ?wingtest=L|R|C,dist
   if (DEBUG && Q.has('dmg')) combat.health = 100 - (Number(Q.get('dmg')) || 65);                  // battle-damage test
   if (DEBUG && Q.has('ccrp')) {                                         // ?ccrp=i,dist,alt[,spd]: level run-in at surface target i
