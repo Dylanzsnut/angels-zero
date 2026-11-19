@@ -96,7 +96,8 @@ export function createHUD(THREE, A) {
   const alertOn = () => alertState === 'MISSILE_ALERT';
   const pullUpOn = () => !C.dead && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5;
   // Near the 24 deg critical AoA below ~260 kt, an actual departure, or very slow flight.
-  const stallOn = () => !C.dead && (S.stalled || (S.alpha > A.STALL_AOA * 0.96 && S.speed * 1.94384 < 260) || S.speed * 1.94384 < 135);
+  // Debounced in the flight loop (state.stallWarnT holds >= 0.25 s of sim time): no flicker at the boundary.
+  const stallOn = () => !C.dead && (S.stallWarnT || 0) > 0;
   const flashRed = () => alertOn() && Math.floor(performance.now() / 160) % 2 === 0;
   const pulseAlpha = (periodMs = 160) => (Math.floor(performance.now() / periodMs) % 2 === 0 ? 1.0 : 0.45);
   const mslFlash = () => Math.floor(performance.now() / 140) % 2 === 0;
@@ -1471,6 +1472,7 @@ export function createHUD(THREE, A) {
     resetMaxG() { maxG = 1; },
     get maxG() { return maxG; },
     get inertia() { return { x: inertia.x, y: inertia.y }; },
+    get stallWarn() { return stallOn(); },
     get hudAlertState() { return alertState; },
     setAlertState(s) { alertOverride = s; }
   };

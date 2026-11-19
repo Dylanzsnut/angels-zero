@@ -37,10 +37,23 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     drop + wing rock until it flies again). Chase camera tracks a nose /
     velocity blend; chase HUD adds the true flight-path marker; G readout is
     the real aerodynamic load factor (max ~9 G instead of 12-30 G). Verified
-    headless: 200 kt turn mushes at stall AoA (~2 G, bleeding), 430 kt High-G
+    headless (see the stall fix below for the current AoA behaviour): 430 kt High-G
     break 8.3 G bleeding 40-46 kt/s, roll winds up in ~0.3 s and settles in
     ~0.3 s, 80 deg climb bleeds ~13 kt/s, AB dive M0.99 -> 1.21, level AB
     creeps through the drag rise to M1.06, stall nose drop + recovery.
+  - [x] **Stall / AoA fix (no maneuver bouncing)** *(build `s29b`)* — CAS AoA
+    limiter: demand capped at 23 deg (below the 24 deg stall), nose-up authority
+    tapered 20 -> 26 deg on a lead-compensated AoA (AoA + 0.22 s of AoA rate), so
+    hard turns hold a planted ~22.7 deg carve with no overshoot. True stall only
+    at low speed with hysteresis: in below 160 kt (or nose > +65 deg below 190
+    kt), out above 180 kt with AoA < 16 deg; while stalled a critically damped
+    nose-drop eases the nose onto the velocity vector (no snaps, no sinusoidal
+    wing rock). STALL warning debounced in sim time (>= 0.25 s hold, cue above
+    23.8 deg below 260 kt / stalled / < 135 kt); high-AoA buffet is camera
+    micro-vibration only (<= 0.015 rad). Verified headless at 0.1-0.15 s
+    sampling: 350 / 450 kt High-G pulls and 350 / 550 kt roll-and-pull are
+    monotone with no warning; 205 kt pull settles at 23.4 deg without passing
+    the stall; throttled stall in at 155 kt, smooth nose-drop, out at 184 kt.
   - Barrel roll (Q / double-tap A/D), spring-damped chase camera that tightens
     FOV in High-G turns, 1st-person 3D cockpit (`src/cockpit3d.js`) with
     roll-lag / look-into-turn head inertia.
