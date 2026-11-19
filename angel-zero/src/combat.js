@@ -254,6 +254,7 @@ export function createCombat(THREE, env) {
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
     m.aam = false; m.minD = Infinity; m.closeCall = false; m.hitPlayer = false;
     m.cloudLost = false; m.cloudT = 0; m.cloud = 0; m.reacquired = false;
+    m.terrainLost = false; m.maskT = 0; m.sam = false; m.friendly = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
     if (m.visual) { m.mesh.remove(m.visual); m.visual = null; }
     for (const p of m.parts) p.visible = !visual;
@@ -523,13 +524,16 @@ export function createCombat(THREE, env) {
 
   /* ------------------------------------------------ mission phases + Ace */
   // Three-phase cycle: PHASE 1 and PHASE 2 are six-bandit waves; PHASE 3 is the
-  // Ace sortie: SCARLET 1 (crimson-tinted Su-35S, red wingtip vapour) plus two
+  // Ace sortie: SOL-1 "CRIMSON VULTURE" (crimson-tinted Su-35S, red wingtip vapour) plus two
   // escorts. The Ace always engages, pulls 8.5 G / rolls 175 deg/s, reacts in ~0.2 s, locks 40 %
   // faster, carries 6 flare salvos (4 s re-arm, 70 % spoof), has 360 HP and
   // 70-hit wings, takes missile hits as 150 HP damage instead of dying, and
   // catches fire only after 5 engine hits. Killing it pays ACE KILL; then the
   // cycle restarts at PHASE 1.
-  const ACE = { label: 'SCARLET 1', type: 'SU-35S', hp: 360, wing: 70, cruise: 470, ab: 760, flares: 6, msl: 150 };
+  const ACE = { label: 'SOL-1', name: 'CRIMSON VULTURE', type: 'SU-35S', hp: 360, wing: 70, cruise: 470, ab: 760, flares: 6, msl: 150 };
+  // Strike bombers (PHASE 2): Su-34s on a straight run at ARCHIPELAGO AFB. They do not
+  // dogfight, soak two missile hits, and are drawn 1.35x the fighter airframe.
+  const BOMBER = { type: 'SU-34', hp: 260, msl: 130, cruise: 250, ab: 300, alt: 2100, scale: 1.35 };
   const ACE_TINT = new THREE.Color(1.0, 0.22, 0.26), BASE_TINT = new THREE.Color(1, 1, 1);
   Object.assign(C, { phase: 0, ace: null, aceDowns: 0 });
   function makeAce(e) {
@@ -538,10 +542,18 @@ export function createCombat(THREE, env) {
     e.cruise = ACE.cruise * KT; e.abSpeed = ACE.ab * KT; e.speed = e.cruise;
     e.mslCD = 5 + rand() * 3; e.burstCD = 1.5; e.aceTaunt = false;
     e.rollRate = 175 * D2R; e.gMax = 8.5;                         // skilled human F-15 pilot, never superhuman
-    C.ace = { label: ACE.label, type: ACE.type, hp: e.hp, hpMax: e.hpMax, alive: true };
+    C.ace = { label: ACE.label, name: ACE.name, type: ACE.type, hp: e.hp, hpMax: e.hpMax, alive: true };
     tintFleet();
   }
-  function clearAce(e) { if (!e.ace) return; e.ace = false; e.label = 'BANDIT ' + String(e.id + 1).padStart(2, '0'); e.type = TYPES[e.id % 6]; e.hpMax = 100; tintFleet(); }
+  function clearAce(e) {
+    if (e.bomber) { e.bomber = false; e.bombed = false; e.label = 'BANDIT ' + String(e.id + 1).padStart(2, '0'); e.type = TYPES[e.id % 6]; e.hpMax = 100; e.scale = 1; }
+    if (!e.ace) return; e.ace = false; e.label = 'BANDIT ' + String(e.id + 1).padStart(2, '0'); e.type = TYPES[e.id % 6]; e.hpMax = 100; tintFleet();
+  }
+  function makeBomber(e, n) {
+    e.bomber = true; e.bombed = false; e.type = BOMBER.type; e.label = 'STRIKE ' + n; e.scale = BOMBER.scale;
+    e.hp = e.hpMax = BOMBER.hp; e.cruise = BOMBER.cruise * KT; e.abSpeed = BOMBER.ab * KT; e.speed = e.cruise;
+    e.flaresLeft = 2; e.mslCD = 999; e.burstCD = 999;
+  }
   function tintFleet() {
     if (!fleet.length) return;
     enemies.forEach((e, i) => { for (const f of fleet) f.inst.setColorAt(i, e.ace ? ACE_TINT : BASE_TINT); });
@@ -549,6 +561,13 @@ export function createCombat(THREE, env) {
   }
   // Missiles / bombs: one-shot kills on ordinary bandits; the Ace soaks 150 HP per hit.
   function heavyHit(e, how) {
+    if (e.bomber) {                                               // heavy airframe: two missile hits
+      e.hp -= BOMBER.msl; e.rollVel += (rand() - 0.5) * 0.6;
+      if (e.hp <= 0) { destroyEnemy(e, true, how); return; }
+      C.hitFlash = 0.15; pushEvent('DAMAGED', `[ HIT ] ${e.type} ${e.label} — ${Math.round(100 * e.hp / e.hpMax)}%`, 0, '#ffbf3f');
+      if (how !== 'BASE') say(`${e.label} HIT — BOMBER STILL INBOUND!`, 1.6, '#ffbf3f');
+      return;
+    }
     if (!e.ace) { destroyEnemy(e, true, how); return; }
     e.hp -= ACE.msl; e.rollVel += (rand() - 0.5) * 1.2; e.dipV -= 6;
     if (e.hp <= 0) { destroyEnemy(e, true, how); return; }
@@ -579,47 +598,75 @@ export function createCombat(THREE, env) {
     if (C.phase === 3) { spawnAceWave(); return; }
     for (const e of enemies) clearAce(e);
     C.ace = null;
+    // Zone-anchored waves:
+    //   PHASE 1  SEC-02 BRIDGE STRAIT  six fighters sweeping low over the twin bridges
+    //   PHASE 2  SEC-04 -> SEC-01      four escorts high over the carrier task force +
+    //                                  two Su-34 strike bombers running at ARCHIPELAGO AFB
+    const lane = env.fleetLane, fc = fleetCenter(_fc);
     for (const e of enemies) {
       const a = (e.id / WAVE_SIZE) * Math.PI * 2 + rand() * 0.6;
-      const d = 6000 + rand() * 6000;
-      e.center.set(env.terrainCenter.x + Math.sin(a) * 4500, 0, env.terrainCenter.z + Math.cos(a) * 4500);
-      e.alt = (1800 + rand() * 4700) * FT;
-      e.pos.set(S.position.x + Math.sin(a) * d, e.alt, S.position.z - Math.cos(a) * d);
-      e.pos.y = Math.max(e.pos.y, groundLevel(e.pos.x, e.pos.z) + 300);
-      e.radius = 1800 + rand() * 2200; e.dir = rand() < 0.5 ? -1 : 1;
-      e.fwd.set(Math.cos(a), 0, Math.sin(a)).normalize();
       e.hp = 100; e.alive = true; e.wreck = null; resetAI(e);
-      e.burst = 0; e.burstCD = 2 + rand() * 3; e.bLock = 0; e.mslCD = 6 + rand() * 6;
+      e.radius = 1800 + rand() * 2200; e.dir = rand() < 0.5 ? -1 : 1;
+      if (C.phase === 2 && e.id >= 4) {
+        // Bombers: from beyond the fleet lane, straight at the base.
+        makeBomber(e, e.id - 3);
+        const sx = (lane ? lane.a.x : -9000) - 1200 + (e.id - 4) * 900, sz = (lane ? lane.a.z : 2000) + 2600 + (e.id - 4) * 700;
+        e.pos.set(sx, BOMBER.alt, sz); e.alt = BOMBER.alt;
+        e.center.set(env.runway ? env.runway.x : 900, 0, env.runway ? (env.runway.z0 + env.runway.z1) / 2 : 100); e.radius = 500;
+        e.fwd.set(e.center.x - sx, 0, e.center.z - sz).normalize();
+      } else {
+        if (C.phase === 2) {
+          // Escorts: high-altitude BVR CAP over the task force.
+          e.center.set(fc.x + Math.sin(a) * 1800, 0, fc.z + Math.cos(a) * 1800);
+          e.alt = (9000 + rand() * 6000) * FT; e.radius = 2400 + rand() * 1600;
+        } else {
+          // Fighter sweep: low over the strait, patrol circles strung along both bridges.
+          e.center.set(-4800 + (e.id / (WAVE_SIZE - 1)) * 9600 + (rand() - 0.5) * 800, 0, -3900 + (rand() - 0.5) * 1200);
+          e.alt = (1500 + rand() * 3000) * FT; e.radius = 1400 + rand() * 1200;
+        }
+        e.pos.set(e.center.x + Math.sin(a) * e.radius, e.alt, e.center.z + Math.cos(a) * e.radius);
+        e.fwd.set(Math.cos(a), 0, Math.sin(a)).normalize();
+      }
+      // Never spawn on top of the player.
+      const dx = e.pos.x - S.position.x, dz = e.pos.z - S.position.z, dd = Math.hypot(dx, dz);
+      if (dd < 4500) { const k = 4500 / Math.max(dd, 1); e.pos.x = S.position.x + dx * k; e.pos.z = S.position.z + dz * k; }
+      e.pos.y = Math.max(e.pos.y, groundLevel(e.pos.x, e.pos.z) + 300);
+      e.burst = 0; e.burstCD = e.bomber ? 999 : 2 + rand() * 3; e.bLock = 0; e.mslCD = e.bomber ? 999 : 6 + rand() * 6;
       e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
     }
-    say(C.wave === 1 ? 'SIX BANDITS ON RADAR — WEAPONS FREE' : `PHASE ${C.phase} // WAVE ${C.wave} — SIX BANDITS INBOUND`, 3);
+    if (C.phase === 2 && !fleetAlive()) spawnFleet();
+    writeFleet();
+    if (C.phase === 2) {
+      say(`PHASE 2 // WAVE ${C.wave} — SINK THE TASK FORCE (SEC-04) • STOP THE BOMBERS`, 3.4, '#ffbf3f');
+      pushEvent('DAMAGED', '[ PHASE 2 ] CARRIER TASK FORCE + 2 STRIKE BOMBERS', 0, '#ffbf3f');
+    } else say(C.wave === 1 ? 'SIX BANDITS OVER THE BRIDGE STRAIT — WEAPONS FREE' : `PHASE 1 // WAVE ${C.wave} — FIGHTER SWEEP, SEC-02 BRIDGE STRAIT`, 3);
     if (env.onRadio) env.onRadio('WAVE', { wave: C.wave, phase: C.phase });
+    if (C.phase === 2 && env.onRadio) env.onRadio('BOMBERS');
   }
-  // PHASE 3: SCARLET 1 from ahead at 10 km, two escorts on its wings, rest of the slots empty.
+  const _fc = new THREE.Vector3();
+  // PHASE 3: SOL-1 "CRIMSON VULTURE" + two escorts, holding over the SEC-03 NW Basalt
+  // Canyon (the Ace hunts the player from any range; the escorts patrol the gorge).
   function spawnAceWave() {
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion).setY(0);
-    if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
-    fwd.normalize();
-    const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const cc = env.canyonCenter || { x: S.position.x, z: S.position.z - 10000 };
     enemies.forEach((e, i) => {
       clearAce(e);
       if (i > 2) { e.alive = false; e.wreck = null; return; }
       resetAI(e);
-      const off = i === 0 ? 0 : (i === 1 ? -1 : 1) * 900;
-      e.pos.copy(S.position).addScaledVector(fwd, 10000 + (i ? 700 : 0)).addScaledVector(side, off);
-      e.alt = Math.max(S.position.y, 1500) + (i ? -150 : 250);
-      e.pos.y = Math.max(e.alt, groundLevel(e.pos.x, e.pos.z) + 300);
-      e.center.copy(e.pos); e.radius = 2500; e.dir = i === 2 ? -1 : 1;
-      e.fwd.copy(fwd).negate();
+      const a = i * 2.1 + rand() * 0.4;
+      e.pos.set(cc.x + Math.sin(a) * (i ? 1400 : 600), 0, cc.z + Math.cos(a) * (i ? 1400 : 600));
+      e.alt = (i ? 850 : 1100) + rand() * 200;
+      e.pos.y = Math.max(e.alt, groundLevel(e.pos.x, e.pos.z) + 250);
+      e.center.set(cc.x, 0, cc.z); e.radius = 1600 + i * 300; e.dir = i === 2 ? -1 : 1;
+      e.fwd.set(S.position.x - e.pos.x, 0, S.position.z - e.pos.z).normalize();
       e.hp = e.hpMax = 100; e.alive = true; e.wreck = null;
       e.burst = 0; e.burstCD = 3 + rand() * 2; e.bLock = 0; e.mslCD = 8 + rand() * 6;
       if (i === 0) makeAce(e);
       e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
     });
     writeFleet();
-    say(`PHASE 3 — ACE INBOUND: ${ACE.label} + 2 ESCORTS`, 3.2, '#ff5566');
-    pushEvent('DAMAGED', `[ PHASE 3 ] ACE ${ACE.label} INBOUND`, 0, '#ff5566');
-    if (env.onRadio) env.onRadio('ACE_INBOUND', { wave: C.wave, phase: 3, label: ACE.label });
+    say(`PHASE 3 — ACE ${ACE.label} "${ACE.name}" OVER SEC-03 NW BASALT CANYON`, 3.4, '#ff5566');
+    pushEvent('DAMAGED', `[ PHASE 3 ] ACE ${ACE.label} // ${ACE.name} — SEC-03`, 0, '#ff5566');
+    if (env.onRadio) env.onRadio('ACE_INBOUND', { wave: C.wave, phase: 3, label: ACE.label, name: ACE.name });
   }
 
   const _t = new THREE.Vector3(), _a = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
@@ -722,6 +769,8 @@ export function createCombat(THREE, env) {
       // Overshoot: the bandit has flown past the player inside 250 m -> extend and come back.
       if (e.tac === 'ENGAGE' && dist < 250 && e.fwd.dot(toP) < 0) { e.tac = 'EXTEND_CLIMB'; e.tacT = 2.5 + rand(); ai.extends++; }
     }
+    // Strike bombers never dogfight or orbit off: they hold the run (defensive breaks only).
+    if (e.bomber && (e.tac === 'ENGAGE' || e.tac === 'DISENGAGE_ORBIT' || e.tac === 'EXTEND_CLIMB')) e.tac = 'PATROL';
     e.mode = e.tac;
 
     // ---- lift-plane frame (bank-to-turn)
@@ -950,8 +999,13 @@ export function createCombat(THREE, env) {
     // ALQ-135 jamming: bandit radar locks take 2.5x longer to build.
     const lockTime = B_LOCK_TIME * (C.ecmState === 'ACTIVE' ? ECM_SLOW : 1) * (e.ace ? 0.6 : 1);
     if (e.ace) aceTrail(e, dt);
-    e.bLock = clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / lockTime : -LOCK_DECAY * dt), 0, 1);
-    if (engaging) {
+    // Terrain masking: a ridge / canyon wall above the line of sight blocks the radar
+    // (sampled every 0.15 s) -- an established lock breaks at once.
+    e.maskT = (e.maskT || 0) - dt;
+    if (e.maskT <= 0) { e.maskT = 0.15; e.masked = playerActive && dist < B_LOCK_RANGE * 1.6 && occluded(e.pos, S.position); }
+    if (e.masked && e.bLock >= B_SOFT) terrainMaskBreak(e.type || e.label);
+    e.bLock = e.masked ? 0 : clamp(e.bLock + (hidden ? -1.5 * dt : inCone ? dt / lockTime : -LOCK_DECAY * dt), 0, 1);
+    if (engaging && !e.masked) {
       if (e.burst <= 0 && e.burstCD <= 0 && aligned > Math.cos(4 * D2R) && dist < 1300 && dist > 150) { e.burst = 0.7; e.burstCD = 2.2 + rand() * 1.5; }
       const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
       if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
@@ -1009,6 +1063,15 @@ export function createCombat(THREE, env) {
     e.alive = false;
     explosion(e.pos, 1.7);
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
+    if (how === 'BASE') {                                          // ARCHIPELAGO AFB air defence kill: no player credit
+      if (C.lockTarget === e) C.lockTarget = null;
+      if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
+      C.baseKills = (C.baseKills || 0) + 1;
+      if (e.ace && C.ace) { C.ace.alive = false; C.ace.hp = 0; }
+      pushEvent('DESTROYED', `BASE AIR DEFENCE — ${e.type || e.label} DOWN`, 0, '#5fe8ff');
+      say(`BASE AIR DEFENCE — SPLASH ${e.label}!`, 2.0, '#5fe8ff');
+      return;
+    }
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
     pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
@@ -1328,11 +1391,12 @@ export function createCombat(THREE, env) {
     if (!fleet.length) return;
     const one = new THREE.Vector3(1, 1, 1), zero = new THREE.Vector3(0, 0, 0);
     enemies.forEach((e, i) => {
-      const vis = e.alive || !!e.wreck;
-      const full = _m4.clone().compose(e.pos, e.quat, vis ? one : zero), none = _m4.clone().compose(e.pos, e.quat, zero);
+      const vis = e.alive || !!e.wreck, sk = e.scale || 1;                 // strike bombers: 1.35x airframe
+      const full = _m4.clone().compose(e.pos, e.quat, vis ? (sk !== 1 ? new THREE.Vector3(sk, sk, sk) : one) : zero), none = _m4.clone().compose(e.pos, e.quat, zero);
       for (const f of fleet) f.inst.setMatrixAt(i, (f.part === 'L' && e.wingOffL) || (f.part === 'R' && e.wingOffR) ? none : full);
       const ab = e.alive ? e.ab : 0, on = ab > 0.05;
-      nozzles.forEach((nz, k) => {
+      nozzles.forEach((nz0, k) => {
+        const nz = sk !== 1 ? nz0.clone().multiplyScalar(sk) : nz0;
         const p = nz.clone().add(new THREE.Vector3(0, 0, 1.9)).applyQuaternion(e.quat).add(e.pos);
         glowMesh.setMatrixAt(i * 2 + k, new THREE.Matrix4().compose(p, e.quat, e.alive ? one : zero));
         // Burner plume: base at the nozzle exit, length grows with afterburner.
@@ -1378,7 +1442,7 @@ export function createCombat(THREE, env) {
   // Forward radar picture, best first (off-boresight angle + small range weight).
   function radarCandidates(half = RADAR_HALF, range = RADAR_RANGE) {
     const fwd = fwdOf(), out = [];
-    for (const e of enemies) {
+    for (const e of lockables()) {                           // bandits + live task-force ships
       if (!e.alive) continue;
       const to = e.pos.clone().sub(S.position), d = to.length();
       if (d < 1 || d > range) continue;
@@ -1611,6 +1675,14 @@ export function createCombat(THREE, env) {
         list.push({ b: relBearing(m.mesh.position), kind: 'msl', d: m.mesh.position.distanceTo(S.position) });
         level = 3;
       }
+      // Task-force search radars painting us (line of sight, 9 km).
+      for (const t of taskForce) {
+        if (!t.alive) continue;
+        const d = t.pos.distanceTo(S.position);
+        if (d > 9000 || occluded(t.pos, S.position)) continue;
+        list.push({ b: relBearing(t.pos), kind: 'paint', d, id: t.id });
+        level = Math.max(level, 1);
+      }
     }
     C.rwr = list; C.rwrLevel = level;
   }
@@ -1660,6 +1732,15 @@ export function createCombat(THREE, env) {
         // turn authority (accel <= v * maxTurnRate) and its seeker field of view.
         const tgt = m.target, q = m.q || MSL_FULL;
         m.cloud = cloudAt(pos);
+        // Terrain masking: a ridge / canyon wall between this missile and the jet strips
+        // its guidance -- it flies on ballistic (usually into the wall).
+        if (tgt && m.enemy && tgt.isPlayer && !m.lostTrack && playerActive) {
+          m.maskT = (m.maskT || 0) - dt;
+          if (m.maskT <= 0) {
+            m.maskT = 0.1;
+            if (occluded(pos, S.position)) { m.lostTrack = true; m.terrainLost = true; C.missileWarning = 0; terrainMaskBreak('MISSILE'); }
+          }
+        }
         if (tgt && m.enemy && tgt.isPlayer && !m.lostTrack && playerActive && (C.playerCloud > CLOUD_T || m.cloud > CLOUD_T)) {
           // The F-15 (or the missile) is in thick cloud: seeker loses lock, flies its
           // last velocity vector and self-destructs harmlessly 1.5 s later.
@@ -1714,7 +1795,8 @@ export function createCombat(THREE, env) {
             if (range < fuse) {
               if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true; }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
-              else { explosion(pos, 0.8); heavyHit(tgt, m.aam ? 'AAM4' : undefined); }
+              else if (tgt.fleet) { explosion(pos, 1.3); damageSurface(tgt, 90); }          // ship: multi-hit
+              else { explosion(pos, 0.8); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
               logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
@@ -1738,7 +1820,7 @@ export function createCombat(THREE, env) {
       if (speed > 1) m.mesh.quaternion.setFromUnitVectors(MSL_NOSE, m.vel.clone().normalize());
       if (m.age > m.life || pos.y < groundLevel(pos.x, pos.z)) {
         if (pos.y < groundLevel(pos.x, pos.z) && terrainHeight(pos.x, pos.z) < 0) splash(pos, 0.5); else explosion(pos, 0.5);
-        logShot(m, m.cloudLost ? 'CLOUD' : m.lostTrack ? 'LOST' : m.target ? 'MISS' : 'DUMB');
+        logShot(m, m.cloudLost ? 'CLOUD' : m.terrainLost ? 'TERRAIN' : m.lostTrack ? 'LOST' : m.target ? 'MISS' : 'DUMB');
         m.active = false; m.mesh.visible = false;
       }
     }
@@ -2145,10 +2227,12 @@ export function createCombat(THREE, env) {
     const r = (() => { let a = 90731; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
     const cx = env.terrainCenter.x, cz = env.terrainCenter.z, land = [];
     let sea = null;
-    for (let i = 0; i < 4000 && (land.length < 3 || !sea); i++) {
+    // Island SAM sites: on SEC-02 Bridge Strait ground first (headlands / coasts), else anywhere.
+    const inStrait = (x, z) => !env.sectorAt || env.sectorAt(x, z).id === 2;
+    for (let i = 0; i < 8000 && (land.length < 3 || !sea); i++) {
       const a = r() * Math.PI * 2, d = 1500 + r() * 9000, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
       const h = terrainHeight(x, z);
-      if (land.length < 3 && h > 12 && h < 260) {
+      if (land.length < 3 && h > 12 && h < 260 && (i > 6000 || inStrait(x, z))) {
         let flat = true;
         for (const [ox, oz] of [[30, 0], [-30, 0], [0, 30], [0, -30]]) if (Math.abs(terrainHeight(x + ox, z + oz) - h) > 6) flat = false;
         if (flat && land.every(p => Math.hypot(p.x - x, p.z - z) > 2600)) land.push({ x, z, h });
@@ -2161,32 +2245,46 @@ export function createCombat(THREE, env) {
     }
     return { land, sea };
   }
+  // Land targets (SAM sites + SEC-02 coastal flak nests); the naval task force is
+  // managed separately (spawnFleet) and kept in the same `surface` list.
   function spawnSurface() {
-    for (const t of surface) { scene.remove(t.g); }
-    surface.length = 0;
-    const { land, sea } = siteSpots();
+    for (let i = surface.length - 1; i >= 0; i--) if (!surface[i].fleet) { scene.remove(surface[i].g); surface.splice(i, 1); }
+    const { land } = siteSpots();
     land.forEach((p, i) => {
       const t = buildSAM();
       t.g.position.set(p.x, p.h, p.z); t.g.rotation.y = i * 1.7;
       Object.assign(t, { pos: new THREE.Vector3(p.x, p.h + 2, p.z), alive: true, burn: 0, label: 'SAM ' + (i + 1), id: 'S' + (i + 1) });
       scene.add(t.g); surface.push(t);
     });
-    if (sea) {
-      const t = buildDestroyer();
-      Object.assign(t, { pos: new THREE.Vector3(sea.x, 0, sea.z), alive: true, burn: 0, label: 'DDG 1', id: 'D1',
-        center: new THREE.Vector3(sea.x - 1500, 0, sea.z), orbitR: 1500, ang: 0, speed: 9, sink: 0, vel: new THREE.Vector3() });
-      t.g.position.copy(t.pos); scene.add(t.g); surface.push(t);
+    // Coastal flak nests on the bridge headlands, 260 m inland from each abutment.
+    let n = 0;
+    for (const b of env.bridges || []) {
+      for (const [a, o] of [[b.a, b.b], [b.b, b.a]]) {
+        const dx = a.x - o.x, dz = a.z - o.z, l = Math.hypot(dx, dz) || 1, x = a.x + dx / l * 260, z = a.z + dz / l * 260, h = terrainHeight(x, z);
+        if (h < 4) continue;
+        const t = buildFlak();
+        t.g.position.set(x, h, z);
+        Object.assign(t, { pos: new THREE.Vector3(x, h + 2, z), alive: true, burn: 0, label: 'AAA ' + (++n), id: 'F' + n, flakCD: rand() * 2 });
+        scene.add(t.g); surface.push(t);
+      }
     }
     if (C.groundTgt && !surface.includes(C.groundTgt)) C.groundTgt = null;
   }
   function destroySurface(t) {
     if (!t.alive) return;
-    t.alive = false; t.burn = 45;
+    t.alive = false; t.burn = t.fleet ? 70 : 45;
     for (const m of t.mats) m.color.multiplyScalar(0.28);
     explosion(t.pos, t.ship ? 3.2 : 2.4);
-    C.score += t.ship ? 2500 : 1200; C.kills++;
-    pushEvent('DESTROYED', `${t.kind} DESTROYED`, t.ship ? 2500 : 1200, '#52ff9c');
-    say(t.ship ? 'SHACK! DESTROYER IS GOING DOWN' : 'SHACK! SAM SITE DESTROYED', 2.4);
+    const pts = t.kind === 'CARRIER' ? 6000 : t.ship ? 2500 : t.kind === 'FLAK' ? 800 : 1200;
+    C.score += pts; C.kills++;
+    pushEvent('DESTROYED', `${t.kind} ${t.label} ${t.ship ? 'SUNK' : 'DESTROYED'}`, pts, '#52ff9c');
+    say(t.kind === 'CARRIER' ? 'CARRIER IS GOING DOWN — MASSIVE SECONDARIES!' : t.ship ? 'SHACK! DESTROYER IS GOING DOWN'
+      : t.kind === 'FLAK' ? 'SHACK! FLAK NEST SILENCED' : 'SHACK! SAM SITE DESTROYED', 2.4);
+    if (t.fleet) {
+      t.secondaries = t.kind === 'CARRIER' ? [0.5, 1.1, 1.8, 2.6, 3.5, 4.6, 6.0, 7.6] : [0.6, 1.4, 2.5, 3.9];
+      if (C.designated === t) designate(null);
+      if (env.onRadio) env.onRadio(fleetAlive() ? 'SHIP_SUNK' : 'FLEET_SUNK', { kind: t.kind });
+    }
     if (C.groundTgt === t) { C.groundTgt = null; C.ccrpArmed = false; }
     awardStyle('KILL');
     C.killFlash = { t: performance.now(), mult: C.comboMult };
@@ -2194,6 +2292,8 @@ export function createCombat(THREE, env) {
   function damageSurface(t, n) {
     if (!t.alive) return;
     t.hp -= n;
+    if (t.fleet) fleetProvoked = true;
+    if (t.fleet && !fleetHitSaid && n >= 20) { fleetHitSaid = true; if (env.onRadio) env.onRadio('FLEET_HIT'); }
     if (t.hp <= 0) destroySurface(t);
   }
   function updateSurface(dt) {
@@ -2201,7 +2301,8 @@ export function createCombat(THREE, env) {
     for (const t of surface) {
       if (t.spin) t.spin.rotation.y += dt * (t.alive ? 1.6 : 0);
       if (t.ship) {
-        if (t.alive) {
+        if (t.alive && t.fleet) { /* formation steaming: updateFleet() */ }
+        else if (t.alive) {
           t.ang += dt * t.speed / t.orbitR;
           t.pos.set(t.center.x + Math.cos(t.ang) * t.orbitR, 0, t.center.z + Math.sin(t.ang) * t.orbitR);
           t.vel.set(-Math.sin(t.ang) * t.speed, 0, Math.cos(t.ang) * t.speed);
@@ -2211,8 +2312,9 @@ export function createCombat(THREE, env) {
             smoke.spawn({ x: back.x + (rand() - 0.5) * 10, y: 1, z: back.z + (rand() - 0.5) * 10, vx: 0, vy: 0.3, vz: 0, life: 6, s0: 8, s1: 26, r: 0.92, g: 0.95, b: 0.97, a: 0.45, drag: 0.2 });
           }
         } else {                                                                    // listing and settling
-          t.sink = Math.min(t.sink + dt * 0.5, 14); t.vel.set(0, 0, 0);
+          t.sink = Math.min(t.sink + dt * 0.5, t.sinkMax || 14); t.vel.set(0, 0, 0);
           t.g.position.y = -t.sink; t.g.rotation.z = Math.min(0.32, t.sink * 0.03);
+          if (t.wake) t.wake.position.y = 0.6 + t.sink;                       // wake stays on the surface
         }
       }
       if (t.alive) anyAlive = true;
@@ -2226,7 +2328,7 @@ export function createCombat(THREE, env) {
     }
     if (surface.length && !anyAlive) {
       surfRespawn += dt;
-      if (surfRespawn > SURF_RESPAWN) { surfRespawn = 0; spawnSurface(); say('NEW STRIKE TARGETS ON THE GROUND MAP', 2.5); }
+      if (surfRespawn > SURF_RESPAWN) { surfRespawn = 0; spawnSurface(); spawnFleet(); say('NEW STRIKE TARGETS ON THE GROUND MAP', 2.5); }
     } else surfRespawn = 0;
   }
   // Ground-map designation for >UGB: nearest live target within 45 deg of the
@@ -2258,6 +2360,467 @@ export function createCombat(THREE, env) {
     C.groundTgt = c[(i + 1) % c.length].t; C.ccrpArmed = false;
     say('GROUND TGT — ' + C.groundTgt.kind + ' ' + C.groundTgt.label, 1.1);
     return C.groundTgt;
+  }
+
+  /* ========================================= naval task force (SEC-04) */
+  // Enemy carrier strike group: 1 CVN (angled flight deck, island with a turning
+  // radar, parked jets, 4 CIWS mounts, 2 SAM launchers) + 3 DDG escorts steaming a
+  // racetrack along the SW patrol lane in formation at ~25 kt. Each hull is merged
+  // per material (a few draw calls per ship); animated Kelvin bow waves, hull-side
+  // foam and turbulent stern wakes come from one wake shader per ship on the sea.
+  // Ships are surface targets (UGB / gun) AND lockable targets (MSL / 4AAM): multi-
+  // hit HP, smoke below 66 %, deck fires below 33 %, secondary magazine explosions
+  // and a list / settle when sunk. Defences (no fire while the player is in the
+  // low-alt / base safe zone, or terrain-masked): CIWS tracer streams < 2.4 km, AAA
+  // flak bursts < 4.8 km, shipborne SAMs < 7.5 km (max 2 in the air).
+  const taskForce = [];
+  const lockList = [];
+  const FLEET_SPEED = 13, FLEET_A = 3500, FLEET_B = 1000, WAKE_L = 760;
+  const SLOTS = [{ kind: 'CVN', along: 0, lat: 0 }, { kind: 'DDG', along: 950, lat: 0 }, { kind: 'DDG', along: -700, lat: -760 }, { kind: 'DDG', along: -700, lat: 760 }];
+  const SAM_Q = { turn: 22 * D2R, fov: 60 * D2R, N: 3.4, noise: 0.15, tag: 'SAM' };
+  let fleetTh = 0, fleetClock = 0, fleetSpotted = false, fleetHitSaid = false;
+  const _fu = new THREE.Vector3(), _fn = new THREE.Vector3(), _fp = new THREE.Vector3(), _ft = new THREE.Vector3(), _flat = new THREE.Vector3();
+  const _da = new THREE.Vector3(), _db = new THREE.Vector3(), _dv = new THREE.Vector3();
+  const occluded = (a, b) => !!(env.isTerrainOccluded && env.isTerrainOccluded(a, b));
+
+  function fleetCenter(out) {
+    const L = env.fleetLane;
+    return L ? out.copy(L.a).add(L.b).multiplyScalar(0.5) : out.set(-6000, 0, 3000);
+  }
+  function fleetAlive() { return taskForce.some(t => t.alive); }
+  // Every enemy the radar / seekers may track: bandits + live task-force ships.
+  function lockables() {
+    lockList.length = 0;
+    for (const e of enemies) lockList.push(e);
+    for (const t of taskForce) if (t.alive) lockList.push(t);
+    return lockList;
+  }
+
+  // Merge every static mesh of a ship group into one mesh per material (keeps `keep` subtrees live).
+  function mergeStatic(g, keep = []) {
+    g.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), byMat = new Map(), drop = [], m4 = new THREE.Matrix4();
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      for (let p = o; p && p !== g; p = p.parent) if (keep.includes(p)) return;
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      geo.applyMatrix4(m4.multiplyMatrices(inv, o.matrixWorld));
+      for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') geo.deleteAttribute(k);
+      if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      geo.clearGroups();
+      if (!byMat.has(o.material)) byMat.set(o.material, []);
+      byMat.get(o.material).push(geo);
+      drop.push(o);
+    });
+    for (const o of drop) o.parent.remove(o);
+    for (const [m, list] of byMat) g.add(new THREE.Mesh(mergeGeometries(list), m));
+  }
+
+  function buildCarrier() {
+    const g = new THREE.Group();
+    const hullM = surfMat(0x59626a, 0.72, 0.3), deckM = surfMat(0x2c3034, 0.92, 0.08), supM = surfMat(0x737c84, 0.65, 0.3),
+      darkM = surfMat(0x1d2124, 0.6, 0.5), lineM = surfMat(0xe6e4da, 0.8, 0.05), yelM = surfMat(0xd2ac36, 0.7, 0.1), jetM = surfMat(0x6a7178, 0.55, 0.45);
+    const mats = [hullM, deckM, supM, darkM, lineM, yelM, jetM];
+    const L = 300, B = 40, DECK = 16;
+    const sh = new THREE.Shape();                               // top outline: flared bow (+y -> world -Z), square transom
+    sh.moveTo(0, L / 2); sh.quadraticCurveTo(B * 0.5, L * 0.32, B / 2, L * 0.05); sh.lineTo(B / 2, -L / 2); sh.lineTo(-B / 2, -L / 2);
+    sh.lineTo(-B / 2, L * 0.05); sh.quadraticCurveTo(-B * 0.5, L * 0.32, 0, L / 2);
+    const hull = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: DECK + 8, bevelEnabled: false }), hullM);
+    hull.rotation.x = -Math.PI / 2; hull.position.y = -8; g.add(hull);
+    const box = (w, h, d, x, y, z, m, ry = 0) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.rotation.y = ry; g.add(b); return b; };
+    // Flight deck: main deck + 9 deg angled landing deck sponson to port.
+    box(64, 1.4, 318, 3, DECK + 0.7, -4, deckM);
+    box(34, 1.4, 205, -27, DECK + 0.7, 30, deckM, 0.157);
+    // Deck markings: angled-deck centreline + edge lines, bow catapult tracks, foul lines.
+    for (let k = 0; k < 14; k++) box(1.2, 0.2, 7, -27 + Math.sin(0.157) * (-80 + k * 14), DECK + 1.5, 30 + Math.cos(0.157) * (-80 + k * 14), lineM, 0.157);
+    for (const s of [-1, 1]) box(0.8, 0.2, 200, -27 + s * 16 * Math.cos(0.157), DECK + 1.5, 30 - s * 16 * Math.sin(0.157), lineM, 0.157);
+    for (const x of [-8, 8]) box(0.7, 0.2, 90, x, DECK + 1.5, -110, darkM);
+    box(60, 0.2, 0.8, 3, DECK + 1.5, -60, yelM); box(0.8, 0.2, 260, 18, DECK + 1.5, 0, yelM);
+    // Deck-edge elevators.
+    box(18, 1.0, 22, 32, DECK + 0.4, -20, darkM); box(18, 1.0, 22, 32, DECK + 0.4, 50, darkM); box(18, 1.0, 22, -36, DECK + 0.4, 95, darkM);
+    // Island superstructure (starboard) + mast; the radar stays live (turns).
+    box(11, 20, 40, 27, DECK + 10, 40, supM); box(9, 9, 26, 27, DECK + 24.5, 42, supM); box(9.2, 2.2, 10, 27, DECK + 21, 26, darkM);
+    for (const z of [32, 52]) box(0.6, 6, 8, 21.5, DECK + 24, z, darkM);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.9, 16, 8), darkM); mast.position.set(27, DECK + 37, 44); g.add(mast);
+    const spin = new THREE.Group(); spin.position.set(27, DECK + 46, 44); g.add(spin);
+    spin.add(new THREE.Mesh(new THREE.BoxGeometry(9, 1.4, 0.6), darkM));
+    // Parked strike fighters (fuselage + wing + fins).
+    for (let k = 0; k < 7; k++) {
+      const x = 22 - (k % 2) * 9, z = 95 + k * 13;
+      box(2.6, 2.0, 16, x, DECK + 2.4, z, jetM, -0.5); box(11, 0.4, 5, x, DECK + 2.2, z + 1.5, jetM, -0.5); box(0.4, 2.6, 3.4, x, DECK + 4.2, z + 6, jetM, -0.5);
+    }
+    // CIWS domes on sponsons at the four corners + Sea Sparrow launcher boxes.
+    const ciws = [], sams = [];
+    for (const [x, z] of [[-31, -128], [31, -128], [-31, 132], [31, 132]]) {
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.4, 3, 12), supM); base.position.set(x, DECK + 1.5, z); g.add(base);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(1.8, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), lineM); dome.position.set(x, DECK + 3, z); g.add(dome);
+      ciws.push(new THREE.Vector3(x, DECK + 4, z));
+    }
+    for (const [x, z] of [[-30, -100], [30, 118]]) { box(4, 3, 6, x, DECK + 2, z, supM); sams.push(new THREE.Vector3(x, DECK + 5, z)); }
+    mergeStatic(g, [spin]);
+    return { g, spin, mats, r: 150, kind: 'CARRIER', type: 'CVN', hp: 420, ship: true, fleet: true, len: L, beam: B, aimH: DECK, sinkMax: 26,
+      ciws, sams, smokeAt: new THREE.Vector3(27, DECK + 30, 42) };
+  }
+  function destroyerShip() {
+    const t = buildDestroyer();
+    mergeStatic(t.g, [t.spin]);
+    return Object.assign(t, { type: 'DDG', hp: 170, fleet: true, len: 142, beam: 16, aimH: 6, sinkMax: 14,
+      ciws: [new THREE.Vector3(0, 14, 30)], sams: [new THREE.Vector3(0, 7, -30)], smokeAt: new THREE.Vector3(0, 16, 6) });
+  }
+
+  // Wake: Kelvin arms (19.5 deg), bow crest, hull-side foam and a widening turbulent
+  // stern wake whose foam texture is fixed to the water (scrolls with ship speed).
+  const wakeGeoCache = new Map();
+  function makeWake(t) {
+    const W = 2 * (t.beam * 0.6 + 0.354 * WAKE_L + 12), key = t.len + 'x' + t.beam;
+    if (!wakeGeoCache.has(key)) {
+      const geo = new THREE.PlaneGeometry(W, WAKE_L, 1, 1); geo.rotateX(-Math.PI / 2); geo.translate(0, 0, -t.len / 2 + WAKE_L / 2);
+      wakeGeoCache.set(key, geo);
+    }
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uSpeed: { value: FLEET_SPEED }, uLen: { value: t.len },
+        uBeam: { value: t.beam }, uWL: { value: WAKE_L }, uW: { value: W }, uFade: { value: 1 }, uLight: { value: 1 } },
+      vertexShader: `${LOG_V}#include <fog_pars_vertex>
+        varying vec2 vUv;
+        void main() { vUv = uv; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition;
+          #include <logdepthbuf_vertex>
+          #include <fog_vertex>
+        }`,
+      fragmentShader: `${LOG_F}#include <fog_pars_fragment>
+        uniform float uTime, uSpeed, uLen, uBeam, uWL, uW, uFade, uLight;
+        varying vec2 vUv;
+        float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
+        void main() {
+          #include <logdepthbuf_fragment>
+          float d = (1.0 - vUv.y) * uWL, x = (vUv.x - 0.5) * uW, ax = abs(x);
+          vec2 q = vec2(x * 0.09, (d - uTime * uSpeed) * 0.05);
+          float n = vn(q * 3.0) * 0.6 + vn(q * 7.3 + 4.1) * 0.4;
+          float arm = uBeam * 0.45 + d * 0.354, armW = 1.5 + d * 0.03;
+          float kelvin = exp(-pow((ax - arm) / armW, 2.0)) * exp(-d / 380.0) * smoothstep(0.0, 8.0, d);
+          float bow = exp(-pow(ax / (uBeam * 0.7), 2.0)) * exp(-d / 18.0);
+          float sd = d - uLen, sternW = uBeam * 0.55 + max(sd, 0.0) * 0.045;
+          float stern = smoothstep(-10.0, 15.0, sd) * exp(-pow(ax / sternW, 2.0)) * exp(-max(sd, 0.0) / 520.0);
+          float side = (1.0 - smoothstep(0.0, uLen, d)) * exp(-pow((ax - uBeam * 0.55) / 3.0, 2.0)) * 0.6;
+          float foam = (kelvin * (0.55 + 0.6 * n) + bow * 0.9 + stern * (0.45 + 0.75 * n) + side * n) * uFade;
+          float a = clamp(foam, 0.0, 0.92) * (1.0 - smoothstep(uWL * 0.8, uWL, d));
+          if (a < 0.01) discard;
+          gl_FragColor = vec4(vec3(0.9, 0.94, 0.96) * uLight, a);
+          #include <fog_fragment>
+        }`,
+      transparent: true, depthWrite: false, fog: true
+    });
+    const m = new THREE.Mesh(wakeGeoCache.get(key), mat);
+    m.position.y = 0.6; m.renderOrder = 2; m.frustumCulled = false;
+    return m;
+  }
+
+  function spawnFleet() {
+    for (const t of taskForce) { scene.remove(t.g); const i = surface.indexOf(t); if (i >= 0) surface.splice(i, 1); }
+    taskForce.length = 0;
+    let d = 0;
+    SLOTS.forEach((sl, i) => {
+      const t = sl.kind === 'CVN' ? buildCarrier() : destroyerShip();
+      Object.assign(t, { slot: sl, alive: true, burn: 0, sink: 0, label: sl.kind === 'CVN' ? 'CVN 1' : 'DDG ' + (++d), id: sl.kind === 'CVN' ? 'CV1' : 'D' + d,
+        pos: new THREE.Vector3(), vel: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, -1), quat: t.g.quaternion, cloud: 0, hpMax: t.hp,
+        ciwsT: rand() * 2, ciwsAcc: 0, flakCD: 1 + rand() * 2, samCD: 10 + rand() * 8, secondaries: null, secT: 0 });
+      t.wake = makeWake(t); t.g.add(t.wake);
+      scene.add(t.g); taskForce.push(t); surface.push(t);
+    });
+    fleetSpotted = false; fleetHitSaid = false; fleetProvoked = false;
+    placeFleet(0);
+  }
+  // Racetrack (ellipse) along the patrol lane; ships hold their formation slot
+  // relative to the guide's heading.
+  function placeFleet(dt) {
+    const L = env.fleetLane; if (!L) return;
+    fleetCenter(_fp);
+    _fu.copy(L.b).sub(L.a).setY(0).normalize(); _fn.set(-_fu.z, 0, _fu.x);
+    const sp = Math.hypot(FLEET_A * Math.sin(fleetTh), FLEET_B * Math.cos(fleetTh));
+    fleetTh += FLEET_SPEED * dt / Math.max(sp, 1);
+    const c = Math.cos(fleetTh), s = Math.sin(fleetTh);
+    _ft.copy(_fu).multiplyScalar(-FLEET_A * s).addScaledVector(_fn, FLEET_B * c).normalize();       // heading
+    _flat.set(-_ft.z, 0, _ft.x);
+    for (const t of taskForce) {
+      if (!t.alive) continue;
+      const x = _fp.x + _fu.x * FLEET_A * c + _fn.x * FLEET_B * s + _ft.x * t.slot.along + _flat.x * t.slot.lat;
+      const z = _fp.z + _fu.z * FLEET_A * c + _fn.z * FLEET_B * s + _ft.z * t.slot.along + _flat.z * t.slot.lat;
+      t.g.position.set(x, 0, z);
+      t.g.rotation.set(0, Math.atan2(-_ft.x, -_ft.z), 0);
+      t.pos.set(x, t.aimH, z); t.vel.copy(_ft).multiplyScalar(FLEET_SPEED); t.fwd.copy(_ft);
+    }
+  }
+  const mountWorld = (t, local, out) => out.copy(local).applyQuaternion(t.g.quaternion).add(t.g.position);
+
+  // Flak burst: black smoke puff + flash; lethal inside ~30 m.
+  function flakBurst(p) {
+    for (let k = 0; k < 2; k++) {
+      const gg = 0.06 + rand() * 0.04;
+      smoke.spawn({ x: p.x + (rand() - 0.5) * 6, y: p.y + (rand() - 0.5) * 6, z: p.z + (rand() - 0.5) * 6, vx: (rand() - 0.5) * 3, vy: (rand() - 0.5) * 3, vz: (rand() - 0.5) * 3,
+        life: 3.2 + rand(), s0: 5, s1: 26 + rand() * 10, r: gg, g: gg, b: gg, a: 0.85, drag: 1.1 });
+    }
+    fire.spawn({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, life: 0.14, s0: 9, s1: 20, r: 1, g: 0.7, b: 0.3, a: 0.95, drag: 0 });
+    if (env.onSfx) env.onSfx('explosion', p, 0.3);
+    if (playerActiveNow && !C.dead && S.position.distanceTo(p) < 30) { damagePlayer(4); C.hitFlash = 0.12; }
+  }
+  const PLAYER_TGT = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
+  function samsInAir() { let n = 0; for (const m of missiles) if (m.active && m.sam) n++; return n; }
+  // Surface-to-air launch from a mount: boost up and toward the player.
+  function surfaceSAM(from, label) {
+    if (samsInAir() >= 2) return false;
+    _dv.copy(S.position).sub(from).normalize().lerp(UP, 0.45).normalize();
+    _q.setFromUnitVectors(MSL_NOSE, _dv);
+    const m = launch(_da.copy(from), _q, _db.copy(_dv).multiplyScalar(70), PLAYER_TGT, true, SAM_Q);
+    if (!m) return false;
+    m.sam = true;
+    say(`SAM LAUNCH — ${label}! BREAK!`, 2.0, '#ff4d3d');
+    return true;
+  }
+  const hostileFireOk = () => playerActiveNow && !C.dead && !C.playerSafe;
+  // Weapons-tight outside PHASE 2: the task force only opens fire once it is the
+  // mission target, once attacked / locked by the player, or when overflown < 3 km.
+  let fleetProvoked = false;
+  const fleetWeaponsFree = dist => C.phase === 2 || fleetProvoked || dist < 3000;
+
+  function updateFleet(dt) {
+    fleetClock += dt;
+    placeFleet(dt);
+    const fc = scene.fog ? scene.fog.color : null;
+    const light = fc ? clamp(0.35 + 1.4 * (0.2126 * fc.r + 0.7152 * fc.g + 0.0722 * fc.b), 0.18, 1) : 1;
+    const fire_ok = hostileFireOk();
+    for (const t of taskForce) {
+      const u = t.wake.material.uniforms;
+      u.uTime.value = fleetClock; u.uLight.value = light;
+      u.uFade.value += ((t.alive ? 1 : 0) - u.uFade.value) * Math.min(1, dt * 0.4);
+      if (t.spin) t.spin.rotation.y += dt * (t.alive ? 1.2 : 0);
+      if (!t.alive) {
+        // Secondary magazine explosions rippling along the hull after the kill.
+        if (t.secondaries && t.secondaries.length) {
+          t.secT += dt;
+          while (t.secondaries.length && t.secT >= t.secondaries[0]) {
+            t.secondaries.shift();
+            _da.set((rand() - 0.5) * t.beam, t.aimH * 0.6, (rand() - 0.5) * t.len * 0.8).applyQuaternion(t.g.quaternion).add(t.g.position);
+            explosion(_da, 1.6 + rand() * 1.6); shockRing(_da, 0xffd8a0, false);
+          }
+        }
+        continue;
+      }
+      // Damage states: smoke column below 66 %, deck fires below 33 %.
+      const k = t.hp / t.hpMax;
+      if (k < 0.66 && rand() < dt * 7) {
+        mountWorld(t, t.smokeAt, _da); const gg = 0.08 + rand() * 0.05;
+        smoke.spawn({ x: _da.x, y: _da.y, z: _da.z, vx: (rand() - 0.5) * 2, vy: 8 + rand() * 5, vz: (rand() - 0.5) * 2, life: 7 + rand() * 3, s0: 8, s1: 46, r: gg, g: gg, b: gg, a: 0.7, drag: 0.4, rise: 1.5 });
+      }
+      if (k < 0.33 && rand() < dt * 14) {
+        _da.set((rand() - 0.5) * t.beam * 0.8, t.aimH + 1, (rand() - 0.5) * t.len * 0.7).applyQuaternion(t.g.quaternion).add(t.g.position);
+        fire.spawn({ x: _da.x, y: _da.y, z: _da.z, vx: 0, vy: 5, vz: 0, life: 0.6 + rand() * 0.4, s0: 5, s1: 12, r: 1, g: 0.5 + rand() * 0.3, b: 0.1, a: 0.85, drag: 1.2 });
+      }
+      if (!fire_ok) continue;
+      const dist = t.pos.distanceTo(S.position);
+      if (dist > 7600 || !fleetWeaponsFree(dist)) continue;
+      // CIWS: 1.1 s bursts from the mount nearest the player, 1.6 s pauses.
+      t.ciwsT -= dt;
+      if (t.ciwsT <= -1.6) t.ciwsT = 1.1;
+      if (dist < 2400 && t.ciwsT > 0) {
+        let best = null, bd = Infinity;
+        for (const c of t.ciws) { mountWorld(t, c, _db); const dd = _db.distanceToSquared(S.position); if (dd < bd) { bd = dd; best = c; } }
+        mountWorld(t, best, _db);
+        if (!occluded(_db, S.position)) {
+          t.ciwsAcc += dt * 16;
+          while (t.ciwsAcc >= 1) {
+            t.ciwsAcc -= 1;
+            const tof = Math.sqrt(bd) / 1100;
+            _dv.copy(S.position).addScaledVector(S.velocity, tof).sub(_db).normalize();
+            _dv.x += (rand() - 0.5) * 0.08; _dv.y += (rand() - 0.5) * 0.08; _dv.z += (rand() - 0.5) * 0.08;
+            enemyTracers.add(_db, _dv.normalize().multiplyScalar(1100), 2.4);
+          }
+          if (rand() < dt * 20) fire.spawn({ x: _db.x, y: _db.y, z: _db.z, vx: 0, vy: 0, vz: 0, life: 0.06, s0: 3, s1: 5, r: 1, g: 0.8, b: 0.4, a: 0.9, drag: 0 });
+          C.missileWarning = Math.max(C.missileWarning, 0.3);
+        }
+      }
+      // AAA flak bursts around the predicted position.
+      t.flakCD -= dt;
+      if (dist < 4800 && S.position.y > 120 && t.flakCD <= 0) {
+        t.flakCD = 0.55 + rand() * 0.6;
+        if (!occluded(_da.copy(t.pos).setY(t.aimH + 6), S.position)) {
+          _dv.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().multiplyScalar(35 + rand() * 150);
+          flakBurst(_da.copy(S.position).addScaledVector(S.velocity, 0.6).add(_dv));
+        }
+      }
+      // Shipborne SAM.
+      t.samCD -= dt;
+      if (t.samCD <= 0 && dist < 7500 && S.position.y > 260) {
+        t.samCD = 16 + rand() * 8;
+        mountWorld(t, t.sams[Math.floor(rand() * t.sams.length)], _fp);
+        if (!occluded(_fp, S.position)) surfaceSAM(_fp.clone(), t.kind);
+      }
+    }
+    // Locking a ship with the seeker provokes the whole group.
+    if (C.seekerArmed && C.designated && C.designated.fleet) fleetProvoked = true;
+    // First contact with the strike group.
+    if (playerActiveNow && !fleetSpotted && fleetAlive()) {
+      for (const t of taskForce) if (t.alive && t.pos.distanceTo(S.position) < 12000) { fleetSpotted = true; if (env.onRadio) env.onRadio('FLEET_SPOTTED'); break; }
+    }
+  }
+
+  /* ---------------- SEC-02 coastal AAA + SEC-01 base air defence (friendly) */
+  // Coastal flak nests on the bridge headlands (surface targets, 40 HP) burst flak
+  // at a player inside 3.6 km with line of sight. SAM sites (placed on SEC-02
+  // islands when possible) launch at a player inside 8 km, above 850 ft.
+  // ARCHIPELAGO AFB: two friendly CIWS mounts (white-gold tracer streams, 1.8 km)
+  // and a SAM launcher (5 km) engaging bandits / bombers over the base; their kills
+  // are credited to the base, not the player.
+  function buildFlak() {
+    const g = new THREE.Group();
+    const sand = surfMat(0x8a7f62, 0.95, 0), olive = surfMat(0x4b5233, 0.8, 0.2), dark = surfMat(0x2a2d2a, 0.6, 0.4);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(5, 1.2, 6, 18), sand); ring.rotation.x = Math.PI / 2; ring.position.y = 0.9; g.add(ring);
+    const spin = new THREE.Group(); spin.position.y = 1.6; g.add(spin);
+    spin.add(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2, 1.4, 10), olive));
+    for (const sx of [-0.5, 0.5]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 4.2, 6), dark); b.rotation.x = Math.PI / 2 - 0.7; b.position.set(sx, 1.6, -1.5); spin.add(b); }
+    return { g, spin, mats: [sand, olive, dark], r: 10, kind: 'FLAK', hp: 40, aimSpin: true };
+  }
+  const BASE = { ciws: [], sams: [], samCD: 4, ciwsT: 0, acc: 0 };
+  const baseTracers = new Tracers(200, 0xfff3c4, 0xffa040, 22);
+  function buildBaseDefences() {
+    const R = env.runway; if (!R) return;
+    const white = surfMat(0xe6e8e4, 0.5, 0.2), grey = surfMat(0x8d918f, 0.7, 0.3), olive = surfMat(0x4b5233, 0.8, 0.2);
+    for (const [x, z] of [[R.x + 120, R.z0 - 70], [R.x + 120, R.z1 + 70]]) {
+      const y = Math.max(terrainHeight(x, z), 2), g = new THREE.Group(); g.position.set(x, y, z);
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(5, 2, 5), grey).translateY(1));
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 3, 12), white).translateY(3.5));
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), white).translateY(5));
+      scene.add(g); BASE.ciws.push(new THREE.Vector3(x, y + 5.5, z));
+    }
+    { const x = R.x + 470, z = -100, y = Math.max(terrainHeight(x, z), 2), g = new THREE.Group(); g.position.set(x, y, z);
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 6.4), olive).translateY(0.8));
+      const rack = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 6.8), olive); rack.position.set(0, 2.6, 0); rack.rotation.x = 0.7; g.add(rack);
+      scene.add(g); BASE.sams.push(new THREE.Vector3(x, y + 4, z)); }
+  }
+  function nearestBandit(p, range) {
+    let best = null, bd = range * range;
+    for (const e of enemies) { if (!e.alive) continue; const d = e.pos.distanceToSquared(p); if (d < bd) { bd = d; best = e; } }
+    return best;
+  }
+  function updateDefences(dt) {
+    const fire_ok = hostileFireOk();
+    for (const t of surface) {
+      if (t.fleet || !t.alive) continue;
+      const dist = t.pos.distanceTo(S.position);
+      if (t.kind === 'FLAK') {
+        if (t.spin) t.spin.rotation.y = Math.atan2(-(S.position.x - t.pos.x), -(S.position.z - t.pos.z)) - t.g.rotation.y;
+        t.flakCD = (t.flakCD || 0) - dt;
+        if (fire_ok && dist < 3600 && S.position.y > 60 && t.flakCD <= 0) {
+          t.flakCD = 0.7 + rand() * 0.7;
+          if (!occluded(_da.copy(t.pos).setY(t.pos.y + 4), S.position)) {
+            _dv.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().multiplyScalar(30 + rand() * 130);
+            flakBurst(_da.copy(S.position).addScaledVector(S.velocity, 0.5).add(_dv));
+          }
+        }
+      } else if (t.kind === 'SAM SITE') {
+        t.samCD = (t.samCD ?? 8 + rand() * 8) - dt;
+        if (fire_ok && t.samCD <= 0 && dist < 8000 && S.position.y > 260) {
+          t.samCD = 18 + rand() * 8;
+          if (!occluded(_fp.copy(t.pos).setY(t.pos.y + 6), S.position)) surfaceSAM(_fp.clone(), t.label);
+        }
+      }
+    }
+    // Friendly base air defence.
+    BASE.samCD -= dt; BASE.ciwsT -= dt;
+    for (const s of BASE.sams) {
+      if (BASE.samCD > 0) break;
+      const e = nearestBandit(s, 5000);
+      if (e && !occluded(s, e.pos)) {
+        BASE.samCD = 8;
+        _dv.copy(e.pos).sub(s).normalize().lerp(UP, 0.4).normalize(); _q.setFromUnitVectors(MSL_NOSE, _dv);
+        const m = launch(_da.copy(s), _q, _db.copy(_dv).multiplyScalar(70), e, false, MSL_FULL);
+        if (m) { m.friendly = true; if (env.onRadio) env.onRadio('BASE_SAM'); }
+      }
+    }
+    if (BASE.ciwsT <= -1.4) BASE.ciwsT = 1.2;
+    if (BASE.ciwsT > 0) {
+      for (const c of BASE.ciws) {
+        const e = nearestBandit(c, 1800);
+        if (!e || occluded(c, e.pos)) continue;
+        BASE.acc += dt * 24;
+        while (BASE.acc >= 1) {
+          BASE.acc -= 1;
+          const tof = e.pos.distanceTo(c) / 1100;
+          _dv.copy(e.pos).addScaledVector(e.vel, tof).sub(c).normalize();
+          _dv.x += (rand() - 0.5) * 0.02; _dv.y += (rand() - 0.5) * 0.02; _dv.z += (rand() - 0.5) * 0.02;
+          baseTracers.add(c, _dv.normalize().multiplyScalar(1100), 2.2);
+        }
+      }
+    }
+    baseTracers.step(dt, b => {
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        _dv.subVectors(b.p, b.prev); const l2 = _dv.lengthSq();
+        const tt = l2 > 0 ? clamp(_db.subVectors(e.pos, b.prev).dot(_dv) / l2, 0, 1) : 0;
+        if (_db.copy(b.prev).addScaledVector(_dv, tt).distanceToSquared(e.pos) < 121) {
+          e.hp -= 3; hitSparks(b.p, b.v);
+          if (e.hp <= 0) destroyEnemy(e, false, 'BASE');
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // Strike bombers reaching the base: a 7-bomb stick across the runway / hangars.
+  const baseStrikes = [];
+  function bomberRun(e) {
+    const R = env.runway; if (!R) return;
+    e.bombed = true;
+    for (let k = 0; k < 7; k++) baseStrikes.push({ t: 0.6 + k * 0.2, x: R.x + (rand() - 0.3) * 520, z: R.z0 + rand() * (R.z1 - R.z0) });
+    C.baseHits = (C.baseHits || 0) + 1;
+    C.score = Math.max(0, (C.score || 0) - 800);
+    say(`ARCHIPELAGO AFB HIT — ${e.label} BOMBS ON TARGET!`, 2.8, '#ff4d3d');
+    pushEvent('DAMAGED', `[ BASE HIT ] ${e.type} ${e.label} — -800`, 0, '#ff4d3d');
+    if (env.onRadio) env.onRadio('BASE_HIT');
+    fleetCenter(e.center); e.radius = 2800;                     // egress toward the fleet
+  }
+  function updateBombers(dt) {
+    const R = env.runway;
+    if (R) {
+      const cz = (R.z0 + R.z1) / 2;
+      for (const e of enemies) if (e.alive && e.bomber && !e.bombed && Math.hypot(e.pos.x - R.x, e.pos.z - cz) < 1000) bomberRun(e);
+    }
+    for (let i = baseStrikes.length - 1; i >= 0; i--) {
+      const b = baseStrikes[i]; b.t -= dt;
+      if (b.t > 0) continue;
+      baseStrikes.splice(i, 1);
+      _da.set(b.x, Math.max(terrainHeight(b.x, b.z), 0) + 2, b.z);
+      explosion(_da, 2.2); shockRing(_da, 0xffd8a0, false);
+    }
+  }
+
+  // Terrain masking: a ridge / canyon wall rising above the line of sight breaks
+  // bandit radar locks at once and strips guidance from missiles tracking us.
+  let maskSayT = -99;
+  function terrainMaskBreak(what) {
+    C.terrainBreaks = (C.terrainBreaks || 0) + 1;
+    C.terrainMaskT = performance.now();
+    const now = performance.now() / 1000;
+    if (now - maskSayT < 2) return;
+    maskSayT = now;
+    say('[ TERRAIN MASKING // LOCK BROKEN ]', 2.2, '#52ff9c');
+    pushEvent('EVADED', `TERRAIN MASKING // ${what} LOCK BROKEN`, 0, '#52ff9c');
+    if (env.onSfx) env.onSfx('lockdrop', null, 1);
+    if (env.onRadio) env.onRadio('TERRAIN_MASK');
+  }
+
+  // Live sector readout + AWACS call on entry.
+  let sectorT = 0;
+  function updateSector(dt, playerActive) {
+    sectorT -= dt;
+    if (sectorT > 0 || !env.sectorAt) return;
+    sectorT = 0.4;
+    const sc = env.sectorAt(S.position.x, S.position.z);
+    if (C.sector && C.sector.id === sc.id) return;
+    const had = !!C.sector;
+    C.sector = sc; C.sectorT = performance.now();
+    if (had && playerActive && env.onRadio) env.onRadio('SECTOR', { id: sc.id, code: sc.code, name: sc.name });
   }
 
   /* ==================================================== damage model */
@@ -2300,6 +2863,8 @@ export function createCombat(THREE, env) {
   function init(model, nozzleLocal) {
     collectStores(model);
     buildFleet(model, nozzleLocal);
+    buildBaseDefences();
+    spawnFleet();
     spawnWave();
     spawnSurface();
     ready = true;
@@ -2408,12 +2973,22 @@ export function createCombat(THREE, env) {
       }
       checkRams(playerActive);
       updateDebris(dt);
+      updateBombers(dt);
+      // Next phase once the air wave is gone -- PHASE 2 also needs the task force sunk.
       if (!enemies.some(e => e.alive || e.wreck)) {
-        waveTimer += dt;
-        if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
+        if (C.phase === 2 && fleetAlive()) {
+          waveTimer = 0;
+          if (playerActive && env.onRadio) env.onRadio('FLEET_REMAIN');
+        } else {
+          waveTimer += dt;
+          if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
+        }
       } else waveTimer = 0;
       writeFleet();
+      updateFleet(dt);
+      updateDefences(dt);
     }
+    updateSector(dt, playerActive);
     // Bandit seeker state, aggregated for the RWR / alert systems.
     let bl = 0;
     for (const e of enemies) if (e.alive) bl = Math.max(bl, e.bLock || 0);
@@ -2473,6 +3048,17 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
+    get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
+    get taskForce() { return taskForce; },
+    get sector() { return C.sector || null; },
+    // Debug: jump straight to a phase (1 strait sweep, 2 fleet + bombers, 3 canyon Ace).
+    spawnPhase(p) { C.wave = Math.floor(C.wave / 3) * 3 + (p - 1); spawnWave(); },
+    // Debug: inflict n HP on task-force ship i (sinks it when HP runs out).
+    hitShip(i, n) { const t = taskForce[i]; if (t) damageSurface(t, n); },
+    fleetStats() {
+      return taskForce.map(t => ({ id: t.id, kind: t.kind, alive: t.alive, hp: Math.round(t.hp), x: Math.round(t.pos.x), z: Math.round(t.pos.z), sink: +(t.sink || 0).toFixed(1),
+        wake: +t.wake.material.uniforms.uFade.value.toFixed(2) }));
+    },
     // Debug: jump the phase cycle straight to PHASE 3 (Ace + escorts).
     spawnAce() { C.wave = Math.ceil(C.wave / 3) * 3 + 2; spawnWave(); },
     designateGround(t) { C.groundTgt = t || null; C.ccrpArmed = false; },
@@ -2489,8 +3075,9 @@ export function createCombat(THREE, env) {
       e.speed = 170; orient(e); writeFleet();
     },
     // Debug: bogey i launches a soft- or full-lock missile at the player now.
-    banditShot(i, soft) {
+    banditShot(i, soft, aim) {
       const e = enemies[i]; if (!e || !e.alive) return;
+      if (aim) { e.fwd.copy(S.position).sub(e.pos).normalize(); e.vel.copy(e.fwd).multiplyScalar(e.speed); orient(e); }   // nose on the player first
       launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true, soft ? BANDIT_SOFT : BANDIT_FULL);
       e.mslCD = 99;
     },
@@ -2568,6 +3155,9 @@ export function createCombat(THREE, env) {
           ccrp: C.ccrp ? { along: Math.round(C.ccrp.along), cross: Math.round(C.ccrp.cross), ttr: +C.ccrp.ttr.toFixed(1), rng: Math.round(C.ccrp.range) } : null,
           armed: !!C.ccrpArmed, rel: C.ccrpRelease || null },
         dmg: { pct: Math.round(100 - C.health), hyd: !!C.hydraulic, out: C.engineOut || null, fire: !!C.engineFire },
+        zone: { sector: C.sector ? C.sector.code : null, terrainBreaks: C.terrainBreaks || 0, baseHits: C.baseHits || 0, baseKills: C.baseKills || 0,
+          shots: C.mslLog.slice(-4).map(x => x.tag + ':' + x.result).join(' '), sams: missiles.filter(m => m.active && m.sam).length, provoked: fleetProvoked,
+          fleet: taskForce.map(t => t.id + (t.alive ? ':' + Math.round(100 * t.hp / t.hpMax) : 'x')).join(' '), bombers: enemies.filter(e => e.bomber).map(e => e.label.slice(-1) + (e.alive ? (e.bombed ? 'B' : 'I') : 'x')).join('') },
         lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         cloud: { player: +(C.playerCloud || 0).toFixed(2), tgt: +((C.designated && C.designated.cloud) || 0).toFixed(2), obscured: !!C.targetObscured, breaks: C.cloudBreaks || 0,
           msl: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.cloudLost ? '/cloudLost' : m.lostTrack ? '/lost' : '') + (m.reacquired ? '/reacq' : '') + ' c' + (m.cloud || 0).toFixed(2)).join(' ') },

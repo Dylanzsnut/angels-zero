@@ -14,7 +14,7 @@ export function createRadio(env) {
   C.radio = null;
   C.radioLog = [];
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  const spoken = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());   // SCARLET 1 -> Scarlet 1
+  const spoken = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());   // CRIMSON VULTURE -> Crimson Vulture
   const banditsUp = () => env.getEnemies().filter(e => e.alive).length;
 
   function push(side, call, text, pri = 1, key = text, cd = 0) {
@@ -33,24 +33,63 @@ export function createRadio(env) {
   function event(kind, d = {}) {
     switch (kind) {
       case 'LAUNCH':
-        awacs(`Overlord to Alpha 1, picture is hot. ${banditsUp()} bandits over the archipelago. Weapons free.`, 2);
+        awacs(`Overlord to Alpha 1, picture is hot. ${banditsUp()} bandits sweeping the Bridge Strait. Weapons free.`, 2);
         break;
       case 'WAVE':
         if (d.wave <= 1) break;
-        if (d.phase === 2) awacs(`Overlord: phase two. Second bandit flight inbound, wave ${d.wave}. Engage at will, Eagle.`, 2, 'wave', 5);
-        else awacs(`Overlord: picture's reset. Fresh bandit flight on radar, wave ${d.wave}. Weapons free.`, 2, 'wave', 5);
+        if (d.phase === 2) awacs(`Overlord: phase two. Enemy carrier group in Sector 4 with fighter cover. Sink that task force, Eagle.`, 3, 'wave', 5);
+        else awacs(`Overlord: phase one, wave ${d.wave}. Fresh fighter sweep over the Bridge Strait. Weapons free.`, 2, 'wave', 5);
         break;
-      // PHASE 3: the Ace sortie.
+      // PHASE 3: the Ace sortie over the NW Basalt Canyon.
       case 'ACE_INBOUND':
-        awacs(`Overlord: phase three. High-speed bogey inbound with two escorts. Callsign ${spoken(d.label)}. That's their ace. Watch yourself, Eagle.`, 4);
-        push('enemy', d.label, 'All units clear the airspace. That Eagle is mine.', 4);
+        awacs(`Overlord: phase three. Their ace is over the Basalt Canyon with two escorts. Callsign ${spoken(d.label)}, the ${d.name ? spoken(d.name) : 'Crimson Vulture'}. Watch yourself, Eagle.`, 4);
+        push('enemy', d.label, 'All units clear the canyon. That Eagle is mine.', 4);
+        break;
+      // Zones, fleet, bombers, terrain masking.
+      case 'SECTOR': {
+        const lines = {
+          1: 'Back over Archipelago AFB, Eagle. Base air defenses have you covered.',
+          2: 'Entering Sector 2, the Bridge Strait. Flak and SAMs on the headlands—keep it low and fast.',
+          3: 'Sector 3, the Basalt Canyon. Get below the rim—those walls will mask you from their radar.',
+          4: 'Sector 4, open sea. Enemy carrier strike group patrols this water—watch their CIWS!'
+        };
+        if (lines[d.id]) awacs(lines[d.id], 2, 'sector' + d.id, 45);
+        break;
+      }
+      case 'FLEET_SPOTTED':
+        awacs('Enemy carrier strike group spotted in Sector 4—watch their CIWS!', 3, 'fleet', 60);
+        break;
+      case 'FLEET_HIT':
+        awacs('Good hits on the task force! Keep pressing the attack!', 2, 'fleethit', 30);
+        break;
+      case 'SHIP_SUNK':
+        awacs(d.kind === 'CARRIER' ? "The carrier is going down! Look at those secondaries!" : 'Destroyer sunk! Good shooting, Eagle.', 3, 'sunk', 6);
+        enemy('NAVY-1', d.kind === 'CARRIER' ? 'Flagship is lost! All escorts, scatter!' : 'Escort hit—we are taking water!', 2, 'navy', 10);
+        break;
+      case 'FLEET_SUNK':
+        awacs('Task force neutralized! The sea lane is clear. Outstanding work, Eagle!', 4);
+        break;
+      case 'FLEET_REMAIN':
+        awacs("The task force is still afloat, Eagle. Sink it before we can push on.", 2, 'fleetremain', 30);
+        break;
+      case 'BOMBERS':
+        awacs('Heavy strike bombers inbound to Archipelago AFB from the southwest—intercept them!', 3, 'bombers', 20);
+        break;
+      case 'BASE_HIT':
+        awacs('Archipelago AFB is taking hits! Splash those bombers!', 4, 'basehit', 8);
+        break;
+      case 'BASE_SAM':
+        awacs('Base SAMs are engaging—bandits over the field.', 1, 'basesam', 25);
+        break;
+      case 'TERRAIN_MASK':
+        awacs('Good terrain masking—the canyon walls blocked their radar!', 2, 'mask', 20);
         break;
       case 'ACE_HURT':
         enemy(d.label, "You're good, Eagle... but this sky belongs to me!", 3, 'acehurt', 30);
         break;
       case 'ACE_KILL':
         awacs(`${d.sub ? spoken(d.sub) : 'Their ace'} is down! Outstanding flying, Eagle!`, 4);
-        enemy('HOSTILE-2', 'Scarlet 1 is gone?! Everyone bug out!', 3);
+        enemy('HOSTILE-2', 'Sol-1 is gone?! The Vulture is down—everyone bug out!', 3);
         break;
       case 'KILL': {
         chainKills++;

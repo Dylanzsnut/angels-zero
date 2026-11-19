@@ -812,6 +812,38 @@ export function createWorld(THREE, env) {
       f.s.position.y = f.base + 16 * k;
     }
   }
+  /* ------------------------------------------------- tactical sectors */
+  // Four named combat zones (checked in this order):
+  //   SEC-03 NW BASALT CANYON  canyon massif + its sea stacks (3.4 km of the island centre)
+  //   SEC-02 BRIDGE STRAIT     the strait band between the main island and the
+  //                            northern islands, spanned by both bridges
+  //   SEC-01 ARCHIPELAGO AFB   main island + the base perimeter / both finals
+  //   SEC-04 OPEN SEA FLEET    everything else: open ocean (carrier task force lane)
+  const SECTORS = [
+    { id: 1, code: 'SEC-01', name: 'ARCHIPELAGO AFB' },
+    { id: 2, code: 'SEC-02', name: 'BRIDGE STRAIT' },
+    { id: 3, code: 'SEC-03', name: 'NW BASALT CANYON' },
+    { id: 4, code: 'SEC-04', name: 'OPEN SEA FLEET' }
+  ];
+  const CANYON_C = { x: -5600, z: -8200 };
+  function sectorAt(x, z) {
+    if (Math.hypot(x - CANYON_C.x, z - CANYON_C.z) < 3400) return SECTORS[2];
+    if (z < -2600 && z > -6400 && Math.abs(x) < 6800) return SECTORS[1];
+    if (Math.hypot(x - 300, z + 600) < 4300) return SECTORS[0];
+    return SECTORS[3];
+  }
+  // Enemy task-force patrol lane (deep water, SW open sea, clear of rigs / stacks / islands).
+  const FLEET_LANE = { a: new THREE.Vector3(-8200, 0, 800), b: new THREE.Vector3(-2600, 0, 5000) };
+  // Line-of-sight terrain masking: does any of `steps` samples along A -> B dip
+  // under the terrain (+ margin)? Ten height-grid lookups, no allocation.
+  function isTerrainOccluded(a, b, steps = 10, margin = 4) {
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      if (heightAt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t) > a.y + (b.y - a.y) * t + margin) return true;
+    }
+    return false;
+  }
+
   // Solid obstacles (bridges, towers, hangars, cranes, turbines ...).
   const _l = new THREE.Vector3();
   function collide(p, pad = 0) {
@@ -834,6 +866,7 @@ export function createWorld(THREE, env) {
     terrain, props, heightAt, analyticHeight, collide, update,
     runway: RWY, bridges: bridgeInfo, obstacleCount: () => boxes.length + cyls.length,
     stacks, rigs: RIGS.map(([x, z]) => ({ x, z })), canyonHalf,
+    sectors: SECTORS, sectorAt, isTerrainOccluded, fleetLane: FLEET_LANE, canyonCenter: CANYON_C,
     // Radar overlay marks: runway + bridge spans (world x / z polylines).
     marks: [
       { kind: 'runway', pts: [[RWY.x, RWY.z0], [RWY.x, RWY.z1]] },

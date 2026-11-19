@@ -489,7 +489,7 @@ export function createHUD(THREE, A) {
     const nextTgt = C.nextTarget && C.nextTarget.alive ? C.nextTarget : null;
     const offRing = [];
 
-    for (const e of A.getEnemies()) {
+    for (const e of (A.getTargets ? A.getTargets() : A.getEnemies())) {     // bandits + task-force ships
       if (!e.alive) continue;
       const range = e.pos.distanceTo(S.position);
       const { p, on } = onScreenOf(e.pos, e === prim);
@@ -1472,6 +1472,7 @@ export function createHUD(THREE, A) {
     drawTopLeft(hctx);
     if (!C.dead) drawKillFlash(hctx, g);
     drawSquareRadar(hctx);
+    drawSectorBadge(hctx);
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
     if (!C.dead) drawApproach(hctx, g);
@@ -1625,7 +1626,7 @@ export function createHUD(THREE, A) {
   }
 
   // PHASE 3 Ace marker: slow-rotating crimson double diamond around the jet,
-  // "ACE // SCARLET 1" tag above and a structural HP bar below.
+  // "ACE // SOL-1" tag above and a structural HP bar below.
   function drawAceMark(ctx, e, p, now) {
     const range = e.pos.distanceTo(S.position);
     const s = clamp(16000 / Math.max(range, 350), 20, 34) + 8;
@@ -1770,6 +1771,21 @@ export function createHUD(THREE, A) {
   }
 
   // Generic bracketed status badge (weather etc.).
+  // Live sector badge tucked above the radar: `SEC-02 // BRIDGE STRAIT`; brightens
+  // for 2.5 s after a sector change.
+  function drawSectorBadge(ctx) {
+    const sc = C.sector; if (!sc) return;
+    const s = Math.round(Math.min(216, HH * 0.30, HW * 0.22)), x0 = 20, y0 = HH - s - 20;
+    const fresh = clamp(1 - (performance.now() - (C.sectorT || 0)) / 2500, 0, 1);
+    const txt = `${sc.code} // ${sc.name}`;
+    ctx.save();
+    ctx.font = f(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const w = Math.min(s, ctx.measureText(txt).width + 14);
+    noGlow(ctx); ctx.fillStyle = `rgba(6, 26, 14, ${0.42 + 0.25 * fresh})`; ctx.fillRect(x0, y0 - 22, w, 17);
+    glow(ctx, G, 2 + 4 * fresh); ctx.lineWidth = 1; ctx.strokeStyle = fresh > 0 ? GB : GD; ctx.strokeRect(x0 + 0.5, y0 - 21.5, w - 1, 16);
+    labelText(ctx, txt, x0 + 7, y0 - 13, fresh > 0.05 ? GB : G, 2 + 3 * fresh);
+    ctx.restore();
+  }
   // [ FREE LOOK ] tag, bottom centre, while Alt / MMB is held (src/freelook.js).
   function drawFreeLookTag(ctx) {
     const fl = A.getFreeLook && A.getFreeLook();

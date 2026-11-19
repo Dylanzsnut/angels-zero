@@ -816,6 +816,52 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     shader programs after warm-up (258 -> 258); cockpit median 9.8 ms vs chase
     8.6 ms (was 14.4 ms with 29 ms spikes); briefing warm-up 1.6 s async + 1.6 s
     sync. Headless: live gauges / CRTs, NVG phosphor, zero page errors.
+- [x] **4 tactical zones, carrier task force, terrain masking** *(build `s44a`, `src/world.js`, `src/combat.js`, `src/radio.js`, `src/hud.js`, `index.html`)*
+  - Sectors (`world.sectorAt`): SEC-01 ARCHIPELAGO AFB (main island + base
+    perimeter), SEC-02 BRIDGE STRAIT (strait band under both bridges), SEC-03
+    NW BASALT CANYON (canyon massif + stacks), SEC-04 OPEN SEA FLEET (open
+    ocean). Live `SEC-0n // NAME` badge above the radar (brightens 2.5 s on
+    change) + AWACS line on entering each sector.
+  - Naval task force (SEC-04, SW lane): 1 CVN (angled deck, markings,
+    elevators, island + turning radar, parked jets, 4 CIWS, 2 SAM launchers)
+    + 3 DDG escorts on a racetrack in formation at ~25 kt; hulls merged per
+    material; per-ship wake shader (Kelvin arms, bow crest, hull foam,
+    widening turbulent stern wake fixed to the water). Ships are surface
+    targets (UGB / gun) AND radar / seeker targets (MSL / 4AAM TGT boxes):
+    CVN 420 HP, DDG 170 HP, missile 90, Mk-82 up to 180; smoke < 66 %, deck
+    fires < 33 %, secondary magazine explosions + listing / settling when
+    sunk (CVN 6,000 pts, DDG 2,500). Defences: CIWS tracer streams < 2.4 km,
+    AAA flak bursts < 4.8 km, shipborne SAMs < 7.5 km (<= 2 in the air), ship
+    radars on the RWR; weapons-tight outside PHASE 2 unless attacked, locked
+    or overflown < 3 km (the lane is near the player spawn).
+  - SEC-02: SAM sites placed on strait ground (now launch at the player
+    > 850 ft, 8 km, line of sight) + 4 coastal flak nests on the bridge
+    headlands (40 HP targets). SEC-01: friendly base CIWS (2) + SAM engaging
+    bandits / bombers over the field (base kills, no player credit).
+  - Terrain masking (`world.isTerrainOccluded`, 10 height samples): bandit
+    radar locks drop to 0 the instant a ridge / canyon wall blocks line of
+    sight (sampled every 0.15 s); bandit / SAM missiles tracking us lose
+    guidance and fly on ballistic into the wall; `[ TERRAIN MASKING // LOCK
+    BROKEN ]` banner, event, lock-drop tone, AWACS call. Ship / site fire
+    also needs line of sight.
+  - Zone-anchored phases: PHASE 1 fighter sweep patrolling over the Bridge
+    Strait; PHASE 2 four escorts on high CAP over the task force + two Su-34
+    strike bombers (1.35x airframe, 2 missile hits, no dogfighting) running at
+    the AFB -- a bomber reaching the field drops a 7-bomb stick (-800, AWACS)
+    and egresses; PHASE 2 only ends once the task force is sunk; PHASE 3 Ace
+    renamed SOL-1 "CRIMSON VULTURE", spawning with two escorts over the canyon.
+  - AWACS: sector entry, fleet spotted / hit / ship sunk / fleet sunk / still
+    afloat, bombers inbound, base hit, base SAMs, terrain masking.
+  - Debug: `at=fleet`, `phase=1|2|3`, `sinkat=s[,i]`, `maskshot=s`, warp log
+    `fleet [...]`, stats `zone {...}`, `combatSys.spawnPhase / hitShip / fleetStats`.
+  - Verified (pane + headless): sector readout SEC-01 -> 02 -> 03 -> 04;
+    fleet steaming with wakes, CIWS / flak / SAM on an attack run; carrier
+    sunk -> fires, secondaries, listing, wake fading; deep-canyon bandit shot
+    -> `B-FULL:TERRAIN`, missile into the wall at 1.2 s, banner + AWACS; the
+    same shot over open sea hits; a full lock drops to 0 behind the wall;
+    bomber run -> base hit; PHASE 2 held until the fleet sank, then SOL-1
+    over SEC-03; fleet-area frame 7.4-7.8 ms median (pane); zero page errors
+    (cockpit rain, night fleet, Ace canyon, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -906,7 +952,8 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i` ·
 `look=yaw,pitch` (hold free look, degrees) · `lookoff=s` (release at s) ·
-`at=final18|rig|stack` (3.6 km RWY 18 final / oil rig run / sea-stack run)
+`at=final18|rig|stack` (3.6 km RWY 18 final / oil rig run / sea-stack run) ·
+`at=fleet` · `phase=1|2|3` · `sinkat=s[,i]` (sink task-force ship i) · `maskshot=s` (aimed bandit shot)
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load) · `onrwy[=z]` (stopped on RWY 36, gear down) · `gear` (start gear down)
