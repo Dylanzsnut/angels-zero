@@ -322,7 +322,9 @@ export function createAtmosphere(THREE, env) {
       .lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel * (1 - 0.5 * wx.overcast))), Math.min(1, mist * 1.15))
       .lerp(FLASH, wx.flash * 0.3);
     skyUniforms.uWhite.value = Math.min(1, mist * 1.1);
-    scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * (1 + mist * 28);
+    // Above the overcast ceiling tops (~11,500 ft) the air is crisp: haze thins by 55 %.
+    const above = THREE.MathUtils.smoothstep(camera.position.y, 3300, 3900);
+    scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * (1 - 0.55 * above) * (1 + mist * 28);
 
     corona.position.copy(skyDir).multiplyScalar(SUN_DIST).add(camera.position);
     const moon = skyUniforms.uMoon.value > 0.5;

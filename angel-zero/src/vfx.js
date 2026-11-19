@@ -1,9 +1,11 @@
 // ANGELS ZERO — flight & atmospheric VFX.
 // Afterburner mach diamonds, wingtip contrails, over-wing vapor, supersonic
-// speed streaks, Prandtl-Glauert vapor cone, low-level sea spray and a
-// 112 formations in low / mid / high decks (900 ft - 10,500 ft) with wind drift,
-// weather-driven coverage, lightning-lit bellies, a cloudDensity()
-// query for gameplay, and a camera mist factor for the white-out / canopy fx.
+// speed streaks, Prandtl-Glauert vapor cone, low-level sea spray and an
+// architectural 3-tier cloud system (overcast ceiling 8,500-11,500 ft, 22
+// cumulonimbus sky-canyon pillars, low sea mist) with wind drift, weather-driven
+// coverage, storm shading, zero-pop proximity fade, lightning-lit bellies, a
+// cloudDensity() query for gameplay, and a camera mist factor for the
+// white-out / fog ramp / canopy fx.
 
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
 const LOG_F = '#include <logdepthbuf_pars_fragment>\n';
@@ -43,7 +45,7 @@ export function createVFX(THREE, env) {
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
-  const cloudTexA = puffTexture(55, 16), cloudTexB = puffTexture(77, 11), vaporTex = puffTexture(91, 9, 128);
+  const vaporTex = puffTexture(91, 9, 128);
 
   /* ------------------------------------------- afterburner mach diamonds */
   const plumeGeo = new THREE.CylinderGeometry(1, 1, 1, 28, 64, true);
@@ -389,84 +391,168 @@ export function createVFX(THREE, env) {
     spMat.uniforms.uScale.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   }
 
-  /* ---------------------- cumulus decks 2,400-5,500 ft + fly-through */
-  // 32 large multi-puff cumulus formations. Every puff is one instance of a
-  // single billboard mesh (one draw call), re-sorted back-to-front 5x / s.
-  // Shading per puff: height inside its formation (slate-blue #6e89a8 belly ->
-  // #ffffff top) plus a sun-facing term, so tops and the sun side glow.
-  // Formations drift with a steady 7 m/s wind; cloudDensity(p) samples their
-  // ellipsoids (0 outside .. 1 deep inside) for gameplay (lock-breaking) and
-  // the canopy-moisture / white-out effects.
+  /* ------------------------------- architectural 3-tier cloud system */
+  // One instanced mesh (one draw call) of soft procedural puffs, re-sorted
+  // back-to-front 5x / s, in three intentional tiers:
+  //   TIER 1  high overcast stratus ceiling, 8,500-11,500 ft: three stacked
+  //           horizontal sheets of wind-streaked puffs laid on a noise field
+  //           with natural breaks; climbing above 11,500 ft breaks out into
+  //           clear sky over the cloud tops.
+  //   TIER 2  22 cumulonimbus "sky-canyon" pillars: bases 2,000-2,900 ft,
+  //           800-1,800 m wide, 1,200-2,500 m tall (the tallest crowns merge
+  //           into the ceiling), each built from 3-5 sub-columns (broad dark
+  //           base, stepped mid bulges, sunlit cauliflower crown, anvil on the
+  //           tallest). Poisson-spaced with >= 1.1 km clear corridors.
+  //   TIER 3  low sea-mist / valley-haze ribbons, 120-650 ft, over the
+  //           straits, shoreline cliffs and the canyon floor (approach to the
+  //           airbase kept clear). Visual only: they never feed inCloud.
+  // Shading: each puff carries its normalised height inside its tower; the
+  // shader mixes the time-of-day preset belly -> top colours, pushed toward a
+  // storm palette on the pillars (daylight: #262e35 slate bellies -> #cbc6b8
+  // silver-beige crowns), plus a backlit silver rim when the sun is behind.
+  // Zero-pop proximity fade: every fragment fades out 160 -> 35 m from the
+  // camera (billboards and sheets alike) while the mist factor ramps the
+  // scene FogExp2 up, so flying into a pillar is a fade into vapour, not a
+  // card clipping past. cloudDensity(p) samples the pillar ellipsoids and the
+  // ceiling's noise slab (0 .. 1), drifting with the wind, for lock-breaking,
+  // canopy moisture, wind-rush audio and the fog ramp (clears over ~0.8 s).
   const SUN = (env.sunDir || new THREE.Vector3(0, 1, 0)).clone().normalize();
   const WIND = new THREE.Vector3(5.2, 0, -4.6);          // m/s
   const windOff = new THREE.Vector3();
-  const puffs = [];
-  const volumes = [];
-  const cr = rng(31337);
-  // Three decks, 112 formations (3.5x the old single deck):
-  //   low   900-2,200 ft  broken sea-mist / valley banks hugging ridges + straits
-  //   mid 2,600-5,800 ft  towering multi-puff cumulus, dark bellies, sunlit rims
-  //   high 7,500-10,500 ft wide thin cirrus / stratus streaks (stretched billboards)
-  // Each formation has a coverage rank; the weather engine shows the fraction it
-  // needs (CLEAR ~30 % ... OVERCAST / STORM 100 %). Hidden formations neither
-  // render nor count for cloudDensity().
-  const clusters = [];
   const tH = env.terrainHeight || (() => 0);
-  function addCluster(cx, base, cz, rx, ry, rz, n, r, kind) {
-    const ci = clusters.length;
-    const cl = { rank: r(), kind, on: true };
-    clusters.push(cl);
-    const height = ry * (kind === 'mid' ? 2.6 : kind === 'low' ? 1.5 : 0.6);
-    for (let i = 0; i < n; i++) {
-      // Flat-ish base, billowing dome on top: higher puffs pull toward the axis.
-      const u = Math.pow(r(), kind === 'mid' ? 0.75 : 1.2), shrink = 1 - (kind === 'mid' ? 0.6 : 0.3) * u;
-      const ox = (r() * 2 - 1) * rx * shrink, oz = (r() * 2 - 1) * rz * shrink;
-      const oy = u * height;
-      const lateral = Math.hypot(ox / rx, oz / rz);
-      const sunSide = Math.max(0, (ox * SUN.x + oz * SUN.z) / Math.max(rx, rz)) * 0.35;
-      let shade = Math.min(1, 0.06 + 0.85 * u + sunSide + 0.12 * (1 - lateral));
-      let size = (190 + r() * 230) * (1 - 0.3 * u), stretch = 1, alpha = 1;
-      if (kind === 'low') { size *= 0.85; shade = Math.min(1, 0.3 + 0.5 * u + sunSide); alpha = 0.78; }
-      if (kind === 'high') { size = 420 + r() * 520; stretch = 3.2 + r() * 2.6; shade = 0.75 + 0.25 * r(); alpha = 0.34 + r() * 0.2; }
-      puffs.push({ x: cx + ox, y: base + oy, z: cz + oz, s: size, shade, rot: kind === 'high' ? (r() - 0.5) * 0.35 : r() * Math.PI * 2,
-        tex: r() < 0.5 ? 0 : 1, str: stretch, al: alpha, ci });
+  const canyonX = env.canyonX || null, runway = env.runway || null;
+  const puffs = [], volumes = [], clusters = [];
+  const cr = rng(31337);
+  const TOWER_N = 22, CEIL_LO = 8500 * FT, CEIL_HI = 11500 * FT, ARENA = { x: 0, z: -3000, r: 12500 };
+  const NEAR0 = 35, NEAR1 = 160;
+
+  // 2-D value noise + fbm (deterministic): the ceiling's break pattern.
+  const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+  function vnoise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  const deckField = (x, z) => {                          // 0..1, streaked along the deck wind (x stretched)
+    const X = x / 5200, Z = z / 3100;
+    return 0.55 * vnoise(X, Z) + 0.3 * vnoise(X * 2.1 + 7, Z * 2.1 - 3) + 0.15 * vnoise(X * 4.3 - 11, Z * 4.3 + 5);
+  };
+  let deckThr = 0.4;                                     // set by coverage: higher = more breaks
+
+  // Puff record: x y z, s = size, shade 0..1 (height in its tower), rot, atlas
+  // tile 0..3, str = x-stretch, al = alpha, mode 0 billboard / 1 horizontal
+  // sheet, storm 0..1 (storm palette), ci = cluster index (coverage).
+  const addPuff = o => puffs.push(Object.assign({ shade: 0.8, rot: 0, tile: 0, str: 1, al: 1, mode: 0, storm: 0, ci: -1 }, o));
+  const addCluster = (kind, rank, extra = {}) => { clusters.push(Object.assign({ kind, rank, on: true }, extra)); return clusters.length - 1; };
+
+  // --- TIER 2: pillars, Poisson-spaced with clear corridors.
+  const towers = [];
+  for (let guard = 0; towers.length < TOWER_N && guard < 6000; guard++) {
+    const a = cr() * Math.PI * 2, rr = ARENA.r * Math.sqrt(cr());
+    const x = ARENA.x + Math.cos(a) * rr, z = ARENA.z + Math.sin(a) * rr;
+    const w = 800 + cr() * 1000, H = 1200 + cr() * 1300;
+    if (runway && Math.abs(x - runway.x) < 1400 + w / 2 && z > runway.z0 - 2500 && z < runway.z1 + 7000) continue;   // keep the airbase approach open
+    if (towers.some(t => Math.hypot(t.x - x, t.z - z) < (t.w + w) / 2 + 1100)) continue;                       // >= 1.1 km corridor
+    towers.push({ x, z, w, H, base: 2000 * FT + cr() * 900 * FT });
+  }
+  for (const t of towers) {
+    const ci = addCluster('mid', cr());
+    const R = t.w / 2, top = t.base + t.H;
+    const subN = 3 + Math.floor(cr() * 3);
+    const subs = [];
+    for (let s = 0; s < subN; s++) {                      // sub-columns: one main core + satellites of varied height
+      const main = s === 0, a = cr() * Math.PI * 2, d = main ? 0 : R * (0.35 + cr() * 0.4);
+      subs.push({ x: t.x + Math.cos(a) * d, z: t.z + Math.sin(a) * d, r: R * (main ? 0.62 : 0.38 + cr() * 0.18), h: t.H * (main ? 1 : 0.45 + cr() * 0.4) });
     }
-    volumes.push({ c: new THREE.Vector3(cx, base + ry * 0.95, cz), r: new THREE.Vector3(rx * 1.08, ry * (kind === 'high' ? 1.6 : 1.15), rz * 1.08), on: true, ci,
-      k: kind === 'high' ? 0.55 : 1 });
+    for (const sb of subs) {
+      const n = Math.round(16 + sb.h / 62);
+      for (let i = 0; i < n; i++) {
+        const u = i / (n - 1);                            // 0 base .. 1 crown of this sub-column
+        const y = t.base + u * sb.h;
+        // Silhouette: broad flat base, stepped bulges, narrowing cauliflower crown.
+        const step = 0.82 + 0.18 * Math.sin(u * 9.5 + sb.x * 0.01);
+        const radius = sb.r * (u < 0.12 ? 1.25 : (1.05 - 0.45 * u) * step);
+        const a = cr() * Math.PI * 2, d = radius * Math.sqrt(cr()) * 0.8;
+        const px = sb.x + Math.cos(a) * d, pz = sb.z + Math.sin(a) * d;
+        const hn = (y - t.base) / t.H;                     // height inside the whole tower
+        const sunSide = Math.max(0, (Math.cos(a) * SUN.x + Math.sin(a) * SUN.z)) * 0.22 * (d / Math.max(1, radius));
+        addPuff({ x: px, y, z: pz, s: radius * (1.05 + cr() * 0.55) + 220, shade: Math.min(1, 0.08 + 0.9 * Math.pow(hn, 0.8) + sunSide),
+          rot: cr() * Math.PI * 2, tile: u > 0.7 ? 0 : (cr() < 0.5 ? 0 : 3), storm: 1, ci });
+      }
+      volumes.push({ c: new THREE.Vector3(sb.x, t.base + sb.h * 0.5, sb.z), r: new THREE.Vector3(sb.r * 1.1, sb.h * 0.55, sb.r * 1.1), ci, k: 1 });
+    }
+    // Broad dark rain-free base skirt.
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + cr() * 0.4, d = R * (0.55 + cr() * 0.35);
+      addPuff({ x: t.x + Math.cos(a) * d, y: t.base + 40 + cr() * 80, z: t.z + Math.sin(a) * d, s: R * 0.9 + 220, shade: 0.06 + cr() * 0.06,
+        rot: (cr() - 0.5) * 0.25, tile: 3, str: 1.5, storm: 1, ci });              // level skirt: stretched along the horizon, never a tilted smear
+    }
+    // Anvil on the tallest towers: wide flat sheared top.
+    if (t.H > 2050) {
+      for (let i = 0; i < 12; i++) {
+        const a = cr() * Math.PI * 2, d = R * (0.4 + cr() * 1.1);
+        addPuff({ x: t.x + Math.cos(a) * d + WIND.x * 40, y: top - 60 + cr() * 120, z: t.z + Math.sin(a) * d + WIND.z * 40, s: R * 0.8 + 380,
+          shade: 0.9 + cr() * 0.1, rot: cr() * 6.28, tile: 1, str: 2.2, storm: 1, ci });
+      }
+      volumes.push({ c: new THREE.Vector3(t.x + WIND.x * 40, top, t.z + WIND.z * 40), r: new THREE.Vector3(R * 1.6, 160, R * 1.6), ci, k: 0.8 });
+    }
+    t.ci = ci;
   }
-  // Low banks: seeded near ridges (terrain 60-700 m) or over the straits.
-  for (let c = 0, guard = 0; c < 36 && guard < 900; guard++) {
-    const cx = (cr() - 0.5) * 26000, cz = (cr() - 0.5) * 26000 - 2500;
-    const h = tH(cx, cz), ridge = h > 60 && h < 700, strait = h < -2 && h > -40;
-    if (!ridge && !strait && guard < 700) continue;
-    const base = Math.max(900 * FT, h + 80) + cr() * (2200 * FT - Math.max(900 * FT, h + 80) - 160) * 0.8;
-    addCluster(cx, Math.min(base, 2200 * FT - 150), cz, 520 + cr() * 560, 70 + cr() * 50, 480 + cr() * 520, 18 + Math.floor(cr() * 10), cr, 'low');
-    c++;
+
+  // --- TIER 1: overcast ceiling, three sheets on the noise field.
+  const CELL = 1150, CEIL_R = 21000;
+  const sheetY = [CEIL_LO + 160, (CEIL_LO + CEIL_HI) / 2, CEIL_HI - 180];
+  const ceilCi = addCluster('high', 0, { cells: 0 });
+  for (let gx = -CEIL_R; gx <= CEIL_R; gx += CELL) {
+    for (let gz = -CEIL_R; gz <= CEIL_R; gz += CELL) {
+      if (gx * gx + gz * gz > CEIL_R * CEIL_R) continue;
+      const x = ARENA.x + gx + (cr() - 0.5) * CELL * 0.7, z = ARENA.z + gz + (cr() - 0.5) * CELL * 0.7;
+      const g = deckField(x, z);
+      if (g < 0.22) continue;                             // never cloud here (even full overcast keeps a few breaks)
+      for (let k = 0; k < 3; k++) {
+        addPuff({ x: x + (cr() - 0.5) * 300, y: sheetY[k] + (cr() - 0.5) * 140, z: z + (cr() - 0.5) * 300, s: 1700 + cr() * 900,
+          shade: [0.42, 0.7, 1.0][k], rot: Math.atan2(WIND.z, WIND.x) + (cr() - 0.5) * 0.35, tile: 1, str: 1.9 + cr() * 0.8,
+          al: [0.92, 0.85, 0.95][k], mode: 1, storm: 0.45, ci: ceilCi, g });
+      }
+    }
   }
-  // Mid towering cumulus.
-  for (let c = 0; c < 56; c++) {
-    const rx = 420 + cr() * 520, ry = 140 + cr() * 190, rz = 380 + cr() * 500;
-    const cx = (cr() - 0.5) * 32000, cz = (cr() - 0.5) * 32000 - 2500;
-    const base = 2600 * FT + cr() * Math.max(0, 5800 * FT - 2600 * FT - ry * 2.6);
-    addCluster(cx, base, cz, rx, ry, rz, 30 + Math.floor(cr() * 18), cr, 'mid');
+
+  // --- TIER 3: low sea mist / valley haze ribbons.
+  const mistCi = addCluster('low', 0);
+  let mistN = 0;
+  for (let guard = 0; mistN < 42 && guard < 9000; guard++) {
+    let x = ARENA.x + (cr() - 0.5) * 26000, z = ARENA.z + (cr() - 0.5) * 22000;
+    const inCanyon = canyonX && cr() < 0.22;
+    if (inCanyon) { z = -8200 + (cr() - 0.5) * 3600; x = canyonX(z); }
+    const h = tH(x, z);
+    const strait = h < -3 && h > -60;
+    const cliff = h < 0 && (tH(x + 180, z) > 25 || tH(x - 180, z) > 25 || tH(x, z + 180) > 25 || tH(x, z - 180) > 25);
+    if (!inCanyon && !strait && !cliff) continue;
+    if (runway && Math.abs(x - runway.x) < 1600 && z > runway.z0 - 2500 && z < runway.z1 + 7000) continue;
+    const y = Math.max(0, h) + (120 + cr() * 530) * FT;
+    const yaw = inCanyon ? Math.PI / 2 : Math.atan2(WIND.z, WIND.x) + (cr() - 0.5) * 0.6;
+    for (let i = 0; i < 8; i++) {
+      const along = (i - 3.5) * 200;
+      addPuff({ x: x + Math.cos(yaw) * along, y: y + (cr() - 0.5) * 24, z: z + Math.sin(yaw) * along, s: 230 + cr() * 170,
+        shade: 0.78 + cr() * 0.15, rot: (cr() - 0.5) * 0.12, tile: 2, str: 3.6 + cr() * 2.4, al: 0.42 + cr() * 0.18, mode: 0, storm: 0, ci: mistCi });
+    }
+    mistN++;
   }
-  // High cirrus / stratus veil.
-  for (let c = 0; c < 20; c++) {
-    const cx = (cr() - 0.5) * 40000, cz = (cr() - 0.5) * 40000 - 2500;
-    const base = 7500 * FT + cr() * (10500 * FT - 7500 * FT);
-    addCluster(cx, base, cz, 1400 + cr() * 1600, 60 + cr() * 40, 900 + cr() * 1200, 12 + Math.floor(cr() * 6), cr, 'high');
-  }
+
   let coverage = 1;
   function setCoverage(k) {
     coverage = k;
-    for (const cl of clusters) cl.on = cl.kind === 'high' ? cl.rank < Math.max(0.55, k) : cl.rank < k;
-    for (const v of volumes) if (v.ci !== undefined) v.on = clusters[v.ci].on;
+    // Pillars: CLEAR keeps the biggest ~60 %, SCATTERED ~85 %, overcast / storm all of them.
+    for (const cl of clusters) if (cl.kind === 'mid') cl.on = cl.rank < 0.45 + 0.55 * k;
+    // Ceiling breaks: wide gaps when clear, a near-solid lid when overcast.
+    deckThr = 0.66 - 0.42 * k;                            // CLEAR 0.53 (wide gaps) / SCATTERED 0.36 / OVERCAST 0.24 (near-solid lid)
     sortClouds(0, true);
   }
   // Debug slot: a reserved formation (hidden until placed) for deterministic tests.
-  const DBG_N = 44, dbgStart = puffs.length;
-  for (let i = 0; i < DBG_N; i++) puffs.push({ x: 0, y: -1e5, z: 0, s: 0, shade: 1, rot: 0, tex: 0, str: 1, al: 1, ci: -1 });
-  const dbgVol = { c: new THREE.Vector3(0, -1e5, 0), r: new THREE.Vector3(1, 1, 1), on: false };
+  const DBG_N = 44, dbgStart = puffs.length, dbgCi = addCluster('debug', 0);
+  for (let i = 0; i < DBG_N; i++) addPuff({ x: 0, y: -1e5, z: 0, s: 0, ci: dbgCi });
+  const dbgVol = { c: new THREE.Vector3(0, -1e5, 0), r: new THREE.Vector3(1, 1, 1), on: false, ci: dbgCi, k: 1 };
   volumes.push(dbgVol);
   function placeDebugCloud(center, rx = 650, ry = 220, rz = 650) {
     const r = rng(4242);
@@ -475,11 +561,63 @@ export function createVFX(THREE, env) {
       const u = Math.pow(r(), 0.85), shrink = 1 - 0.55 * u;
       const ox = (r() * 2 - 1) * rx * shrink, oz = (r() * 2 - 1) * rz * shrink;
       Object.assign(puffs[dbgStart + i], { x: center.x + ox - windOff.x, y: base + u * ry * 2.1, z: center.z + oz - windOff.z,
-        s: (200 + r() * 220) * (1 - 0.3 * u), shade: Math.min(1, 0.1 + 0.85 * u), rot: r() * 6.283, tex: i % 2 });
+        s: (200 + r() * 220) * (1 - 0.3 * u), shade: Math.min(1, 0.1 + 0.85 * u), rot: r() * 6.283, tile: i % 2 ? 0 : 3, storm: 1 });
     }
     dbgVol.c.set(center.x - windOff.x, center.y, center.z - windOff.z); dbgVol.r.set(rx * 1.08, ry * 1.15, rz * 1.08); dbgVol.on = true;
     sortClouds(0, true);
   }
+  const puffVisible = q => {
+    if (q.ci < 0) return true;
+    const cl = clusters[q.ci];
+    if (cl.kind === 'high') return q.g > deckThr;
+    return cl.on;
+  };
+
+  // --- 2x2 procedural puff atlas (512 px): 0 billowing cauliflower, 1 wind-streaked
+  // stratus, 2 soft mist, 3 dense lumpy base. Multi-octave noise x feathered radial
+  // falloff -> alpha; no hard circles or borders.
+  function cloudAtlas() {
+    const N = 512, T = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    const img = ctx.createImageData(N, N), d = img.data;
+    const r = rng(9001), off = Array.from({ length: 16 }, () => r() * 100);
+    const fbm = (x, y, o, oct) => { let s = 0, a = 0.5, f = 1; for (let i = 0; i < oct; i++) { s += a * vnoise(x * f + off[o + i], y * f - off[o + i]); a *= 0.5; f *= 2.03; } return s; };
+    const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let tile = 0; tile < 4; tile++) {
+      const ox = (tile % 2) * T, oy = Math.floor(tile / 2) * T;
+      for (let j = 0; j < T; j++) for (let i = 0; i < T; i++) {
+        const u = i / T * 2 - 1, v = j / T * 2 - 1;
+        let a;
+        if (tile === 0) {                                  // cauliflower: lobed dome, flatter bottom
+          const rr = Math.hypot(u, v * (v > 0 ? 1.25 : 0.9));
+          const n = fbm(u * 3.2, v * 3.2, 0, 5);
+          a = ss(1.0, 0.25, rr + (0.5 - n) * 0.55) * (0.55 + 0.6 * n);
+        } else if (tile === 1) {                           // streaked stratus: stretched along x
+          const rr = Math.hypot(u * 0.75, v * 1.35);
+          const n = fbm(u * 1.6, v * 6.0, 5, 5);
+          a = ss(1.0, 0.2, rr + (0.5 - n) * 0.7) * (0.35 + 0.75 * n);
+        } else if (tile === 2) {                           // soft mist
+          const rr = Math.hypot(u, v);
+          const n = fbm(u * 2.0, v * 2.0, 10, 4);
+          a = ss(1.0, 0.0, rr + (0.5 - n) * 0.4) * (0.5 + 0.5 * n) * 0.85;
+        } else {                                           // dense lumpy base
+          const rr = Math.hypot(u, v * 1.1);
+          const n = fbm(u * 4.5, v * 4.5, 3, 5);
+          a = ss(1.0, 0.3, rr + (0.5 - n) * 0.45) * (0.7 + 0.5 * n);
+        }
+        if (tile === 0) a *= 1.55; else if (tile === 3) a *= 1.7; else if (tile === 1) a *= 1.45;   // dense tower cores / stratus lid read solid
+        a = Math.max(0, Math.min(1, a)) * ss(1.0, 0.86, Math.max(Math.abs(u), Math.abs(v)));   // feather to zero before the tile edge
+        const k = ((oy + j) * N + ox + i) * 4;
+        d[k] = d[k + 1] = d[k + 2] = 255; d[k + 3] = Math.round(a * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+    return tex;
+  }
+  const atlasTex = cloudAtlas();
+
   const NP = puffs.length;
   const quad = new THREE.PlaneGeometry(1, 1);
   const cloudGeo = new THREE.InstancedBufferGeometry();
@@ -487,29 +625,39 @@ export function createVFX(THREE, env) {
   cloudGeo.setAttribute('position', quad.attributes.position);
   cloudGeo.setAttribute('uv', quad.attributes.uv);
   const aOff = new THREE.InstancedBufferAttribute(new Float32Array(NP * 3), 3);
-  const aData = new THREE.InstancedBufferAttribute(new Float32Array(NP * 4), 4);
-  const aExt = new THREE.InstancedBufferAttribute(new Float32Array(NP * 2), 2);   // x stretch, alpha
+  const aData = new THREE.InstancedBufferAttribute(new Float32Array(NP * 4), 4);   // size, shade, rot, tile
+  const aExt = new THREE.InstancedBufferAttribute(new Float32Array(NP * 4), 4);    // stretch, alpha, mode, storm
   cloudGeo.setAttribute('aOff', aOff);
   cloudGeo.setAttribute('aData', aData);
   cloudGeo.setAttribute('aExt', aExt);
   cloudGeo.instanceCount = NP;
   const cloudMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uOpacity: { value: 0.9 }, uWind: { value: new THREE.Vector3() },
-      uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1.0 }, uFlash: { value: 0 }
+      uOpacity: { value: 0.92 }, uWind: { value: new THREE.Vector3() }, uAtlas: { value: null },
+      uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1.0 }, uFlash: { value: 0 },
+      uSunV: { value: new THREE.Vector3(0, 1, 0) }, uNear: { value: new THREE.Vector2(NEAR0, NEAR1) }
     }]),
     vertexShader: `
       #include <common>
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
-      attribute vec3 aOff; attribute vec4 aData; attribute vec2 aExt;
+      attribute vec3 aOff; attribute vec4 aData; attribute vec4 aExt;
       uniform vec3 uWind;
-      varying vec2 vUv; varying float vShade; varying float vTex; varying float vAlpha;
+      varying vec2 vUv; varying float vShade; varying float vAlpha; varying float vStorm; varying vec3 vView;
       void main() {
-        vUv = uv; vShade = aData.y; vTex = aData.w; vAlpha = aExt.y;
+        float tile = aData.w;
+        vUv = (uv * 0.98 + 0.01) * 0.5 + vec2(mod(tile, 2.0), floor(tile / 2.0)) * 0.5;
+        vShade = aData.y; vAlpha = aExt.y; vStorm = aExt.w;
         float c = cos(aData.z), s = sin(aData.z);
-        vec4 mvPosition = modelViewMatrix * vec4(aOff + uWind, 1.0);
-        mvPosition.xy += mat2(c, s, -s, c) * (position.xy * vec2(aData.x * aExt.x, aData.x));
+        vec2 q = mat2(c, s, -s, c) * (position.xy * vec2(aData.x * aExt.x, aData.x));
+        vec4 mvPosition;
+        if (aExt.z < 0.5) {                      // camera-facing billboard
+          mvPosition = modelViewMatrix * vec4(aOff + uWind, 1.0);
+          mvPosition.xy += q;
+        } else {                                 // horizontal stratus sheet
+          mvPosition = modelViewMatrix * vec4(aOff + uWind + vec3(q.x, 0.0, q.y), 1.0);
+        }
+        vView = mvPosition.xyz;
         gl_Position = projectionMatrix * mvPosition;
         #include <logdepthbuf_vertex>
         #include <fog_vertex>
@@ -518,28 +666,49 @@ export function createVFX(THREE, env) {
       #include <common>
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
-      uniform sampler2D mapA; uniform sampler2D mapB; uniform float uOpacity;
+      uniform sampler2D uAtlas; uniform float uOpacity;
       uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain; uniform float uFlash;
-      varying vec2 vUv; varying float vShade; varying float vTex; varying float vAlpha;
+      uniform vec3 uSunV; uniform vec2 uNear;
+      varying vec2 vUv; varying float vShade; varying float vAlpha; varying float vStorm; varying vec3 vView;
       void main() {
         #include <logdepthbuf_fragment>
-        float a = vTex < 0.5 ? texture2D(mapA, vUv).a : texture2D(mapB, vUv).a;
+        float a = texture2D(uAtlas, vUv).a;
         if (a < 0.004) discard;
-        // Lower half of each billboard is a touch darker: soft self-shadowed underside.
-        float self = mix(0.82, 1.0, smoothstep(0.15, 0.75, vUv.y));
-        vec3 col = mix(uBelly, uTop, vShade) * self * uGain;
-        col += vec3(0.75, 0.8, 1.0) * uFlash * (0.45 + 0.55 * (1.0 - vShade));   // lightning lights the cloud bodies
-        gl_FragColor = vec4(col, a * uOpacity * vAlpha);
+        // Zero-pop proximity fade: per fragment, 160 m -> 35 m from the eye.
+        float d = length(vView);
+        float near = smoothstep(uNear.x, uNear.y, d);
+        if (near < 0.002) discard;
+        // Vertical self-shadowing: preset belly -> top by height in the tower,
+        // pushed toward the storm palette (#262e35 / #cbc6b8 at daylight) on pillars.
+        vec3 top = mix(uTop, uTop * vec3(0.796, 0.776, 0.722), vStorm);
+        vec3 belly = mix(uBelly, uBelly * vec3(0.355, 0.338, 0.31), vStorm);
+        vec3 col = mix(belly, top, vShade);
+        // Thin edges read lighter (light scatters through), dense cores darker.
+        col *= mix(1.08, 0.9, smoothstep(0.25, 0.9, a));
+        // Backlit silver lining: sun behind the puff lights its thin edges.
+        float back = pow(max(dot(normalize(vView), uSunV), 0.0), 5.0);
+        col += uTop * back * (1.0 - smoothstep(0.1, 0.55, a)) * (0.35 + 0.65 * vShade) * 0.9;
+        col *= uGain;
+        col += vec3(0.75, 0.8, 1.0) * uFlash * (0.45 + 0.55 * (1.0 - vShade));   // lightning lights the bodies
+        gl_FragColor = vec4(col, a * uOpacity * vAlpha * near);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        #include <fog_fragment>
+        #ifdef USE_FOG
+          // Clouds take ~45 % of the scene's exp2 fog, so distant towers still read
+          // as massive shapes; the in-cloud mist ramp (fogDensity x up to 29) still
+          // swallows everything when the camera is inside one.
+          float cfog = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth * 0.45);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, cfog);
+        #endif
       }`,
-    transparent: true, depthWrite: false, fog: true
+    // DoubleSide: the horizontal stratus sheets face down after the XY -> XZ mapping;
+    // they must render from above (cloud tops) as well as from below.
+    transparent: true, depthWrite: false, fog: true, side: THREE.DoubleSide
   });
-  cloudMat.uniforms.mapA = { value: cloudTexA };
-  cloudMat.uniforms.mapB = { value: cloudTexB };
+  cloudMat.uniforms.uAtlas.value = atlasTex;
   const clouds = new THREE.Mesh(cloudGeo, cloudMat);
   clouds.frustumCulled = false;
+  clouds.renderOrder = 2;
   scene.add(clouds);
   const order = new Uint32Array(NP).map((_, i) => i), dist = new Float32Array(NP);
   let sortTimer = 0;
@@ -553,22 +722,28 @@ export function createVFX(THREE, env) {
     for (let k = 0; k < NP; k++) {
       const q = puffs[order[k]];
       aOff.array[k * 3] = q.x; aOff.array[k * 3 + 1] = q.y; aOff.array[k * 3 + 2] = q.z;
-      const vis = q.ci < 0 || clusters[q.ci].on;
-      aData.array[k * 4] = vis ? q.s : 0; aData.array[k * 4 + 1] = q.shade; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tex;
-      aExt.array[k * 2] = q.str || 1; aExt.array[k * 2 + 1] = q.al ?? 1;
+      aData.array[k * 4] = puffVisible(q) ? q.s : 0; aData.array[k * 4 + 1] = q.shade; aData.array[k * 4 + 2] = q.rot; aData.array[k * 4 + 3] = q.tile;
+      aExt.array[k * 4] = q.str; aExt.array[k * 4 + 1] = q.al; aExt.array[k * 4 + 2] = q.mode; aExt.array[k * 4 + 3] = q.storm;
     }
     aOff.needsUpdate = true; aData.needsUpdate = true; aExt.needsUpdate = true;
   }
   sortClouds(0, true);
-  // 0 outside every formation .. 1 deep inside one (drifting with the wind).
+  // 0 outside .. 1 deep inside a pillar / the ceiling slab (drifting with the wind).
   function cloudDensity(p) {
     let best = 0;
+    const ox = windOff.x, oz = windOff.z;
     for (const v of volumes) {
-      if (!v.on) continue;
-      const ox = windOff.x, oz = windOff.z;
+      if (v.ci !== undefined ? !clusters[v.ci].on : !v.on) continue;
+      if (v === dbgVol && !dbgVol.on) continue;
       const dx = (p.x - v.c.x - ox) / v.r.x, dy = (p.y - v.c.y) / v.r.y, dz = (p.z - v.c.z - oz) / v.r.z;
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 < 1) best = Math.max(best, smooth(1 - Math.sqrt(d2), 0, 0.45) * (v.k ?? 1));
+    }
+    // Overcast ceiling: vertical profile across 8,500-11,500 ft x the break field.
+    if (p.y > CEIL_LO - 80 && p.y < CEIL_HI + 80) {
+      const vert = smooth(p.y, CEIL_LO - 80, CEIL_LO + 220) * (1 - smooth(p.y, CEIL_HI - 220, CEIL_HI + 80));
+      const g = deckField(p.x - ox, p.z - oz);
+      best = Math.max(best, vert * smooth(g, deckThr, deckThr + 0.12) * 0.9);
     }
     return best;
   }
@@ -576,12 +751,16 @@ export function createVFX(THREE, env) {
   function updateMist(dt) {
     let target = cloudDensity(camera.position);
     if (force.mist) target = 1;
-    mist += (target - mist) * Math.min(1, dt * (target > mist ? 5.0 : 1.4));
+    // Plunge in fast (~0.2 s); clear over ~0.8 s when breaking out.
+    mist += (target - mist) * Math.min(1, dt * (target > mist ? 5.0 : 2.9));
   }
+  const _sv = new THREE.Vector3();
   function updateWind(dt) {
     cloudTime += dt;
     windOff.copy(WIND).multiplyScalar(cloudTime);
     cloudMat.uniforms.uWind.value.copy(windOff);
+    // Sun direction in view space for the backlit rim.
+    cloudMat.uniforms.uSunV.value.copy(_sv.copy(SUN).transformDirection(camera.matrixWorldInverse));
   }
 
   /* ------------------------------------------------------------- update */
@@ -636,14 +815,20 @@ export function createVFX(THREE, env) {
     update,
     get mist() { return mist; },
     cloudDensity, placeDebugCloud,
-    get cloudCount() { return volumes.filter(v => v.on).length; },
+    get cloudCount() { return clusters.filter(c => c.kind === 'mid' && c.on).length; },
+    // Debug: pillar layout (x, z, width, height, base) and corridor spacing.
+    get cloudTowers() { return towers.map(t => ({ x: Math.round(t.x), z: Math.round(t.z), w: Math.round(t.w), H: Math.round(t.H), base: Math.round(t.base), on: clusters[t.ci].on })); },
     get puffCount() { return NP; },
     setCloudGain(k) { cloudMat.uniforms.uGain.value = k; },
     setEngineOut,
     setCloudCoverage: setCoverage,
     setCloudFlash(k) { cloudMat.uniforms.uFlash.value = k; },
     get cloudCoverage() { return coverage; },
-    get cloudLayers() { const o = { low: 0, mid: 0, high: 0 }; for (const c of clusters) if (c.on) o[c.kind]++; return o; },
+    // low = mist ribbons, mid = pillars shown, high = ceiling cells shown (of 3 sheets each).
+    get cloudLayers() {
+      let cells = 0; for (const q of puffs) if (q.mode === 1 && q.g > deckThr) cells++;
+      return { low: mistN, mid: clusters.filter(c => c.kind === 'mid' && c.on).length, high: Math.round(cells / 3) };
+    },
     setCloudColors(top, belly) { cloudMat.uniforms.uTop.value.copy(top); cloudMat.uniforms.uBelly.value.copy(belly); },
     // New sortie: random wind heading (5-9 m/s) and drift phase so the decks never repeat.
     reseedClouds() {

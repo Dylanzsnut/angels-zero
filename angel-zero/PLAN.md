@@ -518,6 +518,50 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     in chase and on the cockpit combiner; briefing still fits 1280x720; zero
     page console errors (headless onrwy pit stop, approach, lowpatrol,
     cockpit, menu).
+- [x] **Architectural 3-tier cloud system** *(build `s35c`, `src/vfx.js` cloud section, `src/atmosphere.js`, `src/audio.js`)*
+  - Replaces the 112 scattered formations. One instanced mesh (one draw call,
+    ~7,100 puffs, back-to-front sorted 5x / s) from a 512 px 2x2 procedural
+    atlas (multi-octave value-noise x feathered falloff: cauliflower, wind-
+    streaked stratus, soft mist, dense base; no hard edges, no image files).
+  - TIER 1 overcast ceiling 8,500-11,500 ft: three horizontal stratus sheets
+    per cell on a 1.15 km grid over a 21 km disc, laid on a streaked noise
+    field with natural breaks. Coverage sets the break threshold: CLEAR 28 %,
+    SCATTERED 72 %, OVERCAST / STORM 91 % solid (measured). Above 11,500 ft
+    the scene haze thins 55 % for a crisp sky over the cloud tops.
+  - TIER 2 22 cumulonimbus pillars (Poisson-spaced, >= 1.1 km corridors,
+    measured min 1.2 km; airbase approach kept clear): 900-1,770 m wide,
+    1,300-2,460 m tall, bases 2,000-2,900 ft, built from 3-5 sub-columns
+    (broad dark base skirt, stepped bulges, sunlit crown) with sheared anvils
+    on the tallest; CLEAR shows ~60 %, SCATTERED ~85 %, overcast all.
+  - TIER 3 42 sea-mist / valley-haze ribbons at 120-650 ft over the straits,
+    shoreline cliffs and the canyon floor (visual only, never inCloud).
+  - Shading: per-puff height in its tower mixes the time-of-day preset belly
+    -> top colours, pushed to a storm palette on pillars (daylight #262e35
+    slate bellies -> #cbc6b8 silver-beige crowns, scaled for every preset),
+    thin edges lighter, backlit silver rim toward the sun; clouds take 45 % of
+    the scene fog so distant towers still read.
+  - Zero-pop proximity fade: every fragment fades 160 -> 35 m from the eye
+    (billboards and sheets); the mist factor ramps the FogExp2 up to ~29x
+    inside, plunges in ~0.2 s, clears over ~0.8 s on exit.
+  - Fix found on the way: the horizontal sheets face down after the XY -> XZ
+    mapping, so the material is DoubleSide (otherwise the deck vanished from
+    above).
+  - Gameplay: cloudDensity() = pillar sub-column ellipsoids + anvils + the
+    ceiling slab x break field (wind-drifted) -> inCloud > 0.35 breaks bandit
+    seeker locks; canopy moisture / white-out unchanged consumers; in-cloud
+    wind rush now louder and brighter with airspeed.
+  - API kept: cloudDensity, mist, setCloudCoverage, setCloudColors,
+    setCloudGain, setCloudFlash, cloudLayers (low = mist ribbons, mid =
+    pillars, high = ceiling cells), reseedClouds, placeDebugCloud; new
+    `vfx.cloudTowers` debug layout.
+  - Verified in the pane: 4,000 ft among the pillars (dark bellies, light
+    crowns, corridors); straight fly-through of a pillar at 430 kt (inCloud at
+    the edge, mist 1.0, fog x29, no frame-to-frame centre-luminance jump > 8
+    during the pass, exit clears in ~0.8 s); 400 ft over the straits (white
+    mist banks); 12,000 ft above OVERCAST (solid cloud-top sea, crowns poking
+    through, crisp sky); bandit full-lock AIM shot at a player inside a pillar
+    -> CLOUD COVER // MISSILE LOST, no damage; 69-80 fps in the pane; zero page
+    console errors (headless 400 / 4,000 / 12,000 ft, cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

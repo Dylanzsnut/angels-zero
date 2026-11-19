@@ -426,22 +426,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s34a';
-import { createHUD } from './src/hud.js?v=s34a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s34a';
-import { createCombat } from './src/combat.js?v=s34a';
-import { createEjection } from './src/eject.js?v=s34a';
-import { createAudio } from './src/audio.js?v=s34a';
-import { createRadio } from './src/radio.js?v=s34a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s34a';
-import { createLivery } from './src/livery.js?v=s34a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s34a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s34a';
-import { createCanopyFX } from './src/canopy.js?v=s34a';
-import { createNVG } from './src/nvg.js?v=s34a';
-import { createWorld, WORLD } from './src/world.js?v=s34a';
-import { createSurfaces } from './src/surfaces.js?v=s34a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s34a';
+import { createVFX } from './src/vfx.js?v=s35c';
+import { createHUD } from './src/hud.js?v=s35c';
+import { createCockpit3D } from './src/cockpit3d.js?v=s35c';
+import { createCombat } from './src/combat.js?v=s35c';
+import { createEjection } from './src/eject.js?v=s35c';
+import { createAudio } from './src/audio.js?v=s35c';
+import { createRadio } from './src/radio.js?v=s35c';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s35c';
+import { createLivery } from './src/livery.js?v=s35c';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s35c';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s35c';
+import { createCanopyFX } from './src/canopy.js?v=s35c';
+import { createNVG } from './src/nvg.js?v=s35c';
+import { createWorld, WORLD } from './src/world.js?v=s35c';
+import { createSurfaces } from './src/surfaces.js?v=s35c';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s35c';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1783,7 +1783,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'steam') audio.steamHiss();
   else if (type === 'clack') audio.flareClack();
 }
-const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR,
+const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR, canyonX: world.canyonX, runway: world.runway,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
 const canopyFx = createCanopyFX();

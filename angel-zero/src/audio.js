@@ -930,10 +930,11 @@ export function createAudio() {
     set(N.rainGain.gain, 0.11 * rn * (p.cockpit ? 1 : 0.6), 0.4);
     set(N.rainBP.frequency, p.cockpit ? 1700 : 3200, 0.3);
     set(N.rainLowGain.gain, 0.07 * rn * (p.cockpit ? 1.2 : 0.5), 0.4);
-    const cl = Math.min(1, Math.max(0, p.cloud || 0));
-    set(N.cloudGain.gain, 0.32 * cl * (0.6 + 0.4 * Math.min(1, th + ab)), 0.25);
-    set(N.cloudLP.frequency, 300 + 380 * cl, 0.3);
-    set(N.cloudHissGain.gain, 0.025 * cl, 0.3);
+    // Damp in-cloud wind rush: louder and brighter with airspeed (fast cloud pass = roar).
+    const cl = Math.min(1, Math.max(0, p.cloud || 0)), spdK = sm(kts, 180, 560);
+    set(N.cloudGain.gain, 0.32 * cl * (0.45 + 0.35 * spdK + 0.2 * Math.min(1, th + ab)), 0.25);
+    set(N.cloudLP.frequency, 300 + 380 * cl + 520 * cl * spdK, 0.3);
+    set(N.cloudHissGain.gain, (0.02 + 0.03 * spdK) * cl, 0.3);
 
     // RWR: soft search chirps when painted, quicker bright triple pips on a full
     // lock, and the rapid high-pitched launch warble only while a missile is inbound.
