@@ -117,7 +117,9 @@ export function createAtmosphere(THREE, env) {
         vec3 L = normalize(uSun);
         float h = clamp(d.y, 0.0, 1.0);
         // Rayleigh-style optical depth: thick haze at the horizon, thinning upward.
-        float tMid = 1.0 - exp(-h * 9.0);
+        // The lowest ~8 deg hold the exact horizon haze (= fog colour = ocean far colour),
+        // easing into the mid sky: one continuous horizon curve with no seam.
+        float tMid = (1.0 - exp(-max(h - 0.008, 0.0) * 7.0)) * smoothstep(0.0, 0.14, h + 0.02);
         float tZen = smoothstep(0.18, 1.0, h);
         vec3 col = mix(uHorizon, uMid, tMid);
         col = mix(col, uZenith, tZen * tZen * (3.0 - 2.0 * tZen));
@@ -218,6 +220,8 @@ export function createAtmosphere(THREE, env) {
   const SLATE_DAY = new THREE.Color(0x4a5568), SLATE_NIGHT = new THREE.Color(0x0d131f);
   const slate = new THREE.Color(), _ct = new THREE.Color(), _cb = new THREE.Color(), FLASH = new THREE.Color(0.82, 0.86, 1.0);
   function setWeather(o) { Object.assign(wx, o); }
+  // Pull a colour toward its own luminance by k (0..1).
+  function desat(c, k) { const l = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; c.r += (l - c.r) * k; c.g += (l - c.g) * k; c.b += (l - c.b) * k; return c; }
   function bind(o) { Object.assign(bound, o); }
   const dirFrom = (el, az, out) => out.set(Math.sin(az * D2R) * Math.cos(el * D2R), Math.sin(el * D2R), -Math.cos(az * D2R) * Math.cos(el * D2R)).normalize();
   function fillTarget(name, az) {
@@ -260,8 +264,8 @@ export function createAtmosphere(THREE, env) {
     const oc = wx.overcast, fl = wx.flash;
     slate.copy(SLATE_DAY).lerp(SLATE_NIGHT, Math.min(1, cur.nav));
     const grey = Math.min(1, oc * 1.12);
-    skyUniforms.uMid.value.copy(cur.mid).lerp(slate.clone().multiplyScalar(1.15), grey).lerp(FLASH, fl * 0.35);
-    skyUniforms.uZenith.value.copy(cur.zenith).lerp(slate.clone().multiplyScalar(0.85), grey).lerp(FLASH, fl * 0.25);
+    skyUniforms.uMid.value.copy(cur.mid); desat(skyUniforms.uMid.value, 0.18).lerp(slate.clone().multiplyScalar(1.15), grey).lerp(FLASH, fl * 0.35);
+    skyUniforms.uZenith.value.copy(cur.zenith); desat(skyUniforms.uZenith.value, 0.12).lerp(slate.clone().multiplyScalar(0.85), grey).lerp(FLASH, fl * 0.25);
     skyUniforms.uMieK.value = cur.mieK * (1 - 0.85 * oc); skyUniforms.uDiscK.value = cur.discK * (1 - 0.95 * oc);
     skyUniforms.uDiscSize.value = cur.discSize; skyUniforms.uStars.value = cur.stars * (1 - oc);
     const L = bound;
@@ -276,7 +280,7 @@ export function createAtmosphere(THREE, env) {
     if (L.ocean) {
       const u = L.ocean;
       u.uSunColor.value.set(cur.oceanSun.r, cur.oceanSun.g, cur.oceanSun.b).multiplyScalar(cur.oceanSunK * (1 - 0.85 * oc) + fl * 0.8);
-      _ct.copy(cur.oceanSky).lerp(slate, oc * 0.7).lerp(FLASH, fl * 0.5);
+      _ct.copy(cur.oceanSky); desat(_ct, 0.2).lerp(slate, oc * 0.7).lerp(FLASH, fl * 0.5);
       u.uSky.value.set(_ct.r, _ct.g, _ct.b);
       if (u.uLevel) u.uLevel.value = cur.oceanLevel * (1 - 0.3 * oc) + fl * 0.6;
       if (u.uGlitter) u.uGlitter.value = cur.glitter * (1 - 0.9 * oc) + 0.05;
@@ -319,13 +323,20 @@ export function createAtmosphere(THREE, env) {
     applyToScene();
     skyUniforms.uTime.value = time;
     sky.position.copy(camera.position);
-    fogColor.copy(cur.horizon).lerp(slate.clone().multiplyScalar(1.3), Math.min(1, wx.overcast * 1.05))
+    // Colour discipline: the horizon haze (fog = sky horizon band = ocean far colour) is
+    // held ~22 % desaturated so HUD green, afterburners, trails and explosions pop.
+    fogColor.copy(cur.horizon);
+    desat(fogColor, 0.22);
+    fogColor.lerp(slate.clone().multiplyScalar(1.3), Math.min(1, wx.overcast * 1.05))
       .lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel * (1 - 0.5 * wx.overcast))), Math.min(1, mist * 1.15))
       .lerp(FLASH, wx.flash * 0.3);
     skyUniforms.uWhite.value = Math.min(1, mist * 1.1);
-    // Above the cloud-deck tops (~13,000 ft) the air is crisp: haze thins by 55 %.
-    const above = THREE.MathUtils.smoothstep(camera.position.y, 3950, 4500);
-    scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * (1 - 0.55 * above) * (1 + mist * 28);
+    // Altitude-aware aerial perspective: +15 % haze near the sea (< 1,500 ft) for
+    // high-speed depth cues, thinning from ~8,500 ft to 55 % by ~13,800 ft (deck tops)
+    // so distant coastlines stay readable silhouettes from altitude.
+    const y = camera.position.y;
+    const altK = (1 + 0.15 * (1 - THREE.MathUtils.smoothstep(y, 150, 460))) * (1 - 0.55 * THREE.MathUtils.smoothstep(y, 2600, 4200));
+    scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * altK * (1 + mist * 28);
 
     corona.position.copy(skyDir).multiplyScalar(SUN_DIST).add(camera.position);
     const moon = skyUniforms.uMoon.value > 0.5;

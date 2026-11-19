@@ -720,6 +720,33 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     4-5 ms / frame, ~445 draw calls, ~1 M triangles; world build ~1.7-1.9 s.
   - Note: the runway is 18/36 (north-south); both of its finals are protected
     (the brief's "RWY 09" maps to it).
+- [x] **Specular ocean, seamless horizon, colour discipline** *(build `s41a`, `index.html` ocean + nav lights, `src/atmosphere.js`)*
+  - Ocean: 116 km plane re-centred under the camera on a 1 km grid every frame
+    (`followOcean()`); all shading in world XZ, so snapping never swims.
+  - Waves: 4 analytic directional deep-water octaves (210 / 118 / 61 / 29 m,
+    dispersion w = sqrt(g k)) + a 3.2 km swell-pattern octave + 3 detail
+    normal-map octaves and a micro-ripple octave for 100 ft skims. Each octave
+    fades out with distance before it can alias (no moire at 4,000 ft).
+  - Shading: deep slate-navy #13222e body, light through crests, Fresnel
+    `pow(1 - N.V, 4)` blend into the sky reflection (reflected ray low =
+    horizon haze, high = preset sky), GGX sun / moon specular whose roughness
+    widens with distance into a glitter lane to the horizon + micro sparkle,
+    subtle dark-teal (#24605c) shelves near coasts, muted sandbars, surf and
+    whitecaps kept.
+  - Horizon: sky lowest ~8 deg = the fog colour = the ocean's far colour (one
+    THREE.Color); ocean dissolves via exp2 fog + a 30-52 km radial fade. No plane
+    edge or seam from 150 ft to 25,000 ft (verified).
+  - Aerial perspective: fog +15 % below 1,500 ft, thinning from ~8,500 ft to
+    55 % by ~13,800 ft (replaces the deck-top-only thinning).
+  - Colour discipline: horizon haze 22 %, mid sky 18 %, zenith 12 %, ocean sky
+    reflection 20 % desaturated at runtime across all presets / weather
+    (ACES tone mapping and per-preset exposure unchanged).
+  - Tail strobes: fin-tip sprites 3.0 -> 1.05 size and 35 % additive gain
+    (~65 % smaller / dimmer); wingtip / belly strobes unchanged.
+  - Verified headless: 150 ft golden hour into the sun and daylight away from
+    it, 4,000 ft day, 12,000 ft (inside the cloud-deck band), 25,000 ft,
+    overcast 4,000 ft, night 1,000 ft (moon glitter path, small fin strobes);
+    zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
