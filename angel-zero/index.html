@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s27b';
-import { createHUD } from './src/hud.js?v=s27b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s27b';
-import { createCombat } from './src/combat.js?v=s27b';
-import { createEjection } from './src/eject.js?v=s27b';
-import { createAudio } from './src/audio.js?v=s27b';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s27b';
-import { createCanopyFX } from './src/canopy.js?v=s27b';
-import { createNVG } from './src/nvg.js?v=s27b';
-import { createWorld, WORLD } from './src/world.js?v=s27b';
-import { createSurfaces } from './src/surfaces.js?v=s27b';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s27b';
+import { createVFX } from './src/vfx.js?v=s28a';
+import { createHUD } from './src/hud.js?v=s28a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s28a';
+import { createCombat } from './src/combat.js?v=s28a';
+import { createEjection } from './src/eject.js?v=s28a';
+import { createAudio } from './src/audio.js?v=s28a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s28a';
+import { createCanopyFX } from './src/canopy.js?v=s28a';
+import { createNVG } from './src/nvg.js?v=s28a';
+import { createWorld, WORLD } from './src/world.js?v=s28a';
+import { createSurfaces } from './src/surfaces.js?v=s28a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s28a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -865,13 +865,14 @@ addEventListener('keyup', e => {
   if (k === 'd') keys.d = false;
   if (k === 'shift') keys.shift = false;
   if (k === 'f') keys.fire = false;
+  if (k === 'm') combatSys.pickleUp();
 });
 addEventListener('mousedown', e => {
   if (uiModal || appMode !== 'PLAY') return;
   if (e.button === 0) keys.fire = true;
   if (e.button === 2) combatSys.fireSelected();
 });
-addEventListener('mouseup', e => { if (e.button === 0) keys.fire = false; });
+addEventListener('mouseup', e => { if (e.button === 0) keys.fire = false; if (e.button === 2) combatSys.pickleUp(); });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
@@ -947,6 +948,10 @@ function updatePhysics(dt) {
   const Iyy = INERTIA.yy + st.bomb * 230 * 2.5 * 2.5;
   const Izz = INERTIA.zz + st.msl * 85 * 2.9 * 2.9 + st.bomb * 230 * 2.6 * 2.6;
   const kxx = INERTIA.xx / Ixx, kyy = INERTIA.yy / Iyy, kzz = INERTIA.zz / Izz;
+  // Battle damage (src/combat.js): hydraulic leak stiffens the controls (-15 %);
+  // a dead F100 caps thrust ~72 % and yaws the nose toward the dead side.
+  const hydK = combat.hydraulic ? 0.85 : 1;
+  const outSide = combat.engineOut === 'L' ? 1 : combat.engineOut === 'R' ? -1 : 0;   // +1 = nose-left pull
 
   // --- FCS: stick -> load-factor demand -> AoA demand (limited at 26 deg; stall at 24)
   const gMax = state.highG ? 9.0 : 7.5;
@@ -970,21 +975,23 @@ function updatePhysics(dt) {
   const gammaDot = (qBar * WING_AREA * clNow / mass - GRAVITY * Math.cos(bank) * Math.cos(state.pitch || 0)) / speed;
   const qCmd = clamp(gammaDot + (alphaCmd - alpha) * 4.6 * machStiff, -1.4, 1.4);
   // Pitch moment: control chases qCmd (inertia + q-scaled authority) with aero damping.
-  let qDot = (qCmd - state.pitchRate) * (1.0 + 5.0 * auth) * kyy * machStiff;
+  let qDot = (qCmd - state.pitchRate) * (1.0 + 5.0 * auth) * kyy * machStiff * hydK;
   // Post-stall: lift breaks down and the nose drops hard until the airflow reattaches.
   const stall = Math.max(sstep(alpha, STALL_AOA, STALL_AOA + 0.12), state.stalled ? 0.6 * sstep(alpha, 0.05, 0.2) : 0);
   qDot -= stall * (2.2 + 4.0 * Math.max(0, alpha - STALL_AOA)) * sstep(alpha, 0.1, 0.3) + (state.stalled ? 1.6 * sstep(alpha, 0.12, 0.4) : 0);
   state.pitchRate += qDot * dt;
 
   // Roll: up to ~240 deg/s at high q, degrading with AoA; dihedral rolls away from sideslip.
-  const pMax = 4.2 * (0.25 + 0.75 * auth) * (1 - 0.55 * sstep(alpha, 0.2, 0.45));
+  const pMax = 4.2 * (0.25 + 0.75 * auth) * (1 - 0.55 * sstep(alpha, 0.2, 0.45)) * hydK;
   let pCmd = roll.left > 0 ? -roll.dir * ROLL_RATE : -rollIn * pMax * pilotK;
   pCmd += 0.5 * beta * auth;                                             // dihedral (roll due to sideslip)
   pCmd += stall * (Math.sin(simTime * 3.1) * 0.9 + Math.sin(simTime * 7.3) * 0.25);   // post-stall wing rock / buffet
+  if (outSide) pCmd += outSide * 0.05;                                   // dead-engine roll-off
   state.rollRate += (pCmd - state.rollRate) * Math.min(1, (roll.left > 0 ? 12 : 1.5 + 6.5 * auth) * kxx * dt);
 
   // Yaw: rudder + weathercock stability (nose into the airflow) + adverse yaw from roll.
-  const rCmd = rudderIn * 0.32 * (0.3 + 0.7 * auth) - beta * (0.6 + 2.6 * auth) - 0.06 * state.rollRate;
+  const rCmd = rudderIn * 0.32 * (0.3 + 0.7 * auth) - beta * (0.6 + 2.6 * auth) - 0.06 * state.rollRate
+    + outSide * 0.07 * (0.3 + state.throttle + 0.6 * state.afterburner) * (0.4 + 0.6 * auth);   // asymmetric thrust yaw
   state.yawRate += (rCmd - state.yawRate) * Math.min(1, (1.2 + 3.0 * auth) * kzz * dt);
 
   // Storm gusts kick the body rates (src/weather.js).
@@ -1027,7 +1034,8 @@ function updatePhysics(dt) {
   const form = 1.1 * Math.pow(Math.sin(Math.min(Math.abs(a2), 1.2)), 2) * sstep(Math.abs(a2), 0.3, 0.6);
   const CD = CD0 + K_INDUCED * CL * CL + wave + form + 0.045 * state.ctl.airbrake;
   state.cd = CD; state.cl = CL;
-  const thrust = (THRUST_DRY * state.throttle + THRUST_AB * state.afterburner) * (0.55 + 0.45 * rho / 1.225) * (1 + 0.12 * Math.min(mach, 1.6));
+  const thrust = (THRUST_DRY * state.throttle + THRUST_AB * state.afterburner) * (0.55 + 0.45 * rho / 1.225) * (1 + 0.12 * Math.min(mach, 1.6))
+    * (outSide ? 0.72 : 1);
   _aero.copy(_lift).add(_side).addScaledVector(_vdir, -qBar * WING_AREA * CD);
   _force.copy(_aero).addScaledVector(_fwd, thrust);
   _force.y -= W;
@@ -1153,6 +1161,7 @@ function updateCameraAndVisuals(dt, now) {
   camera.updateMatrixWorld();
   oceanUniforms.uCam.value.copy(camera.position);
 
+  vfx.setEngineOut(flightMode === 'FLY' && combat.engineOut ? (combat.engineOut === 'L' ? 0 : 1) : -1);
   vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson });
   // Weather: rain volume, lightning, gusts; overcast / haze / flash feed the atmosphere, clouds and sea.
   weather.update(dt, state.velocity, Math.min(1, navLevel));
@@ -1232,6 +1241,9 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'designate') audio.designate(scale > 0);
   else if (type === 'lockdrop') audio.lockDrop();
   else if (type === 'ecm') audio.ecm(scale > 0);
+  else if (type === 'overheat') audio.overheat();
+  else if (type === 'flameout') audio.flameout();
+  else if (type === 'caution') audio.masterCaution();
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
@@ -1366,6 +1378,7 @@ const hud = createHUD(THREE, {
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE, marks: world.marks },
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
+  getSurface: () => combatSys.surface,
   getWeather: () => ({ rain: weather.rainHere, label: weather.active.label, storm: weather.active.storm }),
   getMode: () => flightMode, isHidden: () => appMode === 'MENU', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist,
@@ -1465,6 +1478,20 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
   if (DEBUG && Q.has('merge')) combatSys.placeHeadOn(0, Number(Q.get('merge')) || 1500, false);   // head-on merge
   if (DEBUG && Q.has('ram')) combatSys.placeHeadOn(0, Number(Q.get('ram')) || 900, true);         // deliberate ram (no break)
+  if (DEBUG && Q.has('dmg')) combat.health = 100 - (Number(Q.get('dmg')) || 65);                  // battle-damage test
+  if (DEBUG && Q.has('ccrp')) {                                         // ?ccrp=i,dist,alt[,spd]: level run-in at surface target i
+    const [ti, dist, alt, spd] = Q.get('ccrp').split(',').map(Number), t = combatSys.surface[ti || 0];
+    if (t) {
+      const ang = Math.random() * Math.PI * 2, d = dist || 9000, sp = spd || 230;
+      // Aim the run-in at the moving target's position at bomb impact (approach time + time of fall).
+      const tof = Math.sqrt(2 * (alt || 3000) / 9.81), aim = t.pos.clone().addScaledVector(t.vel || new THREE.Vector3(), (d - sp * tof) / sp + tof);
+      state.position.set(aim.x - Math.sin(ang) * d, alt || 3000, aim.z + Math.cos(ang) * d);
+      state.quaternion.setFromAxisAngle(AX_Y, -ang);
+      state.velocity.set(0, 0, -sp).applyQuaternion(state.quaternion);
+      state.speed = sp; camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position); prevPlanePos.copy(state.position); camFrame.copy(state.quaternion);
+      combatSys.setWeapon('BOMB'); combatSys.designateGround(t);
+    }
+  }
   if (DEBUG && Q.has('lowpatrol')) combatSys.lowPatrol(Number(Q.get('lowpatrol')) || 120);       // terrain-avoidance stress
   if (DEBUG && Q.has('wpn')) combatSys.setWeapon(Q.get('wpn').toUpperCase());
   if (DEBUG && Q.has('bomb')) { combatSys.update(0, 0, { playerActive: true, firing: false }); for (let i = 0; i < (Number(Q.get('bomb')) || 1); i++) { combatSys.update(0.25, 0, { playerActive: true, firing: false }); combatSys.dropBomb(); } }
@@ -1513,6 +1540,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
+      if (Q.has('fireoff') && Number(Q.get('fireoff')) >= t0 && Number(Q.get('fireoff')) < t1) { DEBUG_FIRE = false; console.log('[ANGELS_ZERO] trigger released @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
+      if (Q.has('fireon') && Number(Q.get('fireon')) >= t0 && Number(Q.get('fireon')) < t1) { DEBUG_FIRE = true; console.log('[ANGELS_ZERO] trigger @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
       if (Q.has('mouseoff') && Number(Q.get('mouseoff')) >= t0 && Number(Q.get('mouseoff')) < t1) { mouse.nx = 0; mouse.ny = 0; console.log('[ANGELS_ZERO] stick released @', t1.toFixed(2)); }
       if (Q.has('ecmat') && Number(Q.get('ecmat')) >= t0 && Number(Q.get('ecmat')) < t1) { console.log('[ANGELS_ZERO] Z @', t1.toFixed(2), combatSys.activateECM()); }
       if (Q.has('fireat') && Number(Q.get('fireat')) >= t0 && Number(Q.get('fireat')) < t1) { console.log('[ANGELS_ZERO] RMB @', t1.toFixed(2), combat.weapon, JSON.stringify(combatSys.stats().tgt), combatSys.fireSelected()); }
@@ -1556,7 +1585,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
    ============================================================================ */
 let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
-const DEBUG_FIRE = DEBUG && Q.has('fire');
+let DEBUG_FIRE = DEBUG && Q.has('fire');
 const DEBUG_HOLD = DEBUG && Q.has('hold') ? Q.get('hold').split(',') : null;
 let surfaces = null;
 const RWY_X = () => world.runway.x;

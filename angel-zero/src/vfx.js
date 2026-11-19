@@ -113,6 +113,12 @@ export function createVFX(THREE, env) {
     jet.add(g);
     plumes.push({ g, light });
   }
+  let engineOut = -1;
+  function setEngineOut(i) {                         // battle damage: the dead F100's plume + glow go out
+    if (i === engineOut) return;
+    engineOut = i;
+    plumes.forEach((p, k) => { p.g.visible = k !== i; });
+  }
   function updatePlumes(s, now) {
     const t = s.throttle, ab = s.afterburner;
     const pulse = 1 + ab * 0.24 * Math.sin(now * 17.0) + ab * 0.08 * Math.sin(now * 41.0);
@@ -633,6 +639,7 @@ export function createVFX(THREE, env) {
     get cloudCount() { return volumes.filter(v => v.on).length; },
     get puffCount() { return NP; },
     setCloudGain(k) { cloudMat.uniforms.uGain.value = k; },
+    setEngineOut,
     setCloudCoverage: setCoverage,
     setCloudFlash(k) { cloudMat.uniforms.uFlash.value = k; },
     get cloudCoverage() { return coverage; },

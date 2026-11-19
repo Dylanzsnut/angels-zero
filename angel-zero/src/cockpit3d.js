@@ -670,12 +670,12 @@ export function createCockpit3D(THREE, env) {
     const caution = !C.dead && (C.health < 100 || C.missileWarning > 0 || S.alpha > env.STALL_AOA * 0.9);
     return {
       'MASTER\nCAUTION': caution && flash,
-      'FIRE L': C.health <= 30, 'FIRE R': C.health <= 30,
+      'FIRE L': !!C.engineFire && C.engineOut === 'L' && flash, 'FIRE R': !!C.engineFire && C.engineOut === 'R' && flash,
       'LOW FUEL': false,                              // no fuel model yet: tile stays dark
       'A/P': false,                                   // no autopilot: tile stays dark
       'IFF': !C.dead,
       'RWR': C.missileWarning > 0 || !!(env.getEnemies().some(e => e.alive && e.pos.distanceTo(S.position) < 6000)),
-      'HYD': C.health < 50
+      'HYD': !!C.hydraulic && (Math.floor(now * 7.3) % 5 !== 0)            // leaking: flickering caution
     };
   }
   function paintAnnunciator(now) {

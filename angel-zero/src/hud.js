@@ -50,6 +50,26 @@ export function createHUD(THREE, A) {
     ctx.shadowBlur = blur;
   }
   function noGlow(ctx) { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
+  // Barrel heat colour: emerald #58ff9a -> amber #ffaa22 -> crimson #ff2e43.
+  function heatColor(h) {
+    const k1 = Math.min(1, h / 0.6), k2 = Math.max(0, (h - 0.6) / 0.4);
+    const a = [88, 255, 154], b = [255, 170, 34], c = [255, 46, 67];
+    const m = h < 0.6 ? a.map((v, i) => v + (b[i] - v) * k1) : b.map((v, i) => v + (c[i] - v) * k2);
+    return `rgb(${m.map(Math.round).join(',')})`;
+  }
+  // Thin curved thermal arc (270 deg sweep from lower-left), filled to `h`.
+  function heatArc(ctx, x, y, r, h, alpha = 1) {
+    if (h < 0.01 && !C.gunOverheat) return;
+    const a0 = Math.PI * 0.75, span = Math.PI * 1.5;
+    ctx.save(); ctx.globalAlpha = alpha;
+    noGlow(ctx); ctx.strokeStyle = 'rgba(88,255,154,0.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, r, a0, a0 + span); ctx.stroke();
+    const col = heatColor(h);
+    ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 4; ctx.lineWidth = 2;
+    if (C.gunOverheat && Math.floor(performance.now() / 180) % 2) ctx.strokeStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x, y, r, a0, a0 + span * Math.min(1, h)); ctx.stroke();
+    ctx.restore();
+  }
   function numBack(ctx, x, y, w, h, fill = 'rgba(0, 14, 8, 0.42)') {
     ctx.save(); noGlow(ctx); ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); ctx.restore();
   }
@@ -628,6 +648,8 @@ export function createHUD(THREE, A) {
       ctx.restore(); return;
     }
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    drawSurfaceTargets(ctx, camFwd);
+    if (C.ccrp) { drawCCRP(ctx, camFwd, now); ctx.restore(); return; }
     const c = C.ccip;
     const inFront = c && c.clone().sub(cam.position).dot(camFwd) > 0;
     const p = c && inFront ? toScreen(c) : null;
@@ -654,6 +676,57 @@ export function createHUD(THREE, A) {
         ctx.font = f(12, true); ctx.textBaseline = 'bottom';
         labelText(ctx, c ? 'CCIP DIVE' : 'CCIP NO SOLN', ex, ey - 6, AMBER, 4);
       }
+    }
+    ctx.restore();
+  }
+
+  // Surface strike targets (>UGB): small squares, the designated one boxed and labelled.
+  function drawSurfaceTargets(ctx, camFwd) {
+    for (const t of A.getSurface ? A.getSurface() : []) {
+      if (!t.alive || t.pos.clone().sub(cam.position).dot(camFwd) <= 0) continue;
+      const p = toScreen(t.pos); if (!p.ok) continue;
+      const prim = t === C.groundTgt, s = prim ? 13 : 6;
+      ctx.save(); glow(ctx, prim ? GB : 'rgba(88,255,154,0.6)', prim ? 4 : 0); ctx.lineWidth = prim ? 1.4 : 1;
+      ctx.strokeRect(p.x - s, p.y - s, s * 2, s * 2);
+      if (prim) {
+        ctx.beginPath(); ctx.moveTo(p.x - s - 6, p.y); ctx.lineTo(p.x - s, p.y); ctx.moveTo(p.x + s, p.y); ctx.lineTo(p.x + s + 6, p.y); ctx.stroke();
+        ctx.font = f(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        labelText(ctx, `TGT ${t.kind}`, p.x + s + 9, p.y - 6, GB, 3);
+        labelText(ctx, (Math.hypot(t.pos.x - S.position.x, t.pos.z - S.position.z) / 1852).toFixed(1) + ' NM', p.x + s + 9, p.y + 7, G, 2);
+      }
+      ctx.restore();
+    }
+  }
+  // CCRP: azimuth steering line through the target, release cue bar sliding down
+  // toward the flight-path vector, time-to-release readout; auto-release fires
+  // when the bar crosses the FPV with the pickle held (C.ccrpArmed).
+  function drawCCRP(ctx, camFwd, now) {
+    const r = C.ccrp, t = r.tgt;
+    const vdir = S.velocity.clone().normalize();
+    const fp = toScreen(cam.position.clone().addScaledVector(vdir, 4500));
+    if (!fp.ok) return;
+    const tp = toScreen(t.pos), inFront = t.pos.clone().sub(cam.position).dot(camFwd) > 0;
+    const sx = inFront && tp.ok ? clamp(tp.x, 40, HW - 40) : (r.cross > 0 ? HW - 40 : 40);
+    const col = C.ccrpArmed ? AMBER : G;
+    ctx.save();
+    glow(ctx, col, 4); ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(sx, 70); ctx.lineTo(sx, HH - 90); ctx.stroke();                 // steering line
+    ctx.beginPath(); ctx.arc(fp.x, fp.y, 7, 0, Math.PI * 2);                                      // FPV
+    ctx.moveTo(fp.x - 18, fp.y); ctx.lineTo(fp.x - 7, fp.y); ctx.moveTo(fp.x + 7, fp.y); ctx.lineTo(fp.x + 18, fp.y); ctx.stroke();
+    const yb = fp.y - clamp(r.ttr * 24, -30, HH * 0.42);                                         // release cue bar
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(sx - 26, yb); ctx.lineTo(sx + 26, yb); ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx - 26, yb); ctx.lineTo(sx - 26, yb + 6); ctx.moveTo(sx + 26, yb); ctx.lineTo(sx + 26, yb + 6); ctx.stroke();
+    ctx.font = f(13, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const ttrTxt = r.ttr >= 0 ? `REL ${r.ttr.toFixed(1).padStart(4, '0')}s` : 'OVERFLY';
+    labelText(ctx, ttrTxt, sx + 32, yb, r.ttr >= 0 ? col : AMBER, 4);
+    ctx.font = f(11, true);
+    labelText(ctx, `CCRP  ${t.label}  ${(r.range / 1852).toFixed(1)}NM  TOF ${r.tof.toFixed(1)}s`, sx + 32, yb + 15, G, 2);
+    if (Math.abs(r.cross) > 60) labelText(ctx, r.cross > 0 ? 'STEER R >' : '< STEER L', sx + 32, yb + 29, AMBER, 3);
+    if (C.ccrpArmed && Math.floor(now / 250) % 2) {
+      ctx.font = f(14, true); ctx.textAlign = 'center';
+      labelText(ctx, 'CCRP ARMED — HOLD', fp.x, fp.y + 34, AMBER, 5);
     }
     ctx.restore();
   }
@@ -920,6 +993,17 @@ export function createHUD(THREE, A) {
       ctx.globalAlpha = 1;
     }
 
+    // Surface strike targets: hollow squares (designated one filled).
+    for (const t of A.getSurface ? A.getSurface() : []) {
+      if (!t.alive) continue;
+      const rx = t.pos.x - S.position.x, rz = t.pos.z - S.position.z;
+      const sx = rx * Math.cos(hRad) + rz * Math.sin(hRad), sy = -rx * Math.sin(hRad) + rz * Math.cos(hRad);
+      if (Math.hypot(sx, sy) > MAX_M * 0.97) continue;
+      const bx = cx + sx * k, by = cy + sy * k;
+      glow(ctx, t === C.groundTgt ? GB : 'rgba(88,255,154,0.75)', 0); ctx.lineWidth = 1.1;
+      if (t === C.groundTgt) ctx.fillRect(bx - 3.5, by - 3.5, 7, 7); else ctx.strokeRect(bx - 3.5, by - 3.5, 7, 7);
+    }
+
     // ALR-56C RWR: emitters on the inner ring at their clock bearing (heading-up).
     // Amber spike = fighter radar painting / acquiring, crimson spike = full lock,
     // pulsing crimson M + vector line = missile tracking us.
@@ -1014,7 +1098,7 @@ export function createHUD(THREE, A) {
     ctx.font = f(15, true); ctx.textBaseline = 'top';
     const reloadMsl = C.missileReload > 0, reloadBomb = C.bombReload > 0;
     const rows = [
-      ['  GUN', C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo), G],
+      ['  GUN', C.gunOverheat ? 'HOT' : C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo), C.gunOverheat ? WARN : G],
       [(C.weapon === 'MSL' ? '> ' : '  ') + 'MSL', reloadMsl ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles), C.weapon === 'MSL' ? GB : G]
     ];
     if (C.aam4Max) rows.push([(C.weapon === 'AAM4' ? '> ' : '  ') + '4AAM', C.aam4Reload > 0 ? 'RLD ' + C.aam4Reload.toFixed(1) : String(C.aam4), C.weapon === 'AAM4' ? GB : G]);
@@ -1022,6 +1106,8 @@ export function createHUD(THREE, A) {
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
     rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
+    if (C.engineOut) rows.push([`  ${C.engineOut} ENG`, C.engineFire ? 'FIRE' : 'OUT', WARN]);
+    if (C.hydraulic) rows.push(['  HYD', 'LEAK', AMBER]);
     let y = y0;
     for (const r of rows) {
       if (!r) {
@@ -1030,6 +1116,7 @@ export function createHUD(THREE, A) {
         ctx.setLineDash([]); y += 12; continue;
       }
       const [k, v, col] = r;
+      if (k === '  GUN') heatArc(ctx, xl + 2, y + 8, 7, C.gunHeat || 0, 1);    // barrel heat beside the GUN readout
       ctx.textAlign = 'left'; labelText(ctx, k, xl, y, col, 4);
       ctx.textAlign = 'right'; labelText(ctx, v, xr, y, col, 5);
       y += rowH;
@@ -1105,6 +1192,8 @@ export function createHUD(THREE, A) {
       }
     }
 
+    if (C.gunOverheat && !C.dead) drawBanner(ctx, cx, lowerY + (pullUpOn() || stallOn() ? 34 : 0), '[ GUN OVERHEAT ]', WARN, 220, pulseAlpha(200));
+    if (C.engineFire && !C.dead && Math.floor(now / 400) % 2) drawBanner(ctx, cx, upperY + 34, 'ENGINE FIRE — EJECT [E]', WARN, 280, 1);
     if (pullUpOn()) {
       const a = pulseAlpha(125);
       drawBanner(ctx, cx, lowerY, 'PULL UP', WARN, 176, a);
@@ -1182,6 +1271,7 @@ export function createHUD(THREE, A) {
     ctx.moveTo(x, y - 7); ctx.lineTo(x, y - 15);
     ctx.stroke();
     ctx.restore();
+    heatArc(ctx, x, y, 33, C.gunHeat || 0, 0.9);
   }
   // Chase view: the true flight-path vector (where the jet is actually going),
   // shown once AoA / sideslip push it clear of the nose reticle.
@@ -1247,7 +1337,7 @@ export function createHUD(THREE, A) {
     drawConformalLadder(ctx, g, hudCol, compact);
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const bore = toScreen(cam.position.clone().addScaledVector(fwd, 5000));
-    if (bore.ok) drawWaterline(ctx, bore, hudCol);
+    if (bore.ok) { drawWaterline(ctx, bore, hudCol); heatArc(ctx, bore.x, bore.y, 30, C.gunHeat || 0, 0.85); }
     drawFPV(ctx, { cx: g.cx, minY: g.minY + (compact ? 40 : 12), maxY: g.maxY - 12, boxW: g.boxW - (compact ? 84 : 120) }, dt, hudCol);
     drawGunFunnel(ctx, hudCol);
 

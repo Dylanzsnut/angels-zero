@@ -300,10 +300,35 @@ export function createCombat(THREE, env) {
     return true;
   }
 
-  let gunAcc = 0, smokeAcc = 0;
+  let gunAcc = 0, smokeAcc = 0, steamAcc = 0;
+  // M61A1 barrel heat: 0 -> 1 over ~3.2 s of continuous fire, cools ~0.28/s (faster
+  // with airspeed); at 1.0 the gun locks out ([ GUN OVERHEAT ]) until below 0.45.
+  const GUN_HEAT_T = 3.2, GUN_COOL = 0.28, GUN_RESUME = 0.45;
+  Object.assign(C, { gunHeat: 0, gunOverheat: false });
   function gunIdle() { muzzle.visible = false; muzzleLight.intensity = 0; C.gunFiring = false; }
+  function updateGunHeat(dt, triggerHeld) {
+    if (C.gunFiring) C.gunHeat = Math.min(1, C.gunHeat + dt / GUN_HEAT_T);
+    else C.gunHeat = Math.max(0, C.gunHeat - (GUN_COOL + 0.12 * clamp((S.speed - 150) / 200, 0, 1)) * dt);
+    if (!C.gunOverheat && C.gunHeat >= 1) {
+      C.gunOverheat = true; C.overheats = (C.overheats || 0) + 1;
+      say('[ GUN OVERHEAT ] — BARRELS VENTING', 2.2, '#ff4d3d');
+      if (env.onSfx) env.onSfx('overheat', null, 1);
+    }
+    if (C.gunOverheat && C.gunHeat < GUN_RESUME) { C.gunOverheat = false; say('GUN COOLED — READY', 1.2); }
+    // Cooling steam venting from the starboard wing-root gun port.
+    if (C.gunOverheat || (C.gunHeat > 0.8 && !C.gunFiring)) {
+      steamAcc += dt * (C.gunOverheat ? 60 : 20);
+      const port = GUN_PORT.clone().applyQuaternion(S.quaternion).add(S.position);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
+      while (steamAcc >= 1) {
+        steamAcc -= 1;
+        smoke.spawn({ x: port.x, y: port.y, z: port.z, vx: S.velocity.x * 0.9 + up.x * 4 + (rand() - 0.5) * 2, vy: S.velocity.y * 0.9 + up.y * 4 + rand() * 2, vz: S.velocity.z * 0.9 + up.z * 4 + (rand() - 0.5) * 2,
+          life: 0.8 + rand() * 0.6, s0: 0.6, s1: 3.5 + rand() * 2, r: 0.97, g: 0.98, b: 1.0, a: 0.55, drag: 2.2, rise: 1.2 });
+      }
+    }
+  }
   function fireGun(dt) {
-    if (!env.isReady() || C.dead || C.ammo <= 0 || C.reload > 0) { gunIdle(); return; }
+    if (!env.isReady() || C.dead || C.ammo <= 0 || C.reload > 0 || C.gunOverheat) { gunIdle(); return; }
     gunAcc += GUN_RATE * dt;
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(S.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(S.quaternion);
@@ -935,6 +960,7 @@ export function createCombat(THREE, env) {
   // locked, cycles to the next nearest forward bandit and re-arms on it.
   function designateInSight() {
     C.designateT = performance.now();
+    if (C.weapon === 'BOMB') { const t = cycleGroundTarget(); C.designateOk = !!t; if (env.onSfx) env.onSfx('designate', null, t ? 1 : 0); return t; }
     const ammoOk = C.weapon === 'AAM4' ? C.aam4 > 0 && C.aam4Reload <= 0 : C.missiles > 0 && C.missileReload <= 0;
     if (!C.seekerArmed) {
       if (!C.designated) autoDesignate();
@@ -1325,7 +1351,19 @@ export function createCombat(THREE, env) {
     return C.weapon;
   }
   function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'AAM4' : C.weapon === 'AAM4' ? (stores.bomb.length ? 'BOMB' : 'MSL') : 'MSL'); }
-  function fireSelected() { return C.weapon === 'BOMB' ? dropBomb() : C.weapon === 'AAM4' ? fireAAM4() : fireMissile(); }
+  // >UGB with a CCRP solution: holding the pickle arms the automatic release;
+  // otherwise it is a CCIP drop now.
+  function fireSelected() {
+    if (C.weapon === 'BOMB') {
+      if (C.ccrp && C.ccrp.along > 0 && C.bombs > 0 && C.bombReload <= 0) {
+        if (!C.ccrpArmed) { C.ccrpArmed = true; say('CCRP ARMED — HOLD PICKLE, FLY THE STEERING LINE', 1.6, '#ffbf3f'); }
+        return true;
+      }
+      return dropBomb();
+    }
+    return C.weapon === 'AAM4' ? fireAAM4() : fireMissile();
+  }
+  function pickleUp() { if (C.ccrpArmed) { C.ccrpArmed = false; say('CCRP SAFE', 0.9, '#ffbf3f'); } }
   function dropBomb() {
     if (!env.isReady() || C.dead || C.bombs <= 0 || C.bombReload > 0 || bombCooldown > 0) return false;
     const st = stores.bomb.find(b => b.node.visible); if (!st) return false;
@@ -1372,7 +1410,27 @@ export function createCombat(THREE, env) {
     const v0 = S.velocity.clone().addScaledVector(new THREE.Vector3(0, -1, 0).applyQuaternion(S.quaternion), BOMB_EJECT);
     const hit = solveImpact(p0, v0);
     C.ccip = hit ? hit.p : null; C.ccipTof = hit ? hit.t : 0;
+    // CCRP: with a surface target designated, steer the impact point onto it along
+    // track; release when the along-track miss crosses zero (cue bar meets the FPV).
+    autoGroundTarget();
+    const g = C.groundTgt;
+    const vh = new THREE.Vector2(S.velocity.x, S.velocity.z), gs = vh.length();
+    if (!g || !hit || gs < 40) { C.ccrp = null; C.ccrpArmed = false; ccrpPrev = null; return; }
+    vh.divideScalar(gs);
+    // Moving targets (the destroyer) are led by the bomb's time of fall.
+    const lead = g.vel ? hit.t : 0;
+    const dx = g.pos.x + (g.vel ? g.vel.x * lead : 0) - hit.p.x, dz = g.pos.z + (g.vel ? g.vel.z * lead : 0) - hit.p.z;
+    const along = dx * vh.x + dz * vh.y, cross = dx * -vh.y + dz * vh.x;
+    C.ccrp = { along, cross, ttr: along / gs, tgt: g, tof: hit.t, range: Math.hypot(g.pos.x - S.position.x, g.pos.z - S.position.z) };
+    if (C.ccrpArmed && ccrpPrev !== null && ccrpPrev > 0 && along <= 0) {
+      if (Math.abs(cross) < 60) {
+        if (dropBomb()) { C.ccrpRelease = { along: +along.toFixed(1), cross: +cross.toFixed(1), tgt: g.label }; say('CCRP RELEASE — ' + g.label, 1.4); }
+      } else say('CCRP — OFF STEERING LINE, NO RELEASE', 1.4, '#ffbf3f');
+      C.ccrpArmed = false;
+    }
+    ccrpPrev = along;
   }
+  let ccrpPrev = null;
   const _nose = new THREE.Vector3(), _dq = new THREE.Quaternion(), _id = new THREE.Quaternion();
   function updateBombs(dt) {
     for (let i = liveBombs.length - 1; i >= 0; i--) {
@@ -1415,6 +1473,11 @@ export function createCombat(THREE, env) {
     impactFx(pos, water, 1);
     // Blast: bandits caught low over the impact are destroyed.
     for (const e of enemies) if (e.alive && e.pos.distanceTo(pos) < BOMB_RADIUS) destroyEnemy(e, true);
+    for (const t of surface) {                                   // Mk-82: lethal at the target, graded out to the blast radius
+      if (!t.alive) continue;
+      const d = Math.hypot(t.pos.x - pos.x, t.pos.z - pos.z);
+      if (d < BOMB_RADIUS + t.r * 0.5) damageSurface(t, 160 * (1 - d / (BOMB_RADIUS + t.r * 0.5)) + 20);
+    }
     if (playerActiveNow && S.position.distanceTo(pos) < BOMB_RADIUS * 0.8) damagePlayer(30);
   }
   // Water geyser or ground fireball (bombs and crashing wrecks).
@@ -1545,12 +1608,222 @@ export function createCombat(THREE, env) {
     }
   }
 
+  /* ===================================================== surface targets */
+  // Strike targets for >UGB: three SA-type SAM sites on flat island ground and
+  // a destroyer cruising a wide circle in deep water. Destroyed by a bomb blast
+  // (or sustained 20 mm), they burn and smoke, then the set respawns 40 s after
+  // the last one dies. The APG-63 ground-map auto-designates the nearest one
+  // ahead in >UGB; C cycles.
+  const surface = [];
+  const SURF_RESPAWN = 40;
+  let surfRespawn = 0;
+  function surfMat(hex, rough = 0.75, metal = 0.25) { return new THREE.MeshStandardMaterial({ color: hex, roughness: rough, metalness: metal }); }
+  function buildSAM() {
+    const g = new THREE.Group();
+    const conc = surfMat(0x8d8a82, 0.95, 0), olive = surfMat(0x4b5233, 0.8, 0.2), dark = surfMat(0x2a2d2a, 0.6, 0.4), white = surfMat(0xd9dcd6, 0.5, 0.1);
+    const mats = [conc, olive, dark, white];
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(16, 17, 0.8, 28), conc); pad.position.y = 0.4; g.add(pad);
+    // Twin quad-tube launchers raised at 40 deg on turntables.
+    for (const sx of [-6, 6]) {
+      const tt = new THREE.Group(); tt.position.set(sx, 0.8, 2); g.add(tt);
+      tt.add(new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 6.2), olive).translateY(0.7));
+      const rack = new THREE.Group(); rack.position.y = 1.8; rack.rotation.x = 0.7; tt.add(rack);
+      for (const [x, y] of [[-0.6, 0], [0.6, 0], [-0.6, 1.0], [0.6, 1.0]]) {
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 6.8, 12), olive); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, 0); rack.add(tube);
+        const cap = new THREE.Mesh(new THREE.CircleGeometry(0.4, 12), white); cap.position.set(x, y, -3.41); cap.rotation.y = Math.PI; rack.add(cap);
+      }
+    }
+    // Search radar truck with a rotating dish.
+    const truck = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 7.5), olive); truck.position.set(0, 2.0, -8); g.add(truck);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 5.5, 8), dark); mast.position.set(0, 5.9, -8); g.add(mast);
+    const dish = new THREE.Group(); dish.position.set(0, 8.8, -8); g.add(dish);
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 0.25, 20, 1, true), dark); d.rotation.x = Math.PI / 2 - 0.3; dish.add(d);
+    dish.add(new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.5, 0.3), dark));
+    for (const [x, z] of [[-11, -2], [11, -4]]) { const s = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.0, 5.2), olive); s.position.set(x, 1.8, z); g.add(s); }
+    return { g, spin: dish, mats, r: 18, kind: 'SAM SITE', hp: 50 };
+  }
+  function buildDestroyer() {
+    const g = new THREE.Group();
+    const hullM = surfMat(0x5d666e, 0.7, 0.35), deckM = surfMat(0x3e4449, 0.85, 0.2), supM = surfMat(0x7b848b, 0.65, 0.3), darkM = surfMat(0x24282b, 0.6, 0.5);
+    const mats = [hullM, deckM, supM, darkM];
+    const L = 142, B = 16;
+    const sh = new THREE.Shape();
+    // Top-view outline, pointed bow at shape +y (-> world -Z after the -90 deg X rotation).
+    sh.moveTo(0, L / 2); sh.quadraticCurveTo(B * 0.55, L * 0.18, B / 2, -L * 0.1); sh.lineTo(B / 2 - 0.6, -L / 2); sh.lineTo(-B / 2 + 0.6, -L / 2);
+    sh.lineTo(-B / 2, -L * 0.1); sh.quadraticCurveTo(-B * 0.55, L * 0.18, 0, L / 2);
+    const hull = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 9, bevelEnabled: false }), hullM);
+    hull.rotation.x = -Math.PI / 2; hull.position.y = -5; g.add(hull);                     // shape y -> world -z, extrusion -> up
+    const deck = new THREE.Mesh(new THREE.ShapeGeometry(sh), deckM); deck.rotation.x = -Math.PI / 2; deck.position.y = 4.05; g.add(deck);
+    const box = (w, h, d, x, y, z, m = supM) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); return b; };
+    box(11, 7, 22, 0, 7.5, -12); box(8, 5, 12, 0, 13.5, -14); box(9, 6, 26, 0, 7, 22);               // bridge + aft superstructure
+    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.8, 8, 12), darkM); funnel.position.set(0, 12, 6); g.add(funnel);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 18, 8), darkM); mast.position.set(0, 24, -12); g.add(mast);
+    const spin = new THREE.Group(); spin.position.set(0, 31, -12); g.add(spin);
+    spin.add(new THREE.Mesh(new THREE.BoxGeometry(7, 1.2, 0.5), darkM));
+    const turret = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, 2.6, 14), supM); turret.position.set(0, 5.6, -44); g.add(turret);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 7, 8), darkM); barrel.rotation.x = Math.PI / 2 - 0.15; barrel.position.set(0, 6.2, -48); g.add(barrel);
+    box(5, 1.6, 7, 0, 4.9, -30, darkM);                                                                // VLS cells
+    return { g, spin, mats, r: 46, kind: 'DESTROYER', hp: 100, ship: true };
+  }
+  function siteSpots() {
+    const r = (() => { let a = 90731; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
+    const cx = env.terrainCenter.x, cz = env.terrainCenter.z, land = [];
+    let sea = null;
+    for (let i = 0; i < 4000 && (land.length < 3 || !sea); i++) {
+      const a = r() * Math.PI * 2, d = 1500 + r() * 9000, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      const h = terrainHeight(x, z);
+      if (land.length < 3 && h > 12 && h < 260) {
+        let flat = true;
+        for (const [ox, oz] of [[30, 0], [-30, 0], [0, 30], [0, -30]]) if (Math.abs(terrainHeight(x + ox, z + oz) - h) > 6) flat = false;
+        if (flat && land.every(p => Math.hypot(p.x - x, p.z - z) > 2600)) land.push({ x, z, h });
+      }
+      if (!sea && d > 5000) {
+        let deep = true;
+        for (const [ox, oz] of [[0, 0], [600, 0], [-600, 0], [0, 600], [0, -600]]) if (terrainHeight(x + ox, z + oz) > -25) deep = false;
+        if (deep) sea = { x, z };
+      }
+    }
+    return { land, sea };
+  }
+  function spawnSurface() {
+    for (const t of surface) { scene.remove(t.g); }
+    surface.length = 0;
+    const { land, sea } = siteSpots();
+    land.forEach((p, i) => {
+      const t = buildSAM();
+      t.g.position.set(p.x, p.h, p.z); t.g.rotation.y = i * 1.7;
+      Object.assign(t, { pos: new THREE.Vector3(p.x, p.h + 2, p.z), alive: true, burn: 0, label: 'SAM ' + (i + 1), id: 'S' + (i + 1) });
+      scene.add(t.g); surface.push(t);
+    });
+    if (sea) {
+      const t = buildDestroyer();
+      Object.assign(t, { pos: new THREE.Vector3(sea.x, 0, sea.z), alive: true, burn: 0, label: 'DDG 1', id: 'D1',
+        center: new THREE.Vector3(sea.x - 1500, 0, sea.z), orbitR: 1500, ang: 0, speed: 9, sink: 0, vel: new THREE.Vector3() });
+      t.g.position.copy(t.pos); scene.add(t.g); surface.push(t);
+    }
+    if (C.groundTgt && !surface.includes(C.groundTgt)) C.groundTgt = null;
+  }
+  function destroySurface(t) {
+    if (!t.alive) return;
+    t.alive = false; t.burn = 45;
+    for (const m of t.mats) m.color.multiplyScalar(0.28);
+    explosion(t.pos, t.ship ? 3.2 : 2.4);
+    C.score += t.ship ? 2500 : 1200; C.kills++;
+    pushEvent('DESTROYED', `${t.kind} DESTROYED`, t.ship ? 2500 : 1200, '#52ff9c');
+    say(t.ship ? 'SHACK! DESTROYER IS GOING DOWN' : 'SHACK! SAM SITE DESTROYED', 2.4);
+    if (C.groundTgt === t) { C.groundTgt = null; C.ccrpArmed = false; }
+  }
+  function damageSurface(t, n) {
+    if (!t.alive) return;
+    t.hp -= n;
+    if (t.hp <= 0) destroySurface(t);
+  }
+  function updateSurface(dt) {
+    let anyAlive = false;
+    for (const t of surface) {
+      if (t.spin) t.spin.rotation.y += dt * (t.alive ? 1.6 : 0);
+      if (t.ship) {
+        if (t.alive) {
+          t.ang += dt * t.speed / t.orbitR;
+          t.pos.set(t.center.x + Math.cos(t.ang) * t.orbitR, 0, t.center.z + Math.sin(t.ang) * t.orbitR);
+          t.vel.set(-Math.sin(t.ang) * t.speed, 0, Math.cos(t.ang) * t.speed);
+          t.g.position.copy(t.pos); t.g.rotation.y = Math.PI - t.ang;              // bow (-Z local) along the direction of travel
+          if (rand() < dt * 6) {                                                    // bow wave / stern wake foam
+            const back = new THREE.Vector3(0, 0, 71).applyQuaternion(t.g.quaternion).add(t.pos);
+            smoke.spawn({ x: back.x + (rand() - 0.5) * 10, y: 1, z: back.z + (rand() - 0.5) * 10, vx: 0, vy: 0.3, vz: 0, life: 6, s0: 8, s1: 26, r: 0.92, g: 0.95, b: 0.97, a: 0.45, drag: 0.2 });
+          }
+        } else {                                                                    // listing and settling
+          t.sink = Math.min(t.sink + dt * 0.5, 14); t.vel.set(0, 0, 0);
+          t.g.position.y = -t.sink; t.g.rotation.z = Math.min(0.32, t.sink * 0.03);
+        }
+      }
+      if (t.alive) anyAlive = true;
+      else if (t.burn > 0) {
+        t.burn -= dt;
+        if (rand() < dt * 14) fire.spawn({ x: t.pos.x + (rand() - 0.5) * t.r, y: t.pos.y + 3, z: t.pos.z + (rand() - 0.5) * t.r, vx: 0, vy: 6, vz: 0,
+          life: 0.7 + rand() * 0.5, s0: 6, s1: 14, r: 1, g: 0.5 + rand() * 0.3, b: 0.12, a: 0.85, drag: 1.2 });
+        if (rand() < dt * 10) { const gg = 0.07 + rand() * 0.05; smoke.spawn({ x: t.pos.x + (rand() - 0.5) * t.r * 0.6, y: t.pos.y + 5, z: t.pos.z + (rand() - 0.5) * t.r * 0.6,
+          vx: (rand() - 0.5) * 3, vy: 10 + rand() * 6, vz: (rand() - 0.5) * 3, life: 8 + rand() * 4, s0: 12, s1: 70, r: gg, g: gg, b: gg, a: 0.75, drag: 0.4, rise: 2 }); }
+      }
+    }
+    if (surface.length && !anyAlive) {
+      surfRespawn += dt;
+      if (surfRespawn > SURF_RESPAWN) { surfRespawn = 0; spawnSurface(); say('NEW STRIKE TARGETS ON THE GROUND MAP', 2.5); }
+    } else surfRespawn = 0;
+  }
+  // Ground-map designation for >UGB: nearest live target within 45 deg of the
+  // flight path and 25 km. cycle=true picks the next one by range.
+  function groundCandidates() {
+    const vh = new THREE.Vector2(S.velocity.x, S.velocity.z);
+    if (vh.lengthSq() < 1) vh.set(0, -1);
+    vh.normalize();
+    return surface.filter(t => t.alive).map(t => {
+      const dx = t.pos.x - S.position.x, dz = t.pos.z - S.position.z, d = Math.hypot(dx, dz);
+      const ang = Math.acos(clamp((dx * vh.x + dz * vh.y) / Math.max(d, 1), -1, 1));
+      return { t, d, ang };
+    }).filter(c => c.d < 25000 && c.ang < 45 * D2R).sort((a, b) => a.d - b.d);
+  }
+  function autoGroundTarget() {
+    const g = C.groundTgt;
+    if (g && g.alive) {
+      // Keep it while it is still ahead of the 3-9 line; once overflown, re-pick.
+      const dx = g.pos.x - S.position.x, dz = g.pos.z - S.position.z;
+      if (dx * S.velocity.x + dz * S.velocity.z > 0 || C.ccrpArmed) return;
+    }
+    const c = groundCandidates();
+    C.groundTgt = c.length ? c[0].t : null;
+  }
+  function cycleGroundTarget() {
+    const c = groundCandidates();
+    if (!c.length) { C.groundTgt = null; say('NO SURFACE TARGET AHEAD', 1.0, '#ffbf3f'); return null; }
+    const i = c.findIndex(x => x.t === C.groundTgt);
+    C.groundTgt = c[(i + 1) % c.length].t; C.ccrpArmed = false;
+    say('GROUND TGT — ' + C.groundTgt.kind + ' ' + C.groundTgt.label, 1.1);
+    return C.groundTgt;
+  }
+
+  /* ==================================================== damage model */
+  // DMG >= 35 %: hydraulic leak (stiffer, -15 % control response, HYD caution).
+  // DMG >= 60 %: one F100 (random side) flames out: AB plume dies, thrust capped
+  // ~72 %, yaw pull toward the dead engine, dark oil-smoke ribbon from its nacelle.
+  // DMG >= 85 %: engine fire: flame licks / sparks + "ENGINE FIRE — EJECT [E]".
+  let dmgSmokeAcc = 0, cautionT = 0;
+  function updateDamage(dt, playerActive) {
+    const dmg = 100 - C.health;
+    C.hydraulic = playerActive && dmg >= 35;
+    if (!playerActive) return;
+    if (dmg >= 60 && !C.engineOut) {
+      C.engineOut = rand() < 0.5 ? 'L' : 'R';
+      say(`${C.engineOut === 'L' ? 'LEFT' : 'RIGHT'} ENGINE FLAMEOUT — RUDDER TRIM`, 2.6, '#ff4d3d');
+      if (env.onSfx) env.onSfx('flameout', null, 1);
+    }
+    if (dmg >= 85 && !C.engineFire) { C.engineFire = true; cautionT = 0; }
+    if (C.engineFire) {
+      cautionT -= dt;
+      if (cautionT <= 0) { cautionT = 3.2; say('ENGINE FIRE — EJECT [E]', 2.6, '#ff4d3d'); if (env.onSfx) env.onSfx('caution', null, 1); }
+    }
+    if (!C.engineOut || !nozzles.length) return;
+    const nz = nozzles[C.engineOut === 'L' ? 0 : 1] || nozzles[0];
+    const p = nz.clone().add(new THREE.Vector3(0, 0, 1.2)).applyQuaternion(S.quaternion).add(S.position);
+    dmgSmokeAcc += dt * 55;
+    while (dmgSmokeAcc >= 1) {
+      dmgSmokeAcc -= 1;
+      const g = 0.06 + rand() * 0.07;
+      // Carries ~40 % of the jet's velocity at first (drag 0.9/s) so the ribbon trails visibly behind the nacelle.
+      smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: S.velocity.x * 0.42 + (rand() - 0.5) * 2, vy: S.velocity.y * 0.42 + rand(), vz: S.velocity.z * 0.42 + (rand() - 0.5) * 2,
+        life: 4 + rand() * 2.5, s0: 2.2, s1: 14 + rand() * 6, r: g, g: g * 0.95, b: g * 0.9, a: 0.75, drag: 0.9, rise: 0.6 });
+      if (C.engineFire && rand() < 0.45) fire.spawn({ x: p.x, y: p.y, z: p.z, vx: S.velocity.x * 0.6 + (rand() - 0.5) * 8, vy: S.velocity.y * 0.6 + (rand() - 0.5) * 8, vz: S.velocity.z * 0.6 + (rand() - 0.5) * 8,
+        life: 0.18 + rand() * 0.25, s0: 1.8 + rand() * 2.5, s1: 0.5, r: 1, g: 0.55 + rand() * 0.3, b: 0.12, a: 1, drag: 1.4 });
+    }
+  }
+
   /* ================================================================ API */
   let ready = false, waveTimer = 0;
   function init(model, nozzleLocal) {
     collectStores(model);
     buildFleet(model, nozzleLocal);
     spawnWave();
+    spawnSurface();
     ready = true;
   }
 
@@ -1559,6 +1832,7 @@ export function createCombat(THREE, env) {
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, ecmState: 'READY', ecmT: 0 });
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
+    Object.assign(C, { gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, ccrpArmed: false });
     flareRecharge = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
@@ -1612,6 +1886,9 @@ export function createCombat(THREE, env) {
       updateLock(dt);
       if (opts.firing) fireGun(dt); else gunIdle();
     } else { C.lockTarget = null; C.lockState = 'NONE'; C.lockProgress = 0; gunIdle(); }
+    updateGunHeat(dt, opts.firing);
+    updateDamage(dt, playerActive);
+    updateSurface(dt);
 
     // Projectiles and hits.
     const seg = new THREE.Vector3(), cp = new THREE.Vector3();
@@ -1621,6 +1898,9 @@ export function createCombat(THREE, env) {
       return cp.copy(b.prev).addScaledVector(seg, t).distanceToSquared(center) < r * r;
     };
     playerTracers.step(dt, b => {
+      for (const t of surface) {
+        if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
+      }
       for (const e of enemies) {
         if (e.alive && segHit(b, e.pos, 11)) {
           e.hp -= 10; C.hitFlash = 0.12;
@@ -1647,7 +1927,9 @@ export function createCombat(THREE, env) {
 
   return {
     init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
-    fireSelected, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
+    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
+    get surface() { return surface; },
+    designateGround(t) { C.groundTgt = t || null; C.ccrpArmed = false; },
     get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
     get enemies() { return enemies; }, missiles,
@@ -1714,6 +1996,11 @@ export function createCombat(THREE, env) {
           aamLive: missiles.filter(m => m.active && m.aam).map(m => (m.target && m.target.label ? m.target.label.slice(-2) : 'dumb') + '@' + (m.target && m.target.pos ? Math.round(m.target.pos.distanceTo(m.mesh.position)) : '-')).join(' ') },
         rwr: { level: C.rwrLevel, list: C.rwr.map(r => r.kind + '@' + Math.round(r.b / D2R)).join(' ') },
         ecm: { st: C.ecmState, t: +C.ecmT.toFixed(1), breaks: C.ecmBreaks },
+        gun: { heat: +C.gunHeat.toFixed(2), over: C.gunOverheat, overheats: C.overheats || 0, ammo: C.ammo },
+        ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,
+          ccrp: C.ccrp ? { along: Math.round(C.ccrp.along), cross: Math.round(C.ccrp.cross), ttr: +C.ccrp.ttr.toFixed(1), rng: Math.round(C.ccrp.range) } : null,
+          armed: !!C.ccrpArmed, rel: C.ccrpRelease || null },
+        dmg: { pct: Math.round(100 - C.health), hyd: !!C.hydraulic, out: C.engineOut || null, fire: !!C.engineFire },
         lock: { next: C.nextTarget?.label || null, tgt: C.designated?.label || null, state: C.lockState, prog: +C.lockProgress.toFixed(2), off: +((C.seekerOff || 0) / D2R).toFixed(1), nm: +((C.targetRange || 0) / NM).toFixed(2) },
         cloud: { player: +(C.playerCloud || 0).toFixed(2), tgt: +((C.designated && C.designated.cloud) || 0).toFixed(2), obscured: !!C.targetObscured, breaks: C.cloudBreaks || 0,
           msl: missiles.filter(m => m.active).map(m => (m.q || MSL_FULL).tag + (m.cloudLost ? '/cloudLost' : m.lostTrack ? '/lost' : '') + (m.reacquired ? '/reacq' : '') + ' c' + (m.cloud || 0).toFixed(2)).join(' ') },

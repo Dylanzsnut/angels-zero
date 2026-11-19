@@ -375,6 +375,39 @@ export function createAudio() {
     }
   }
 
+  // Gun overheat: a hot hissing vent (high-passed noise burst) with a metallic tick.
+  function overheat() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const hp = filt('highpass', 2600, 0.7), g = gain(0);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+    n.connect(hp).connect(g).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 1.7);
+    glocChime();
+  }
+  // Engine flameout: a deep compressor-stall thump and spool-down moan.
+  function flameout() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(40, t + 2.2);
+    const lp = filt('lowpass', 900, 0.9), g = gain(0);
+    g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.001, t + 2.4);
+    o.connect(lp).connect(g).connect(cockpitLP); o.start(t); o.stop(t + 2.5);
+    explosion(0.35);
+  }
+  // Master caution: three quick high / low avionics tones on the headset bus.
+  function masterCaution() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) for (const [f0, dt] of [[1450, 0], [1050, 0.11]]) {
+      const at = t + i * 0.26 + dt, o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f0;
+      const lp = filt('lowpass', 3200, 0.7), g = gain(0);
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.055, at + 0.008); g.gain.setValueAtTime(0.055, at + 0.09); g.gain.linearRampToValueAtTime(0, at + 0.1);
+      o.connect(lp).connect(g).connect(N.body); o.start(at); o.stop(at + 0.11);
+    }
+  }
+
   // Thunder: a sharp crack (nearby) into a long rolling low rumble of brown noise
   // with random amplitude swells, k 0..1.2 by distance.
   function thunder(k = 1) {
@@ -551,7 +584,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, preload, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, preload, setVolume, setMuted,
     get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },

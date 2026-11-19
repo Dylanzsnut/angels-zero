@@ -147,6 +147,28 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   clones; turn-rate-limited proportional navigation by lock quality.
 - [x] **CCIP** — closed-form ballistic solve, fall line + impact pipper.
 - [x] **M61A1 Vulcan** — 6,000 rpm, tracers, LCOS lead reticle, gun funnel.
+- [x] **Step 3: barrel heat, CCRP, battle damage** *(build `s28a`)*
+  - Vulcan heat 0 -> 1 over ~3.2 s of fire, cools ~0.28/s (+0.12 at speed);
+    thin thermal arcs (reticle / cockpit boresight / GUN row) emerald -> amber
+    -> crimson; at 1.0 `[ GUN OVERHEAT ]`, `GUN HOT`, steam from the starboard
+    gun port, firing locked out until < 0.45.
+  - Surface strike targets: 3 SAM sites on flat island ground + a destroyer
+    circling in deep water (bomb blast / sustained 20 mm kills, burning wrecks,
+    sinking ship, respawn 40 s after the last); radar squares; ground-map
+    auto-designation in `>UGB` (C cycles).
+  - CCRP in `>UGB`: azimuth steering line through the target, release cue bar
+    sliding down to the FPV, `REL 03.2s` / `OVERFLY`, steer cue; holding RMB /
+    M arms auto-release at the along-track zero crossing (within 60 m of the
+    line); moving ships led by the time of fall; CCIP unchanged otherwise.
+  - Damage: >= 35 % hydraulic leak (-15 % control response, flickering HYD
+    caution, `HYD LEAK`); >= 60 % random F100 flameout (that plume out, thrust
+    x0.72, yaw / roll pull toward the dead side, oil-smoke ribbon, `L/R ENG
+    OUT`); >= 85 % engine fire (flame licks, FIRE L/R tile, master caution +
+    `ENGINE FIRE — EJECT [E]`).
+  - Verified headless: overheat at ~3.3 s, lockout while held, resume after
+    cooling; CCRP auto-release on a SAM (0.9 m along-track, destroyed) and the
+    destroyer (1.6 m, destroyed); DMG 65 % left engine out with sideslip + roll
+    toward it; DMG 90 % fire; zero page console errors.
 - [x] **Flares / chaff (`X` / `G`)**, bandit AI with symmetric locks, missile
   break / decoy / cloud loss.
 - [x] **Enemy AI & Collision Overhaul** *(current step, done — `src/combat.js`)*
@@ -244,12 +266,15 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
+· `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
 
 ## Next
+0. **Step 4 (final): landing gear + runway ops** — gear / flaps / hook,
+   touchdown physics, taxi, takeoff roll, rearm on the runway.
 1. Pillar 1: extract `state` / `combat` into `src/state.js`; fixed-step
    simulation accumulator.
 2. Pillar 2: extract `updatePhysics` → `src/flight.js` and the chase camera →
