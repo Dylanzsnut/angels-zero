@@ -427,23 +427,23 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s39a';
-import { createHUD } from './src/hud.js?v=s39a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s39a';
-import { createCombat } from './src/combat.js?v=s39a';
-import { createEjection } from './src/eject.js?v=s39a';
-import { createAudio } from './src/audio.js?v=s39a';
-import { createRadio } from './src/radio.js?v=s39a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s39a';
-import { createLivery } from './src/livery.js?v=s39a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s39a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s39a';
-import { createCanopyFX } from './src/canopy.js?v=s39a';
-import { createNVG } from './src/nvg.js?v=s39a';
-import { createWorld, WORLD } from './src/world.js?v=s39a';
-import { createSurfaces } from './src/surfaces.js?v=s39a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s39a';
-import { createFreeLook } from './src/freelook.js?v=s39a';
+import { createVFX } from './src/vfx.js?v=s40a';
+import { createHUD } from './src/hud.js?v=s40a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s40a';
+import { createCombat } from './src/combat.js?v=s40a';
+import { createEjection } from './src/eject.js?v=s40a';
+import { createAudio } from './src/audio.js?v=s40a';
+import { createRadio } from './src/radio.js?v=s40a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s40a';
+import { createLivery } from './src/livery.js?v=s40a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s40a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s40a';
+import { createCanopyFX } from './src/canopy.js?v=s40a';
+import { createNVG } from './src/nvg.js?v=s40a';
+import { createWorld, WORLD } from './src/world.js?v=s40a';
+import { createSurfaces } from './src/surfaces.js?v=s40a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s40a';
+import { createFreeLook } from './src/freelook.js?v=s40a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -774,7 +774,9 @@ function resetAircraft() {
     const spots = {
       airbase: [RWY_X(), 140, 4300, 0], canyon: [world.canyonX(-5300), 120, -5300, 0],
       bridgeA: [-4350, 32, -3880, 92], bridgeB: [2650, 32, -3990, 70],
-      volcano: [2600, 850, -5600, 50], wind: [3300, 95, 3900, 46], harbor: [-4200, 160, -900, 88]
+      volcano: [2600, 850, -5600, 50], wind: [3300, 95, 3900, 46], harbor: [-4200, 160, -900, 88],
+      final18: [RWY_X(), 160, -1400 - 3600, 180], rig: [world.rigs[0].x + 2200, 45, world.rigs[0].z, 270],
+      stack: world.stacks.length ? [world.stacks[0].x - 1800, 46, world.stacks[0].z, 90] : [0, 300, 0, 0]
     };
     const v = spots[Q.get('at')] || Q.get('at').split(',').map(Number);
     state.position.set(v[0], v[1], v[2]);
@@ -2254,7 +2256,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook,
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world,
     get appMode() { return appMode; },
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };

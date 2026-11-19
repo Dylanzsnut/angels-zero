@@ -673,6 +673,53 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     true projection (396,145); release 150 -> 7.5 deg in 0.25 s; chase orbit
     radius 26.2 -> 26.4 m at 140 deg, 340 deg orbit returns via -20 deg;
     headless cockpit / chase / release / menu runs with zero page errors.
+- [x] **Vertical terrain, NW canyon, sea stacks, megastructures** *(build `s40a`, `src/world.js`, `src/combat.js`, `index.html`)*
+  - Height grid 480 -> 600 segments (33 m) so cliffs stay sheer; render mesh,
+    `heightAt` and every gameplay query still share it triangle-exactly.
+  - Main island: basalt escarpments on the north / east coasts, jagged ridged-
+    noise NE massif (peak ~810 m) and NW ridge (~520 m) clear of the runway,
+    port town and harbour. Volcano gains a sea escarpment + lava-ridge creases
+    (rim held near ~1 km). Atoll outer cliffs steeper.
+  - NW canyon massif: 330-500 m ridged plateau; gorge walls measured 410-515 m,
+    water floor 280-390 m (wider at the open mouths), striated ledge, rim
+    crests. `canyonX` unchanged, `canyonHalf(z)` exported.
+  - Rock palette by elevation + slope: charcoal basalt waterline (#252a2e),
+    slate cliff faces (#3c4349), olive-slate uplands (#464e44), pale weathered
+    summits (#73787a); muted scrub on gentle lowland, narrow grey sand strips.
+  - RWY 18/36 approach funnels (3.6 km off both thresholds, widening 12 %):
+    terrain capped at elev + 3 % of distance; measured terrain never above a
+    3 deg glide path; sea stacks excluded from the funnels.
+  - 15 basalt sea stacks (128-366 m) placed procedurally in straits / off
+    coasts (clear of approaches, bridge spans, canyon mouths, wind farm, rigs):
+    one InstancedMesh, columnar-jointed jagged geometry, tapered-cylinder
+    collision.
+  - Bridges rebuilt: deck road 124 m, girder underside 116 m (380 ft), 34 m
+    deck, 240 m twin-leg towers banded red / white, top + mid-height blinking
+    red beacons, piers, thicker main cables + hangers. Per-member collision
+    (deck, each leg, each portal beam, pier) so the under-deck strait and the
+    portal gap are open. BRIDGE THREAD reads `bridges[i].under`.
+  - 3 oil platforms in the sea lanes: 4-leg braced jacket, 90 m deck + upper
+    deck + process modules, 64 m lattice derrick, cantilevered helipad (ring +
+    H), pedestal crane, flare boom with a flickering additive gas-flare sprite
+    and an orange flare light (mode 6); per-leg / deck / derrick collision.
+  - Industrial port: 5 ship-to-shore container gantry cranes (62 m portal,
+    105 m boom over the bay, A-frame + stays) and a 10-tank white fuel farm
+    on the flat ground behind the quay (houses keep clear).
+  - Airbase: 5 hardened aircraft shelters with taxi stubs, 2 geodesic radomes,
+    tower-top sweeping radar bar, ALSF approach lights + sequenced strobes off
+    BOTH thresholds, threshold bars at both ends; runway / approach lights use
+    a new high-intensity mode (bright by day through overcast, 3.2 px minimum).
+  - Draw calls: every repeated member (bridge bands, beams, rig lattice,
+    cranes, tanks, shelters, piers) goes through 3 InstancedMeshes (box /
+    cylinder / arch) + 1 for the stacks; collision gained tapered cylinders.
+  - Verified headless: 105 ft / 515 kt under bridge A -> BRIDGE_THREAD awarded,
+    no crash; canyon run at 390 ft between 400-500 m walls, no crash; sea-stack
+    and oil-rig skims at ~145 ft, no crash; RWY 18 final view (open approach
+    between the massifs); night overcast approach from ~10 km shows the
+    approach strobe + bridge lights; zero page console errors. Pane render
+    4-5 ms / frame, ~445 draw calls, ~1 M triangles; world build ~1.7-1.9 s.
+  - Note: the runway is 18/36 (north-south); both of its finals are protected
+    (the brief's "RWY 09" maps to it).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -762,7 +809,8 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i` ·
-`look=yaw,pitch` (hold free look, degrees) · `lookoff=s` (release at s)
+`look=yaw,pitch` (hold free look, degrees) · `lookoff=s` (release at s) ·
+`at=final18|rig|stack` (3.6 km RWY 18 final / oil rig run / sea-stack run)
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load) · `onrwy[=z]` (stopped on RWY 36, gear down) · `gear` (start gear down)

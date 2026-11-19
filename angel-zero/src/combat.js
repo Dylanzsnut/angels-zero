@@ -1123,7 +1123,7 @@ export function createCombat(THREE, env) {
       const side = Math.sign(ax * (p.z - b.a.z) - az * (p.x - b.a.x));
       const along = ((p.x - b.a.x) * ax + (p.z - b.a.z) * az) / L2;
       if (threadSide[i] !== undefined && side !== threadSide[i] && side !== 0 && along > 0.04 && along < 0.96 &&
-          p.y > 0 && p.y < b.a.y - 4 && S.speed > THREAD_SPD && threadCD[i] <= 0) {
+          p.y > 0 && p.y < (b.under != null ? b.under - 3 : b.a.y - 4) && S.speed > THREAD_SPD && threadCD[i] <= 0) {
         threadCD[i] = THREAD_CD;
         awardStyle('BRIDGE_THREAD', Math.round(S.speed * 1.94384) + ' KT');
       }
