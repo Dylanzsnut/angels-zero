@@ -411,6 +411,57 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     impact with kill credit after ~59 s. Headless: low patrol min clearance
     199 m / 0 clamps, head-on merge 43 m / no ram, fleet max 6.8 G, zero page
     console errors (lowpatrol, merge, ace, cockpit).
+- [x] **Persistent pilot record + unlockable F-15C liveries + sortie debrief** *(build `s33b`,
+  new `src/profile.js`, new `src/livery.js`)*
+  - Sortie definition (new): one PHASE 1 -> 2 -> 3 cycle. CLEARED when the
+    Ace falls (debrief 4.5 s later), FAILED when the pilot ejects / is shot
+    down / crashes (debrief when the parachute sequence ends, replacing the
+    old auto-respawn), ABANDONED via pause -> RESTART (lifetime counters bank,
+    no rank). Rank from sortie score: S >= 80,000, A >= 50,000, B >= 25,000,
+    else C; a failed sortie is capped at B.
+  - Profile (`localStorage` `angels_zero_profile`, JSON): bestScore, bestRank,
+    sortiesCleared, sortiesFlown, totalKills, wingsSevered, bridgesThreaded,
+    unlockedLiveries (default `['EAGLE_GREY']`), selectedLivery. Every load
+    is sanitised against defaults; corrupt JSON / blocked storage falls back
+    to an in-memory record (verified: `{not json` -> clean defaults, no
+    errors, valid record rewritten).
+  - Liveries: EAGLE GREY (#828b94 / #5d6670, default), CIPHER BLUE (#d8e0e8 /
+    #1e5ce6, A or S rank), MIDNIGHT STEALTH (#1c2026 / #323944, 1 BRIDGE
+    THREAD or 3 GUNS KILLS in one sortie, also awarded on a failed run),
+    CRIMSON VULTURE (#18181c / #cc2233, defeat the PHASE 3 Ace).
+  - `applyF15Livery(id)` (also `window.applyF15Livery`): the 15 `body*`
+    materials (fuselage, wings, tails and the articulated Ctrl_* /
+    Intake_Ramp_* surfaces sharing them; 60 meshes) keep their camo atlas as
+    neutral luminance detail via an `onBeforeCompile` map_fragment patch (ref
+    = median painted-texel luminance), paint = vertex colours: body colour,
+    trim on a model-space mask (outer wing panels, fin tops, stabilator tips,
+    intake lips; 4.8 % of vertices). Paint is exposure-matched (x0.66) to the
+    lighting tuned for the original atlas. Roughness per scheme, metalness
+    kept; canopy glass, cockpit, nozzles, lights, pylon stores untouched; hinge
+    fairings take shadowed trim. Applied after the bandit fleet clones its
+    materials, so bandits keep their own paint.
+  - Briefing: hangar row with PILOT RECORD (best rank, high score, total
+    kills, wings severed, sorties cleared) and AIRFRAME LIVERY cards (two-tone
+    swatch, `[ EQUIPPED ]`, lock icon + short unlock rule, full rule in the
+    tooltip / aria-label). Compact layout for viewports <= 900 px tall so the
+    whole briefing incl. LAUNCH fits 1280x720 without scrolling.
+  - Debrief overlay: SORTIE CLEARED / FAILED (+ reason), diamond rank badge,
+    NEW HIGH SCORE / NEW BEST RANK / rank-cap flags, score / kills / guns
+    kills / wings / bridges / peak combo / ace / time, glowing
+    `[ LIVERY UNLOCKED: NAME ]` banners, `[ BRIEFING ]` `[ REPLAY SORTIE ]`
+    `[ EQUIP & FLY AGAIN ]` (Enter = primary, B = briefing).
+  - Debug: `?debrief=CLEARED|FAILED[,score]`, `__az.profile`, `__az.livery`,
+    `__az.endSortie`; `?nointro` now starts a tracked sortie.
+  - Verified in the pane: briefing at 1280x720 / 1920x1080 / 375x812 with no
+    horizontal overflow (desktop sizes fit without scrolling); all four
+    liveries visibly repaint the jet in the menu orbit and chase view (and
+    0.9 % of the cockpit frame: the intakes / wing roots at the lower
+    corners); a CLEARED sortie through the real sortie watcher (92,000, 3 guns
+    kills, bridge, Ace) -> S rank, NEW HIGH SCORE / NEW BEST RANK, three
+    unlock banners -> EQUIP & FLY AGAIN restarts with CRIMSON VULTURE saved;
+    a FAILED (ejected) 60,000 run -> rank capped at B, MIDNIGHT STEALTH
+    unlocked, CIPHER BLUE still locked; selection + record survive a reload;
+    zero page console errors (headless debrief, wingtest, cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -502,7 +553,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
-· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts)
+· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load)
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
 

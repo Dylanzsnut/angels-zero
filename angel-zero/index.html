@@ -106,6 +106,98 @@
   @keyframes launchPulse { 0%,100% { box-shadow:0 0 14px rgba(82,255,156,.45); } 50% { box-shadow:0 0 28px rgba(82,255,156,.85); } }
   #menu .hint { font-size:11px; font-weight:600; letter-spacing:2.4px; color:#6fd6a0; margin-top:8px; text-align:right; }
 
+  /* Hangar row: PILOT RECORD strip + AIRFRAME LIVERY selector (src/profile.js, src/livery.js). */
+  #menu .hangar { display:grid; grid-template-columns:minmax(0, .82fr) minmax(0, 1.28fr); gap:14px; margin-bottom:14px; }
+  #menu .hangar .sec-box { padding:9px 12px; }
+  #menu .hangar .sec-head { margin-bottom:8px; }
+  #menu .record { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px; }
+  #menu .rec { border-left:2px solid rgba(82,255,156,.55); background:rgba(82,255,156,.06); padding:3px 8px; min-width:0; }
+  #menu .rec .stat-k { font-size:10px; letter-spacing:1.6px; }
+  #menu .rec .stat-v { font-size:17px; }
+  #menu .rec .stat-v.rank-S { color:#ff3b5c; text-shadow:0 0 10px rgba(255,59,92,.45); }
+  #menu .rec .stat-v.rank-A { color:#ffcc33; }
+  #menu .rec .stat-v.rank-B { color:#52ff9c; }
+  #menu .liveries { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; }
+  #menu .liv { position:relative; display:flex; flex-direction:column; gap:3px; min-width:0; padding:6px 6px 5px; text-align:left;
+    background:rgba(4,20,26,.6); border:1px solid rgba(82,255,156,.28); color:#bfead4; font:inherit; transition:border-color .15s, background .15s; }
+  #menu .liv:not(:disabled):hover { border-color:#52ff9c; background:rgba(16,40,34,.7); }
+  #menu .liv:disabled { cursor:not-allowed; opacity:.72; }
+  #menu .liv.equipped { border-color:#52ff9c; background:rgba(82,255,156,.14); box-shadow:0 0 12px rgba(82,255,156,.28) inset; }
+  #menu .liv .sw { height:16px; border:1px solid rgba(255,255,255,.18); }
+  #menu .liv.locked .sw { filter:grayscale(.65) brightness(.6); }
+  #menu .liv .ln { font-size:11px; font-weight:700; letter-spacing:.6px; line-height:1.15; color:#ecfff5; overflow-wrap:anywhere; }
+  #menu .liv .ls { font-size:9.5px; font-weight:600; letter-spacing:.8px; line-height:1.2; color:#7cdcb0; min-height:23px; }
+  #menu .liv.equipped .ls { color:#52ff9c; }
+  #menu .liv.locked .ls { color:#ffd27d; }
+  @media (max-width: 820px) { #menu .hangar { grid-template-columns:minmax(0, 1fr); } #menu .liveries { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  /* Short viewports (<= 900 px tall, e.g. 1280x720 / 1366x768): compact briefing so
+     the hangar row and LAUNCH stay on screen without scrolling. */
+  @media (min-width: 821px) and (max-height: 900px) {
+    #menu .panel { padding:14px 20px 12px; }
+    #menu .top-bar { padding-bottom:7px; margin-bottom:9px; }
+    #menu h1 { font-size:clamp(26px, 3.4vw, 34px); }
+    #menu .ac7-layout, #menu .hangar { gap:10px; margin-bottom:9px; }
+    #menu .sec-box { padding:8px 12px; }
+    #menu .sec-head { margin-bottom:6px; padding-bottom:4px; }
+    #menu .brief { font-size:13px; line-height:1.35; margin-bottom:8px; }
+    #menu .preview-row { margin-bottom:8px; }
+    #menu .loadout-card { padding:7px 10px; }
+    #menu .loadout-sub { margin-bottom:0; }
+    #menu .stations { display:none; }
+    #menu .bind { padding:1px 0; font-size:12px; line-height:1.25; }
+    #menu .bind .k kbd { font-size:10px; padding:0 4px; }
+    #menu .record { gap:4px; }
+    #menu .rec { padding:1px 6px; }
+    #menu .rec .stat-k { font-size:9px; letter-spacing:1.2px; }
+    #menu .rec .stat-v { font-size:15px; }
+    #menu .hangar { grid-template-columns:minmax(0, .72fr) minmax(0, 1.38fr); }
+    #menu .liv { padding:5px 5px 4px; }
+    #menu .liv .sw { height:12px; }
+    #menu .liv .ln { font-size:10.5px; letter-spacing:.4px; }
+    #menu .liv .ls { min-height:0; }
+    #menu .op, #menu .hint { display:none; }
+    #menu .bind .a { font-size:11.5px; }
+    #menu .action-bar { padding-top:8px; }
+  }
+
+  /* Sortie debrief overlay. */
+  #debrief { position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;
+    background:radial-gradient(ellipse at center, rgba(0,10,8,.35), rgba(0,6,4,.72)); font-family:'Rajdhani','Share Tech Mono',sans-serif; }
+  #debrief[hidden] { display:none; }
+  #debrief .panel { position:relative; width:min(720px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box; padding:20px 24px 18px; color:#d2ffea;
+    background:repeating-linear-gradient(0deg, rgba(82,255,156,.025) 0 1px, transparent 1px 3px), linear-gradient(165deg, rgba(4,16,24,.86), rgba(2,10,16,.92));
+    border:1px solid rgba(82,255,156,.45); box-shadow:0 0 0 1px rgba(82,255,156,.12) inset, 0 24px 64px rgba(0,0,0,.72); backdrop-filter:blur(8px);
+    clip-path:polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); }
+  #debrief .eyebrow { font-size:12px; font-weight:600; letter-spacing:3.5px; color:#52ff9c; }
+  #debrief .db-head { display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid rgba(82,255,156,.28); padding-bottom:10px; margin:4px 0 12px; }
+  #debrief h2 { margin:0; font-size:clamp(26px, 4vw, 38px); letter-spacing:6px; color:#ecfff5; text-shadow:0 0 16px rgba(82,255,156,.35); }
+  #debrief.failed h2 { color:#ffb3bd; text-shadow:0 0 16px rgba(255,46,67,.35); }
+  #debrief .db-sub { font-size:13px; font-weight:600; letter-spacing:2.4px; color:#8bffbe; }
+  #debrief.failed .db-sub { color:#ff8a98; }
+  #debrief .db-rank { flex:none; width:84px; height:84px; display:grid; place-items:center; font-size:58px; font-weight:700; line-height:1; border:2px solid currentColor; color:#52ff9c;
+    clip-path:polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background:rgba(82,255,156,.08); }
+  #debrief .db-rank.rank-S { color:#ff3b5c; background:rgba(255,59,92,.12); }
+  #debrief .db-rank.rank-A { color:#ffcc33; background:rgba(255,204,51,.10); }
+  #debrief .db-rank.rank-C { color:#9adbbd; }
+  #debrief .db-flags { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  #debrief .db-flags span { font-size:11px; font-weight:700; letter-spacing:1.6px; padding:3px 8px; border:1px solid rgba(255,204,51,.6); background:rgba(255,204,51,.12); color:#ffe08a; }
+  #debrief .db-stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; margin-bottom:12px; }
+  #debrief .db-cell { border:1px solid rgba(82,255,156,.3); background:rgba(0,24,18,.55); padding:6px 9px; min-width:0; }
+  #debrief .db-cell .k { font-size:10px; font-weight:600; letter-spacing:1.8px; color:#7cdcb0; }
+  #debrief .db-cell .v { font-size:19px; font-weight:700; letter-spacing:1.5px; color:#ecfff5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #debrief .db-unlocks { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+  #debrief .db-unlock { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #ffcc33; background:linear-gradient(90deg, rgba(255,204,51,.22), rgba(255,204,51,.04));
+    color:#fff2c4; font-size:15px; font-weight:700; letter-spacing:2px; animation:dbGlow 1.4s ease-in-out infinite; }
+  #debrief .db-unlock .sw { flex:none; width:44px; height:18px; border:1px solid rgba(255,255,255,.3); }
+  @keyframes dbGlow { 0%,100% { box-shadow:0 0 6px rgba(255,204,51,.25); } 50% { box-shadow:0 0 18px rgba(255,204,51,.6); } }
+  #debrief .db-btns { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; border-top:1px solid rgba(82,255,156,.26); padding-top:12px; }
+  #debrief button { font-family:inherit; cursor:pointer; padding:10px 16px; font-size:14px; font-weight:700; letter-spacing:2.4px; color:#c8ffe3; background:rgba(4,20,26,.7); border:1px solid rgba(82,255,156,.5); }
+  #debrief button:hover, #debrief button:focus-visible { border-color:#52ff9c; color:#ecfff5; outline:none; }
+  #debrief button.primary { color:#03140b; background:#52ff9c; border:none; box-shadow:0 0 18px rgba(82,255,156,.45); }
+  #debrief button.equip { color:#1a1000; background:#ffcc33; border:none; box-shadow:0 0 18px rgba(255,204,51,.5); }
+  #debrief button[hidden] { display:none; }
+  @media (max-width: 620px) { #debrief .db-stats { grid-template-columns:repeat(2, minmax(0,1fr)); } #debrief .db-btns button { flex:1 1 100%; } #debrief .db-rank { width:64px; height:64px; font-size:42px; } }
+
   /* Wide screens: briefing docked left so the orbiting F-15C frames cleanly on the right. */
   @media (min-width: 1150px) { #menu { justify-content:flex-start; padding-left:3.5vw; } #menu .panel { width:min(820px, 60vw); } }
   @media (max-width: 820px) {
@@ -226,6 +318,22 @@
         </div>
       </div>
 
+      <div class="hangar" id="hangar">
+        <div class="sec-box">
+          <div class="sec-head"><span>PILOT RECORD</span><span id="recSorties">0 SORTIES CLEARED</span></div>
+          <div class="record">
+            <div class="rec"><div class="stat-k">BEST RANK</div><div class="stat-v" id="recRank">—</div></div>
+            <div class="rec"><div class="stat-k">HIGH SCORE</div><div class="stat-v" id="recScore">000000</div></div>
+            <div class="rec"><div class="stat-k">TOTAL KILLS</div><div class="stat-v" id="recKills">0</div></div>
+            <div class="rec"><div class="stat-k">WINGS SEVERED</div><div class="stat-v" id="recWings">0</div></div>
+          </div>
+        </div>
+        <div class="sec-box">
+          <div class="sec-head"><span>AIRFRAME LIVERY</span><span id="livName">EAGLE GREY</span></div>
+          <div class="liveries" id="liveryRow" role="radiogroup" aria-label="Airframe livery"></div>
+        </div>
+      </div>
+
       <div class="action-bar">
         <div class="audio">
           <label for="vol">MASTER VOL</label>
@@ -240,6 +348,23 @@
         </div>
       </div>
       <div class="hint" id="menuHint">CLICK LAUNCH OR PRESS ENTER</div>
+    </div>
+  </div>
+  <div id="debrief" hidden role="dialog" aria-modal="true" aria-labelledby="dbTitle">
+    <div class="panel">
+      <div class="eyebrow">SORTIE DEBRIEF // OPERATION ARCHIPELAGO</div>
+      <div class="db-head">
+        <div><h2 id="dbTitle">SORTIE CLEARED</h2><div class="db-sub" id="dbSub"></div></div>
+        <div class="db-rank" id="dbRank" aria-label="Sortie rank">S</div>
+      </div>
+      <div class="db-flags" id="dbFlags"></div>
+      <div class="db-stats" id="dbStats"></div>
+      <div class="db-unlocks" id="dbUnlocks"></div>
+      <div class="db-btns">
+        <button id="dbBrief" type="button">[ BRIEFING ]</button>
+        <button id="dbReplay" class="primary" type="button">[ REPLAY SORTIE ]</button>
+        <button id="dbEquip" class="equip" type="button" hidden>[ EQUIP &amp; FLY AGAIN ]</button>
+      </div>
     </div>
   </div>
   <button id="hBadge" type="button"><kbd>H</kbd>CONTROLS</button>
@@ -299,21 +424,26 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s32c';
-import { createHUD } from './src/hud.js?v=s32c';
-import { createCockpit3D } from './src/cockpit3d.js?v=s32c';
-import { createCombat } from './src/combat.js?v=s32c';
-import { createEjection } from './src/eject.js?v=s32c';
-import { createAudio } from './src/audio.js?v=s32c';
-import { createRadio } from './src/radio.js?v=s32c';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s32c';
-import { createCanopyFX } from './src/canopy.js?v=s32c';
-import { createNVG } from './src/nvg.js?v=s32c';
-import { createWorld, WORLD } from './src/world.js?v=s32c';
-import { createSurfaces } from './src/surfaces.js?v=s32c';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s32c';
+import { createVFX } from './src/vfx.js?v=s33b';
+import { createHUD } from './src/hud.js?v=s33b';
+import { createCockpit3D } from './src/cockpit3d.js?v=s33b';
+import { createCombat } from './src/combat.js?v=s33b';
+import { createEjection } from './src/eject.js?v=s33b';
+import { createAudio } from './src/audio.js?v=s33b';
+import { createRadio } from './src/radio.js?v=s33b';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s33b';
+import { createLivery } from './src/livery.js?v=s33b';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s33b';
+import { createCanopyFX } from './src/canopy.js?v=s33b';
+import { createNVG } from './src/nvg.js?v=s33b';
+import { createWorld, WORLD } from './src/world.js?v=s33b';
+import { createSurfaces } from './src/surfaces.js?v=s33b';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s33b';
 
 const Q = new URLSearchParams(location.search);
+// Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
+const profile = createProfile();
+let livery = null;
 const DEBUG = Q.has('debug');
 
 /* ============================================================================
@@ -656,6 +786,7 @@ function triggerEject(reason) {
   if (flightMode !== 'FLY' || !modelReady) return;
   flightMode = 'EJECT';
   combat.dead = true; combat.deaths++; combat.lockTarget = null;
+  sortie.failReason = reason === 'crash' ? 'AIRCRAFT LOST — IMPACT' : reason === 'damage' ? 'SHOT DOWN — PILOT EJECTED' : 'PILOT EJECTED';
   keys.fire = false;
   state.throttle = 0; state.afterburner = 0;
   viewBeforeEject = firstPerson;
@@ -666,6 +797,7 @@ function triggerEject(reason) {
   if (DEBUG) console.log('[ANGELS_ZERO] eject:', reason);
 }
 function finishEject() {
+  if (sortie.active && appMode === 'PLAY') { endSortie('FAILED'); return; }   // sortie over: debrief (REPLAY resets the jet)
   eject.stop();
   flightMode = 'FLY';
   resetAircraft();
@@ -791,7 +923,149 @@ function launchSortie() {
   hideMenu();
   combatSys.say('ALPHA 1, CLEARED HOT — SPLASH THE BANDITS', 3);
   radioSys.reset(); radioSys.event('LAUNCH');
+  startSortie();
 }
+
+/* ---------------------------------------------------------------------------
+   Sortie lifecycle + persistent pilot record (src/profile.js).
+   A sortie is one PHASE 1 -> 2 -> 3 cycle: CLEARED when the Ace falls (debrief
+   4.5 s later), FAILED when the pilot ejects / is shot down / crashes (debrief
+   once the parachute sequence ends), ABANDONED via pause -> RESTART (lifetime
+   counters still bank, no rank).
+   --------------------------------------------------------------------------- */
+const sortie = { active: false, t0: 0, ace0: 0, endAt: null, failReason: '' };
+function startSortie() {
+  combat.styleCounts = {}; combat.comboPeak = 1;
+  Object.assign(sortie, { active: true, t0: simTime, ace0: combat.aceDowns || 0, endAt: null, failReason: '' });
+}
+function sortieStats() {
+  const sc = combat.styleCounts || {};
+  return { score: Math.round(combat.score || 0), kills: combat.kills || 0, gunsKills: sc.GUNS_KILL || 0, wingsSevered: sc.WING_RIP || 0,
+    bridges: sc.BRIDGE_THREAD || 0, aceDown: (combat.aceDowns || 0) > sortie.ace0, peak: combat.comboPeak || 1, time: simTime - sortie.t0,
+    phase: combat.phase || 1 };
+}
+function watchSortie() {
+  if (!sortie.active || appMode !== 'PLAY') return;
+  if (sortie.endAt === null && (combat.aceDowns || 0) > sortie.ace0) sortie.endAt = simTime + 4.5;   // victory lap, then debrief
+  if (sortie.endAt !== null && simTime >= sortie.endAt) endSortie('CLEARED');
+}
+function endSortie(outcome) {
+  if (!sortie.active) return;
+  sortie.active = false;
+  const st = sortieStats();
+  const res = profile.recordSortie({ outcome, ...st });
+  appMode = 'DEBRIEF';
+  for (const k in keys) keys[k] = false;
+  audio.suspend();
+  hBadge.style.display = 'none';
+  showDebrief(outcome, st, res);
+  renderHangar();
+  if (DEBUG) console.log('[ANGELS_ZERO] sortie', outcome, JSON.stringify({ ...st, rank: res.rank, unlocked: res.unlocked }));
+}
+function resetMission() {
+  combat.score = 0; combat.kills = 0; combat.deaths = 0; combat.wave = 0;
+  simTime = 0;
+  combatSys.enemies.forEach(e => { e.alive = false; e.wreck = null; });
+  flightMode = 'FLY';
+  eject.stop();
+  resetAircraft();
+  rollSortieConditions(true);                          // fresh time of day / sun azimuth / cloud drift
+  combatSys.update(4.1, 0, { playerActive: false, firing: false });
+  radioSys.reset();
+}
+
+/* Debrief screen ------------------------------------------------------------ */
+const debriefEl = document.getElementById('debrief');
+const dbReplay = document.getElementById('dbReplay'), dbEquip = document.getElementById('dbEquip'), dbBrief = document.getElementById('dbBrief');
+let dbEquipId = null;
+const fmtClock = s => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+const swatchCss = L => `linear-gradient(90deg, ${L.body} 0 62%, ${L.trim} 62% 100%)`;
+function showDebrief(outcome, st, res) {
+  const cleared = outcome === 'CLEARED';
+  debriefEl.classList.toggle('failed', !cleared);
+  document.getElementById('dbTitle').textContent = cleared ? 'SORTIE CLEARED' : 'SORTIE FAILED';
+  document.getElementById('dbSub').textContent = cleared ? `ACE SCARLET 1 DESTROYED // ${fmtClock(st.time)} ON STATION`
+    : `${sortie.failReason || 'AIRCRAFT LOST'} // PHASE ${st.phase} // ${fmtClock(st.time)} ON STATION`;
+  const rk = document.getElementById('dbRank');
+  rk.textContent = res.rank; rk.className = 'db-rank rank-' + res.rank;
+  const flags = [];
+  if (res.newBest) flags.push('NEW HIGH SCORE');
+  if (res.newBestRank) flags.push('NEW BEST RANK');
+  if (!cleared && res.rank === 'B' && profile.rankFor(st.score, true) !== 'B') flags.push('RANK CAPPED AT B — SORTIE NOT CLEARED');
+  document.getElementById('dbFlags').innerHTML = flags.map(f => `<span>${f}</span>`).join('');
+  const cells = [['SCORE', String(st.score).padStart(6, '0')], ['BANDITS SPLASHED', st.kills], ['GUNS KILLS', st.gunsKills], ['WINGS SEVERED', st.wingsSevered],
+    ['BRIDGE THREADS', st.bridges], ['PEAK COMBO', 'x' + st.peak.toFixed(2).replace(/0$/, '')], ['ACE', st.aceDown ? 'DOWN' : '—'], ['TIME', fmtClock(st.time)]];
+  document.getElementById('dbStats').innerHTML = cells.map(([k, v]) => `<div class="db-cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  document.getElementById('dbUnlocks').innerHTML = res.unlocked.map(id => {
+    const L = liveryById(id);
+    return `<div class="db-unlock"><span class="sw" style="background:${swatchCss(L)}"></span>[ LIVERY UNLOCKED: ${L.name} ]</div>`;
+  }).join('');
+  dbEquipId = res.unlocked.length ? res.unlocked[res.unlocked.length - 1] : null;
+  dbEquip.hidden = !dbEquipId;
+  if (dbEquipId) dbEquip.title = `Equip ${liveryById(dbEquipId).name} and replay the sortie`;
+  debriefEl.hidden = false;
+  (dbEquipId ? dbEquip : dbReplay).focus({ preventScroll: true });
+}
+function replaySortie(equipId) {
+  if (appMode !== 'DEBRIEF') return;
+  if (equipId && profile.select(equipId)) setLivery(equipId);
+  debriefEl.hidden = true;
+  const fp = viewBeforeEject || firstPerson;
+  resetMission();
+  appMode = 'PLAY';
+  lastTime = performance.now();
+  for (const k in keys) keys[k] = false;
+  mouse.nx = 0; mouse.ny = 0;
+  audio.init(); audio.resume();
+  setView(fp);
+  hBadge.style.display = 'block';
+  combatSys.say('SORTIE RESTARTED — WEAPONS FREE', 2.4);
+  radioSys.event('LAUNCH');
+  startSortie();
+}
+function debriefToBriefing() {
+  if (appMode !== 'DEBRIEF') return;
+  debriefEl.hidden = true;
+  resetMission();
+  appMode = 'MENU';
+  showMenu('brief');
+  setView(menuPreviewCockpit);
+}
+dbReplay.addEventListener('click', e => { e.stopPropagation(); replaySortie(); });
+dbEquip.addEventListener('click', e => { e.stopPropagation(); replaySortie(dbEquipId); });
+dbBrief.addEventListener('click', e => { e.stopPropagation(); debriefToBriefing(); });
+debriefEl.addEventListener('mousedown', e => e.stopPropagation());
+
+/* Hangar: PILOT RECORD strip + AIRFRAME LIVERY selector ---------------------- */
+const liveryRow = document.getElementById('liveryRow');
+function setLivery(id) {
+  if (livery) livery.applyF15Livery(id);
+}
+window.applyF15Livery = id => { const L = liveryById(id); if (livery) livery.applyF15Livery(L.id); return L.id; };
+function renderHangar() {
+  const p = profile.data;
+  const rr = document.getElementById('recRank');
+  rr.textContent = p.bestRank || '—'; rr.className = 'stat-v' + (p.bestRank ? ' rank-' + p.bestRank : '');
+  document.getElementById('recScore').textContent = String(p.bestScore).padStart(6, '0');
+  document.getElementById('recKills').textContent = String(p.totalKills);
+  document.getElementById('recWings').textContent = String(p.wingsSevered);
+  document.getElementById('recSorties').textContent = `${p.sortiesCleared} SORTIE${p.sortiesCleared === 1 ? '' : 'S'} CLEARED`;
+  document.getElementById('livName').textContent = liveryById(p.selectedLivery).name;
+  liveryRow.innerHTML = '';
+  for (const L of LIVERIES) {
+    const un = p.unlockedLiveries.includes(L.id), eq = p.selectedLivery === L.id;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'liv' + (eq ? ' equipped' : '') + (un ? '' : ' locked');
+    b.disabled = !un; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', eq ? 'true' : 'false');
+    b.title = un ? `${L.name} — ${L.desc}` : `LOCKED — ${L.unlock}`;
+    b.innerHTML = `<span class="sw" style="background:${swatchCss(L)}"></span><span class="ln">${L.name}</span>` +
+      `<span class="ls">${eq ? '[ EQUIPPED ]' : un ? 'SELECT' : '&#128274; ' + L.short}</span>`;
+    b.setAttribute('aria-label', un ? `${L.name}${eq ? ', equipped' : ''}` : `${L.name}, locked: ${L.unlock}`);
+    if (un) b.addEventListener('click', e => { e.stopPropagation(); if (profile.select(L.id)) { setLivery(L.id); renderHangar(); } });
+    liveryRow.appendChild(b);
+  }
+}
+renderHangar();
 function pauseSim() {
   if (appMode !== 'PLAY') return;
   appMode = 'PAUSED';
@@ -808,17 +1082,12 @@ function resumeSim() {
 }
 function restartMission() {
   if (appMode !== 'PAUSED') return;
-  combat.score = 0; combat.kills = 0; combat.deaths = 0; combat.wave = 0;
-  simTime = 0;
-  combatSys.enemies.forEach(e => { e.alive = false; e.wreck = null; });
-  flightMode = 'FLY';
-  eject.stop();
-  resetAircraft();
-  rollSortieConditions(true);                          // fresh time of day / sun azimuth / cloud drift
-  combatSys.update(4.1, 0, { playerActive: false, firing: false });
+  if (sortie.active) { profile.recordSortie({ outcome: 'ABANDONED', ...sortieStats() }); sortie.active = false; renderHangar(); }
+  resetMission();
   resumeSim();
   combatSys.say('MISSION RESTARTED — WEAPONS FREE', 2.4);
-  radioSys.reset(); radioSys.event('LAUNCH');
+  radioSys.event('LAUNCH');
+  startSortie();
 }
 launchBtn.addEventListener('click', e => { e.stopPropagation(); if (appMode === 'MENU') launchSortie(); else resumeSim(); });
 restartBtn.addEventListener('click', e => { e.stopPropagation(); restartMission(); });
@@ -837,6 +1106,13 @@ addEventListener('mousemove', e => {
 });
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
+  if (appMode === 'DEBRIEF') {                         // debrief: Enter = primary action, B = briefing; no flight input
+    if (k === 'enter' && !['dbBrief', 'dbReplay', 'dbEquip'].includes(document.activeElement?.id)) { e.preventDefault(); replaySortie(dbEquipId); }
+    else if (k === 'b' && !e.repeat) debriefToBriefing();
+    else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
   if (appMode === 'MENU' || appMode === 'PAUSED') {
     if (k === 'enter' && !['restartBtn', 'camOrbitBtn', 'camCockpitBtn', 'muteBtn', 'musicBtn'].includes(document.activeElement?.id)) {
       e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim();
@@ -1443,7 +1719,7 @@ const hud = createHUD(THREE, {
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
   getSurface: () => combatSys.surface,
   getWeather: () => ({ rain: weather.rainHere, label: weather.active.label, storm: weather.active.storm }),
-  getMode: () => flightMode, isHidden: () => appMode === 'MENU', isNVG: () => nvg.active,
+  getMode: () => flightMode, isHidden: () => appMode === 'MENU' || appMode === 'DEBRIEF', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist,
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
@@ -1517,6 +1793,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   combatSys.init(model, nozzleLocal);
   model.updateMatrixWorld(true);
   surfaces = createSurfaces(THREE, model);              // Ctrl_* hinges + Nozzle_L/R (after the fleet clone)
+  livery = createLivery(THREE, model, LIVERIES);        // after the fleet clone: bandits keep their own paint
+  livery.applyF15Livery(profile.data.selectedLivery);
+  if (DEBUG) console.log('[ANGELS_ZERO] livery', JSON.stringify(livery.stats()), 'profile', profile.persistent ? 'persistent' : 'memory-only');
   if (DEBUG) console.log('[ANGELS_ZERO] articulated:', surfaces.names.join(', '));               // aggressor fleet clones materials before clipping is attached
   const clipped = new Set();
   model.traverse(o => {
@@ -1689,6 +1968,7 @@ function stepSim(dt) {
   combatSys.update(dt, simTime, { playerActive: flightMode === 'FLY', firing: keys.fire || DEBUG_FIRE });
   radioSys.update(dt, flightMode === 'FLY');
   if (flightMode === 'EJECT' && eject.update(dt)) finishEject();
+  watchSortie();
 }
 function animate() {
   requestAnimationFrame(animate);
@@ -1719,12 +1999,14 @@ addEventListener('resize', () => {
 if (DEBUG) {
   window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
     get appMode() { return appMode; },
-    triggerEject, startRoll, stepSim,
+    triggerEject, startRoll, stepSim, profile, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
 resetAircraft();
 hud.resize();
-if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; hBadge.style.display = 'block'; }        // test hook: skip the briefing
+if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; hBadge.style.display = 'block'; startSortie(); }   // test hook: skip the briefing (sortie tracked)
+// Debug: ?debrief=CLEARED|FAILED[,score] ends the sortie at load + 3 s with that outcome (debrief / unlock checks).
+if (DEBUG && Q.has('debrief')) setTimeout(() => { const [o, s] = Q.get('debrief').split(','); if (s) combat.score = Number(s); endSortie((o || 'CLEARED').toUpperCase() === 'FAILED' ? 'FAILED' : 'CLEARED'); }, 3000);
 else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 if (document.fonts && document.fonts.load) {
   document.fonts.load("600 16px 'Rajdhani'").catch(() => {});

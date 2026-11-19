@@ -1095,6 +1095,7 @@ export function createCombat(THREE, env) {
   }
   function updateStyle(dt, playerActive) {
     styleClock += dt;
+    C.comboPeak = Math.max(C.comboPeak || 1, C.comboMult);         // sortie debrief: peak multiplier
     if (C.comboTimer > 0) { C.comboTimer = Math.max(0, C.comboTimer - dt); if (C.comboTimer <= 0) C.comboMult = 1; }
     if (C.comboMult <= 1) C.comboTimer = 0;
     // DANGER CLOSE
