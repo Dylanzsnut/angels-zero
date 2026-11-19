@@ -285,7 +285,8 @@ export function createAtmosphere(THREE, env) {
       // Overcast: slate cloud bodies, darker indigo bellies; lightning floods them.
       _ct.copy(cur.cloudTop).lerp(slate.clone().multiplyScalar(1.6), Math.min(1, oc * 0.95));
       _cb.copy(cur.cloudBelly).lerp(slate.clone().multiplyScalar(0.5), Math.min(1, oc * 1.0));
-      L.setCloudColors(_ct, _cb);
+      // + the preset sun colour and its strength (3.4 = full daylight; overcast dims it).
+      L.setCloudColors(_ct, _cb, cur.light, (cur.lightI * (1 - 0.72 * oc)) / 3.4);
     }
     if (L.setEnv) L.setEnv(cur.env);
     if (L.setNavLights) L.setNavLights(cur.nav);
@@ -322,8 +323,8 @@ export function createAtmosphere(THREE, env) {
       .lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel * (1 - 0.5 * wx.overcast))), Math.min(1, mist * 1.15))
       .lerp(FLASH, wx.flash * 0.3);
     skyUniforms.uWhite.value = Math.min(1, mist * 1.1);
-    // Above the overcast ceiling tops (~11,500 ft) the air is crisp: haze thins by 55 %.
-    const above = THREE.MathUtils.smoothstep(camera.position.y, 3300, 3900);
+    // Above the cloud-deck tops (~13,000 ft) the air is crisp: haze thins by 55 %.
+    const above = THREE.MathUtils.smoothstep(camera.position.y, 3950, 4500);
     scene.fog.density = BASE_DENSITY * cur.fogK * wx.fogMul * (1 - 0.55 * above) * (1 + mist * 28);
 
     corona.position.copy(skyDir).multiplyScalar(SUN_DIST).add(camera.position);

@@ -607,6 +607,39 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     flight path after release (weathercock, no overshoot past centre); Q still
     rolls; taxi tap 0.7 deg vs 1 s hold 21.8 deg of nose-wheel steering; zero
     page console errors (headless flight, runway, cockpit, menu).
+- [x] **Hybrid volumetric clouds: raymarched sky deck + volumetric-lit cumulus banks** *(build `s38a`, `src/vfx.js` cloud section, `src/atmosphere.js`, `index.html`)*
+  - Replaces the s35c pillars / anvils / striped ceiling slab (no vertical
+    columns or flat ceiling remain).
+  - Noise: 256^2 tileable RGB DataTexture (value FBM, inverted 2-octave
+    Worley, high-frequency FBM) with mips; pseudo-3-D noise = two hashed 2-D
+    slices with a variance-preserving blend (a plain lerp drew contour bands).
+  - Sky deck 9,000-13,000 ft: camera-centred BackSide dome raymarched in GLSL
+    (32 geometric steps growing 12 % from ~25 m, interleaved-gradient dither,
+    distance-based `textureLod`), cauliflower Perlin-Worley density with a
+    height-rising threshold, Beer-Lambert extinction, jittered sun light-march,
+    Henyey-Greenstein forward + back lobes (silver / golden rims), belly->top
+    ambient, aerial-perspective fog blend and a 26-38 km far fade (no hard
+    horizon), `gl_FragDepth` written for the log depth buffer. Coverage from
+    the weather (CLEAR 0.48 / SCATTERED 0.31 / OVERCAST 0.20 threshold).
+  - 16 cumulus banks at 1,800-7,500 ft, 1.8-3.6 km wide, 350-850 m tall,
+    Poisson-spaced with >= 700 m corridors and the airbase approach kept
+    clear; 25-45 puffs each (flat-based layer + cauliflower lumps). Puff
+    ShaderMaterial: Worley-FBM atlas alpha, fake spherical normal, height-in-
+    bank shading (blue-grey bellies), sky bounce, HG silver lining, partial
+    fog, 40-180 m near fade.
+  - Atmosphere drives both: `setCloudColors(top, belly, sunColour, k)` from
+    the time-of-day preset (DAWN..NIGHT + overcast darkening); the live sun
+    vector is shared.
+  - Gameplay: `cloudDensity()` = rotated bank ellipsoids + a JS twin of the
+    deck density, so lock-breaking, canopy moisture and in-cloud fog (x29 at
+    full mist) work in both layers; API (`cloudLayers`, `setCloudGain/Flash`,
+    `placeDebugCloud`, coverage) kept.
+  - Verified in the pane: 4,000 ft toward / away from the sun (silver-edged
+    banks, blue-grey undersides, seamless horizon), fly-through of a bank
+    (inCloud 6.2-15.0 s, no luminance pops), above the overcast deck at
+    14,000 ft (cauliflower tops, no stripes / contour bands), golden hour
+    warm backlighting; 88-107 fps; zero shader / page console errors headless
+    (day, dusk overcast, night cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
