@@ -253,6 +253,32 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     pull RMS 0.22-0.30 with groan 0.95 + lug + buffet + breathing; sustained
     9 G AB pull brings the heartbeat (0.93) and tunnel LP to ~2.6 kHz; all
     layers return to 0 on release; zero page console errors.
+- [x] **Style combo multiplier, HUD callouts & push-forward refills**
+  *(build `s31a`, `src/combat.js` style section, `src/hud.js`, `src/audio.js`)*
+  - `C.comboMult` 1.0x -> 5.0x scales every point scored while the chain is
+    alive (score delta x mult x DANGER bonus, tracked in `C.comboBonus`);
+    `C.comboTimer` 12 s restarts on every kill / style trigger, chain drops to
+    1.0x at 0. Reset on respawn.
+  - Style triggers: WING RIP +300 / +0.5x / gunHeat x0.5 / +1 FLR (Vulcan wing
+    severance; replaces the old flat +300), GUNS KILL +400 / +0.5x / +1 FLR
+    (direct Vulcan kill), 4AAM SWEEP +500 / +0.75x (2+ ripple-salvo kills in
+    2.5 s, once per salvo), CLOSE CALL +250 / +0.5x (bandit missile aimed at
+    us passes inside 55 m and opens without fusing; missile whoosh), BRIDGE
+    THREAD +600 / +1.0x (cross either strait span below the deck between the
+    abutments above 380 kt; 10 s per-bridge cooldown), DANGER CLOSE x1.5
+    passive (< 180 ft AGL, > 420 kt, over water or inside the NW canyon gorge).
+  - HUD: `x2.5` readout + 2 px emerald -> gold decay bar under SCORE (hidden at
+    1.0x), `DANGER x1.5` tag; right-center Style Feed (fade-up, pop, 3.2 s,
+    gold for big plays, refill sub-line). Audio: `styleChime(tier)` bell
+    arpeggio on the headset bus, `missileWhoosh()` Doppler sweep.
+  - Verified in the browser pane with live sim (`__step`): real 20 mm wing
+    severance -> heat 0.90 -> 0.45, FLR 2 -> 3, x1.5 -> x2.0, timer 12 s; guns
+    kill 1900 x1.5 = 2850; bridge A pass at 437 kt / 30 m -> BRIDGE THREAD +
+    DANGER CLOSE (600 x2.0 x1.5 = 1800); real bandit missile passing at 38 m
+    -> CLOSE CALL; triple-lock 4AAM ripple, kills 0.15 s apart -> SWEEP x1.75;
+    x2.0 decays to x1.0 at exactly 12 s; zero page console errors (headless
+    wingtest + cockpit runs too). `combatSys.awardStyle(kind)` exposed for
+    debugging.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

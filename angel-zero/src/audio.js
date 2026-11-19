@@ -82,6 +82,7 @@ export function createAudio() {
     // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
     N.body = gain(muted ? 0 : volume); N.body.connect(comp);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
+    N.whiteBuf = white;
 
     // F100 turbines: filtered pink/brown body + sawtooth whine + afterburner rumble.
     N.engBody = loopNoise(pink); N.engLP = filt('lowpass', 500, 0.9); N.engGain = gain(0);
@@ -459,6 +460,39 @@ export function createAudio() {
     }
   }
 
+  // Style feed chime: crisp rising bell pair on the headset bus (tier 0 = soft
+  // single ping for DANGER CLOSE, 1 = two-note, 2 = bright three-note arpeggio).
+  function styleChime(tier = 1) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const notes = tier >= 2 ? [1318.5, 1760, 2637] : tier >= 1 ? [1568, 2349] : [1175];
+    notes.forEach((f0, i) => {
+      const at = t + i * 0.07;
+      for (const [mul, amp] of [[1, 0.075], [2.76, 0.018]]) {                // fundamental + inharmonic bell partial
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f0 * mul;
+        const g = gain(0);
+        g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(amp, at + 0.004); g.gain.exponentialRampToValueAtTime(0.0005, at + 0.42);
+        o.connect(g).connect(N.body); o.start(at); o.stop(at + 0.45);
+      }
+    });
+  }
+  // CLOSE CALL: a bandit missile tearing past the canopy — band-passed noise
+  // sweeping 3.2 kHz -> 380 Hz with a Doppler-dropping motor buzz.
+  function missileWhoosh() {
+    if (!ready || !N.whiteBuf) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = N.whiteBuf;
+    const bp = filt('bandpass', 3200, 2.2), g = gain(0);
+    bp.frequency.setValueAtTime(3200, t); bp.frequency.exponentialRampToValueAtTime(380, t + 0.7);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    src.connect(bp).connect(g).connect(master); src.start(t, Math.random() * 2); src.stop(t + 0.9);
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(340, t); o.frequency.exponentialRampToValueAtTime(150, t + 0.6);
+    const lp = filt('lowpass', 1400, 0.8), og = gain(0);
+    og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.09, t + 0.08); og.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+    o.connect(lp).connect(og).connect(master); o.start(t); o.stop(t + 0.7);
+  }
+
   // Thunder: a sharp crack (nearby) into a long rolling low rumble of brown noise
   // with random amplitude swells, k 0..1.2 by distance.
   function thunder(k = 1) {
@@ -657,7 +691,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, preload, setVolume, setMuted,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, preload, setVolume, setMuted,
     get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },

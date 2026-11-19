@@ -858,11 +858,33 @@ export function createHUD(THREE, A) {
     labelText(ctx, A.missionClock(), x + 52, y - 1, GB, 5);
     const score = C.score ?? C.kills * 1500;
     labelText(ctx, String(score).padStart(6, '0'), x + 52, y + 18, GB, 5);
+    // Combo multiplier: x2.5 readout + 2 px emerald -> gold decay bar under SCORE.
+    let comboH = 0;
+    const cm = C.comboMult;
+    if (cm !== undefined && cm > 1.0) {
+      const k = clamp((cm - 1) / ((C.comboMax || 5) - 1), 0, 1);
+      const col = `rgb(${Math.round(88 + 167 * k)},${Math.round(255 - 43 * k)},${Math.round(154 - 64 * k)})`;
+      const frac = clamp(C.comboTimer / (C.comboWindow || 12), 0, 1);
+      const yy = y + 38;
+      ctx.font = f(14, true);
+      labelText(ctx, 'x' + cm.toFixed(2).replace(/0$/, ''), x, yy, col, 5);
+      const bx = x + 52, bw = 74;
+      noGlow(ctx);
+      ctx.fillStyle = 'rgba(88,255,154,0.16)'; ctx.fillRect(bx, yy + 7, bw, 2);
+      const grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      grad.addColorStop(0, '#58ff9a'); grad.addColorStop(1, '#ffd45a');
+      glow(ctx, col, 4); ctx.fillStyle = grad; ctx.fillRect(bx, yy + 7, bw * frac, 2);
+      if (C.dangerClose) { ctx.font = f(11, true); labelText(ctx, 'DANGER x1.5', bx + bw + 8, yy + 1, AMBER, 4); }
+      comboH = 20;
+    } else if (C.dangerClose) {
+      ctx.font = f(11, true); labelText(ctx, 'DANGER CLOSE x1.5', x, y + 40, AMBER, 4);
+      comboH = 18;
+    }
     const alive = A.getEnemies().filter(e => e.alive).length;
     ctx.font = f(12, true);
-    labelText(ctx, 'BANDITS ' + alive, x, y + 40, G, 3);
-    let ey = y + 62;
-    let by = y + 58;
+    labelText(ctx, 'BANDITS ' + alive, x, y + 40 + comboH, G, 3);
+    let ey = y + 62 + comboH;
+    let by = y + 58 + comboH;
     if (A.isNVG && A.isNVG()) { drawNVGBadge(ctx, x, by); ey += 26; by += 26; }
     const wx = A.getWeather && A.getWeather();
     if (wx && wx.rain > 0.02) { drawBadge(ctx, x, by, `[ WX: ${wx.label} ]`, wx.storm ? AMBER : CYAN); ey += 26; }
@@ -1405,12 +1427,37 @@ export function createHUD(THREE, A) {
 
     if (!C.dead) drawTargets(hctx);
     drawTopLeft(hctx);
+    drawStyleFeed(hctx);
     drawSquareRadar(hctx);
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
     drawComms(hctx, fp ? HH * 0.62 : HH * 0.84);
     if (!A.isModal()) drawStickCue(hctx);
     drawGLoc(hctx);
+  }
+
+  // Style feed: compact right-center callouts that fade in, drift up ~34 px and
+  // fade out over 3.2 s (newest at the bottom). Gold for big plays, emerald otherwise.
+  function drawStyleFeed(ctx) {
+    const feed = C.styleFeed;
+    if (!feed || !feed.length) return;
+    const now = performance.now(), x = HW - 34, base = HH * 0.44;
+    ctx.save();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const list = feed.slice(-4);
+    list.forEach((s, i) => {
+      const age = (now - s.born) / 1000;
+      if (age < 0 || age > 3.2) return;
+      const a = clamp(Math.min(age / 0.18, (3.2 - age) / 0.7), 0, 1);
+      const yy = base - (list.length - 1 - i) * 34 - 34 * smooth(age, 0, 3.2);
+      const pop = 1 + 0.18 * Math.max(0, 1 - age / 0.15);
+      ctx.globalAlpha = a;
+      ctx.font = f(Math.round(17 * pop), true);
+      labelText(ctx, s.text + (s.pts ? `  +${s.pts}` : ''), x, yy, s.color, 6);
+      glow(ctx, s.color, 4); ctx.fillRect(x + 8, yy - 8, 2, 16);
+      if (s.sub) { ctx.font = f(11, true); labelText(ctx, s.sub + (s.mult > 1 ? `   x${s.mult.toFixed(2).replace(/0$/, '')}` : ''), x, yy + 13, GD, 3); }
+    });
+    ctx.restore();
   }
 
   // G-LOC greyout / blackout tunnel: a radial vignette closing from the edges

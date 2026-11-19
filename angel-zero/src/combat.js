@@ -252,6 +252,7 @@ export function createCombat(THREE, env) {
     const m = missiles.find(x => !x.active); if (!m) return null;
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
+    m.aam = false; m.minD = Infinity; m.closeCall = false; m.hitPlayer = false;
     m.cloudLost = false; m.cloudT = 0; m.cloud = 0; m.reacquired = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
     if (m.visual) { m.mesh.remove(m.visual); m.visual = null; }
@@ -865,6 +866,106 @@ export function createCombat(THREE, env) {
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
     if (how === 'CRASH') say('CRIPPLED BANDIT IMPACT — SPLASH ONE!', 2.2);
     else if (how !== 'RAM') say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
+    if (!byMissile && !how) awardStyle('GUNS_KILL');                      // shot down with the Vulcan
+    if (how === 'AAM4') noteSweepKill();
+    else refreshCombo();                                                  // every kill keeps the chain alive
+  }
+
+  /* ================================== style combo multiplier + style feed */
+  // comboMult 1.0x -> 5.0x scales every point scored while the chain lives;
+  // comboTimer (12 s) restarts on every kill or style trigger and the chain
+  // drops back to 1.0x when it runs out. Style plays add points, multiplier
+  // and push-forward refills (gun vent, flares). DANGER CLOSE (< 180 ft AGL,
+  // > 420 kt over water or in the NW canyon) multiplies scoring x1.5 while held.
+  const COMBO_MAX = 5, COMBO_T = 12, SWEEP_WIN = 2.5, CLOSE_R = 55, THREAD_CD = 10;
+  const DANGER_AGL = 180 * 0.3048, DANGER_SPD = 420 / 1.94384, THREAD_SPD = 380 / 1.94384;
+  const STYLE = {
+    WING_RIP:      { text: 'WING RIP',      pts: 300, mult: 0.5,  color: '#ffd45a' },
+    GUNS_KILL:     { text: 'GUNS KILL',     pts: 400, mult: 0.5,  color: '#58ff9a' },
+    SWEEP:         { text: '4AAM SWEEP',    pts: 500, mult: 0.75, color: '#ffd45a' },
+    CLOSE_CALL:    { text: 'CLOSE CALL',    pts: 250, mult: 0.5,  color: '#58ff9a' },
+    BRIDGE_THREAD: { text: 'BRIDGE THREAD', pts: 600, mult: 1.0,  color: '#ffd45a' },
+    DANGER_CLOSE:  { text: 'DANGER CLOSE',  pts: 0,   mult: 0,    color: '#ffb838' }
+  };
+  Object.assign(C, { comboMult: 1, comboTimer: 0, comboMax: COMBO_MAX, comboWindow: COMBO_T, comboBonus: 0,
+    styleFeed: [], styleCounts: {}, dangerClose: false, dangerMult: 1 });
+  let scoreSeen = C.score || 0, styleClock = 0, sweepKills = [], sweepAwardT = -99, dangerFeedT = -99;
+  const threadCD = [], threadSide = [];
+  function refreshCombo() { if (C.comboMult > 1) C.comboTimer = COMBO_T; }
+  function awardStyle(kind, sub) {
+    const s = STYLE[kind];
+    C.styleCounts[kind] = (C.styleCounts[kind] || 0) + 1;
+    if (s.mult) { C.comboMult = Math.min(COMBO_MAX, +(C.comboMult + s.mult).toFixed(2)); C.comboTimer = COMBO_T; }
+    if (s.pts) C.score += s.pts;
+    let refill = '';
+    if (kind === 'WING_RIP') {
+      C.gunHeat *= 0.5;                                                   // vent half the barrel heat
+      if (C.gunOverheat && C.gunHeat < GUN_RESUME) C.gunOverheat = false;
+      refill = 'GUN VENT  +1 FLR';
+    }
+    if (kind === 'WING_RIP' || kind === 'GUNS_KILL') {
+      const had = C.flares;
+      C.flares = Math.min(C.flareMax, C.flares + 1);
+      if (C.flares >= C.flareMax) flareRecharge = 0;
+      if (kind === 'GUNS_KILL') refill = C.flares > had ? '+1 FLR' : '';
+    }
+    if (kind === 'DANGER_CLOSE') refill = 'SCORE x1.5';
+    C.styleFeed.push({ text: s.text, pts: s.pts, sub: sub || refill, color: s.color, born: performance.now(), mult: C.comboMult });
+    if (C.styleFeed.length > 5) C.styleFeed.shift();
+    if (env.onSfx) env.onSfx(kind === 'CLOSE_CALL' ? 'whoosh' : 'style', null, s.mult >= 0.75 ? 2 : s.mult > 0 ? 1 : 0);
+    if (env.onSfx && kind === 'CLOSE_CALL') env.onSfx('style', null, 1);
+  }
+  // 4AAM SWEEP: two or more ripple-salvo kills inside 2.5 s (one award per salvo).
+  function noteSweepKill() {
+    sweepKills.push(styleClock);
+    sweepKills = sweepKills.filter(t => styleClock - t <= SWEEP_WIN);
+    if (sweepKills.length >= 2 && sweepKills[0] > sweepAwardT) { sweepAwardT = styleClock; awardStyle('SWEEP', sweepKills.length + ' KILLS'); }
+    else refreshCombo();
+  }
+  // CLOSE CALL: a bandit missile aimed at us passes inside 55 m and opens again without detonating.
+  function checkCloseCall(m, pos) {
+    if (m.closeCall || m.hitPlayer || !m.target || !m.target.isPlayer) return;
+    const d = pos.distanceTo(S.position);
+    if (d < m.minD) { m.minD = d; return; }
+    if (m.minD < CLOSE_R && d > m.minD + 15) { m.closeCall = true; awardStyle('CLOSE_CALL', Math.round(m.minD) + ' M'); }
+  }
+  function updateStyle(dt, playerActive) {
+    styleClock += dt;
+    if (C.comboTimer > 0) { C.comboTimer = Math.max(0, C.comboTimer - dt); if (C.comboTimer <= 0) C.comboMult = 1; }
+    if (C.comboMult <= 1) C.comboTimer = 0;
+    // DANGER CLOSE
+    let danger = false;
+    if (playerActive && !C.dead) {
+      const p = S.position, th = terrainHeight(p.x, p.z), agl = p.y - Math.max(0, th);
+      const inCanyon = env.canyonX && p.z > -10600 && p.z < -5800 && Math.abs(p.x - env.canyonX(p.z)) < 260;
+      danger = agl < DANGER_AGL && agl > 0 && S.speed > DANGER_SPD && (th < 0 || inCanyon);
+    }
+    if (danger && !C.dangerClose && styleClock - dangerFeedT > 6) { dangerFeedT = styleClock; awardStyle('DANGER_CLOSE'); }
+    C.dangerClose = danger; C.dangerMult = danger ? 1.5 : 1;
+    // BRIDGE THREAD: cross the span's vertical plane under the deck, between the abutments.
+    const bridges = env.bridges || [];
+    for (let i = 0; i < bridges.length; i++) {
+      const b = bridges[i]; threadCD[i] = Math.max(0, (threadCD[i] || 0) - dt);
+      if (!playerActive) { threadSide[i] = undefined; continue; }
+      const p = S.position, ax = b.b.x - b.a.x, az = b.b.z - b.a.z, L2 = ax * ax + az * az;
+      const side = Math.sign(ax * (p.z - b.a.z) - az * (p.x - b.a.x));
+      const along = ((p.x - b.a.x) * ax + (p.z - b.a.z) * az) / L2;
+      if (threadSide[i] !== undefined && side !== threadSide[i] && side !== 0 && along > 0.04 && along < 0.96 &&
+          p.y > 0 && p.y < b.a.y - 4 && S.speed > THREAD_SPD && threadCD[i] <= 0) {
+        threadCD[i] = THREAD_CD;
+        awardStyle('BRIDGE_THREAD', Math.round(S.speed * 1.94384) + ' KT');
+      }
+      if (side !== 0) threadSide[i] = side;
+    }
+    // Multiplier on every point scored this frame.
+    const d = (C.score || 0) - scoreSeen;
+    if (d > 0) {
+      const k = C.comboMult * C.dangerMult;
+      if (k > 1) { const bonus = Math.round(d * (k - 1)); C.score += bonus; C.comboBonus += bonus; }
+    }
+    scoreSeen = C.score || 0;
+    const nowMs = performance.now();
+    C.styleFeed = C.styleFeed.filter(s => nowMs - s.born < 3200);
   }
 
   function updateWreck(e, dt) {
@@ -951,7 +1052,8 @@ export function createCombat(THREE, env) {
       e.sinkTarget = 18 + rand() * 14;                                     // 18-32 m/s sink
       e.burst = 0; e.bLock = 0; e.reactT = null; e.merge = 0;
     }
-    C.score += 300; C.wingSeveredT = performance.now();
+    C.wingSeveredT = performance.now();
+    awardStyle('WING_RIP');
     pushEvent('DAMAGED', '[ WING SEVERED ]', 300, '#ffbf3f');
     say(`[ WING SEVERED ] — ${e.type} GOING DOWN`, 2.0, '#ffbf3f');
     explosion(e.pos.clone().add(new THREE.Vector3(side === 'L' ? -2.5 : 2.5, 0, 1.5).applyQuaternion(e.quat)), 0.7);
@@ -1437,9 +1539,9 @@ export function createCombat(THREE, env) {
             m.vel.addScaledVector(acc, dt);
             const fuse = m.enemy ? 22 : 18;
             if (range < fuse) {
-              if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); }
+              if (tgt.isPlayer) { explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true; }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
-              else { explosion(pos, 0.8); destroyEnemy(tgt, true); }
+              else { explosion(pos, 0.8); destroyEnemy(tgt, true, m.aam ? 'AAM4' : undefined); }
               logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
@@ -1459,6 +1561,7 @@ export function createCombat(THREE, env) {
       }
       m.vel.y -= (m.motor ? 0 : 0);
       pos.addScaledVector(m.vel, dt);
+      if (m.enemy && playerActive) checkCloseCall(m, pos);
       if (speed > 1) m.mesh.quaternion.setFromUnitVectors(MSL_NOSE, m.vel.clone().normalize());
       if (m.age > m.life || pos.y < groundLevel(pos.x, pos.z)) {
         if (pos.y < groundLevel(pos.x, pos.z) && terrainHeight(pos.x, pos.z) < 0) splash(pos, 0.5); else explosion(pos, 0.5);
@@ -2029,6 +2132,7 @@ export function createCombat(THREE, env) {
 
   function resetPlayer() {
     rearm('msl'); rearm('bomb');
+    Object.assign(C, { comboMult: 1, comboTimer: 0, dangerClose: false, dangerMult: 1, styleFeed: [] });
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, ecmState: 'READY', ecmT: 0 });
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
@@ -2124,6 +2228,7 @@ export function createCombat(THREE, env) {
     updateBombs(dt); updateRings(dt); updateFlares(dt);
     updateRipple(dt); updateECM(dt); updateRWR(playerActive);
     if (playerActive) updateCCIP(); else C.ccip = null;
+    updateStyle(dt, playerActive);
 
     for (const f of flashes) { if (f.t > 0) { f.t -= dt; f.l.intensity = Math.max(0, f.t) * 900; } else f.l.intensity = 0; }
     fire.update(dt); smoke.update(dt);
@@ -2133,7 +2238,7 @@ export function createCombat(THREE, env) {
   return {
     init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
-    get surface() { return surface; },
+    get surface() { return surface; }, awardStyle,
     designateGround(t) { C.groundTgt = t || null; C.ccrpArmed = false; },
     get liveBombs() { return liveBombs; }, get flaresLive() { return flares; }, stores,
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
@@ -2219,6 +2324,8 @@ export function createCombat(THREE, env) {
         rwr: { level: C.rwrLevel, list: C.rwr.map(r => r.kind + '@' + Math.round(r.b / D2R)).join(' ') },
         ecm: { st: C.ecmState, t: +C.ecmT.toFixed(1), breaks: C.ecmBreaks },
         gun: { heat: +C.gunHeat.toFixed(2), over: C.gunOverheat, overheats: C.overheats || 0, ammo: C.ammo },
+        style: { mult: C.comboMult, timer: +C.comboTimer.toFixed(1), bonus: C.comboBonus, danger: C.dangerClose, counts: C.styleCounts,
+          feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares },
         ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,
           ccrp: C.ccrp ? { along: Math.round(C.ccrp.along), cross: Math.round(C.ccrp.cross), ttr: +C.ccrp.ttr.toFixed(1), rng: Math.round(C.ccrp.range) } : null,
           armed: !!C.ccrpArmed, rel: C.ccrpRelease || null },
