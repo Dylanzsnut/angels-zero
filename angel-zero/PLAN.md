@@ -147,6 +147,24 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   clones; turn-rate-limited proportional navigation by lock quality.
 - [x] **CCIP** — closed-form ballistic solve, fall line + impact pipper.
 - [x] **M61A1 Vulcan** — 6,000 rpm, tracers, LCOS lead reticle, gun funnel.
+- [x] **Localized enemy damage + wing severance** *(build `s29a`)*
+  - Bandit airframes are split per material into body / left wing / right wing
+    instanced parts (triangle centroid |x| > 1.8 m in the wing chord), so a
+    wing can be hidden per jet and flown off as a real mesh.
+  - 20 mm hits use the round's closest approach this frame, transformed into
+    the bandit's local frame: wings (30 hits each, roll jolt toward the hit
+    wing + altitude dip, persistent wobble), tailplanes (shake), engines /
+    tail (`[ ENGINE HIT ]` fire + -40 % top speed), fuselage core (e.hp).
+    Sparks + flash at the exact impact point.
+  - Wing at 0 -> `[ WING SEVERED ]` (+300), tumbling smoking wing debris,
+    fuel vapour + dark smoke + flame from the stub, CRIPPLED flight: 110-180
+    deg/s fought roll toward the missing wing, spiral, 18-32 m/s sink, until
+    sea (geyser) / island (fireball + shockwave) impact with full kill credit;
+    finishing the core mid-air still kills it at once.
+  - Verified headless (`wingtest` + `wingtrack` test pilot): left / right
+    severance, crippled spiral sinking ~28 m/s to a sea impact with kill
+    credit (1,800 pts), core burst -> clean kill, missile -> FULL:HIT kill,
+    zero page console errors.
 - [x] **Step 3: barrel heat, CCRP, battle damage** *(build `s28a`)*
   - Vulcan heat 0 -> 1 over ~3.2 s of fire, cools ~0.28/s (+0.12 at speed);
     thin thermal arcs (reticle / cockpit boresight / GUN row) emerald -> amber
@@ -266,7 +284,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `bogey=m` · `six=m` · `place=i:az:el:dist,...` · `cat=s` · `killat=s` ·
 `mslat=s` · `bshot=soft|full` · `wpn=bomb` · `bomb=n` · `bombat=s` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
-· `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
+· `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m`
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase

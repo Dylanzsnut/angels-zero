@@ -405,16 +405,44 @@ export function createCombat(THREE, env) {
       if (!byMat.has(o.material)) byMat.set(o.material, []);
       byMat.get(o.material).push(ng);
     });
+    // Split every material's merged airframe into body / left wing / right wing
+    // (triangle centroid |x| > 1.8 m inside the wing chord), so a severed wing
+    // can be hidden per bandit and flown off as a real mesh.
+    const partOf = (x, z) => (Math.abs(x) > 1.8 && z > -2.5 && z < 5.8) ? (x < 0 ? 'L' : 'R') : 'body';
+    const wingBox = { L: new THREE.Box3(), R: new THREE.Box3() };
     for (const [mat, geos] of byMat) {
       const merged = mergeGeometries(geos);
       if (!merged) continue;
       const m = mat.clone();
       if (m.color) m.color.multiply(TINT);
       m.clippingPlanes = null; m.side = THREE.FrontSide;
-      const inst = new THREE.InstancedMesh(merged, m, WAVE_SIZE);
-      inst.frustumCulled = false; inst.count = WAVE_SIZE;
-      scene.add(inst);
-      fleet.push(inst);
+      const pos = merged.attributes.position, tri = pos.count / 3;
+      const lists = { body: [], L: [], R: [] };
+      for (let t = 0; t < tri; t++) {
+        const cx = (pos.getX(t * 3) + pos.getX(t * 3 + 1) + pos.getX(t * 3 + 2)) / 3;
+        const cz = (pos.getZ(t * 3) + pos.getZ(t * 3 + 1) + pos.getZ(t * 3 + 2)) / 3;
+        lists[partOf(cx, cz)].push(t);
+      }
+      for (const part of ['body', 'L', 'R']) {
+        const ids = lists[part]; if (!ids.length) continue;
+        const g = new THREE.BufferGeometry();
+        for (const name of ['position', 'normal', 'uv']) {
+          const src = merged.attributes[name], sz = src.itemSize, arr = new Float32Array(ids.length * 3 * sz);
+          ids.forEach((t, k) => { for (let v = 0; v < 3; v++) for (let c = 0; c < sz; c++) arr[(k * 3 + v) * sz + c] = src.array[(t * 3 + v) * sz + c]; });
+          g.setAttribute(name, new THREE.BufferAttribute(arr, sz));
+        }
+        const inst = new THREE.InstancedMesh(g, m, WAVE_SIZE);
+        inst.frustumCulled = false; inst.count = WAVE_SIZE;
+        scene.add(inst);
+        fleet.push({ inst, part });
+        if (part !== 'body') { g.computeBoundingBox(); wingBox[part].union(g.boundingBox); wingParts[part].push({ geo: g, mat: m }); }
+      }
+    }
+    // Debris copies centred on each wing's own centre so they tumble about it.
+    for (const side of ['L', 'R']) {
+      const c = wingBox[side].isEmpty() ? new THREE.Vector3() : wingBox[side].getCenter(new THREE.Vector3());
+      wingParts[side] = wingParts[side].map(pt => ({ geo: pt.geo.clone().translate(-c.x, -c.y, -c.z), mat: pt.mat }));
+      wingParts[side].center = c;
     }
     nozzles = nozzleLocal.map(n => n.clone());
     glowMesh = new THREE.InstancedMesh(glowGeo, new THREE.MeshBasicMaterial({ color: 0xff6a1e, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }), WAVE_SIZE * 2);
@@ -443,7 +471,7 @@ export function createCombat(THREE, env) {
   const LOOK = [150, 350, 650], SAFE_WATER = 35, SAFE_TERRAIN = 55, AVOID_BAND = 140, HARD_FLOOR = 12;
   const MERGE_R = 95, MERGE_CLEAR = 32, SEP_R = 65, RAM_R = 14, REACT_RANGE = 1800;
   const AI_FLR_CD = 10, AI_FLR_P = 0.45;
-  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X' };
+  const TAC_CODE = { PATROL: 'P', ENGAGE: 'E', EVADE_BREAK: 'B', BARREL_ROLL: 'R', EXTEND_CLIMB: 'X', CRIPPLED: 'C' };
   const ai = { minClear: Infinity, clamps: 0, avoid: 0, merges: 0, minSep: Infinity, minWing: Infinity, breaks: 0, rolls: 0, splitS: 0,
     extends: 0, flares: 0, spoofs: 0, rams: 0, impacts: 0, maxBank: 0, maxG: 0, abT: 0, trails: 0 };
   let aiFlareSalvo = 0, aiPassive = false;                     // aiPassive: debug terrain test (no engaging)
@@ -458,7 +486,9 @@ export function createCombat(THREE, env) {
       acc: new THREE.Vector3(), prev: new THREE.Vector3(),
       cruise: 210, abSpeed: 300, ab: 0, gNow: 1, reactT: null, threatTm: null,
       rollPhase: 0, rollDir: 1, splitS: false, merge: 0, mergeDir: new THREE.Vector3(0, 1, 0), mergeRoll: 0,
-      flaresLeft: 2, flareCD: 0, trailAcc: 0, avoiding: false, noBreak: false
+      flaresLeft: 2, flareCD: 0, trailAcc: 0, avoiding: false, noBreak: false,
+      wingL: 30, wingR: 30, wingOffL: false, wingOffR: false, engHits: 0, engineFire: false, speedCap: 1,
+      crippled: null, crippleT: 0, crRoll: 0, sinkTarget: 25, rollVel: 0, dipV: 0
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
@@ -469,6 +499,8 @@ export function createCombat(THREE, env) {
     e.speed = e.cruise; e.ab = 0; e.gNow = 1; e.bank = 0;
     e.tac = e.mode = 'PATROL'; e.tacT = 0; e.reactT = null; e.threatTm = null; e.merge = 0; e.noBreak = false;
     e.flaresLeft = rand() < 0.5 ? 1 : 2; e.flareCD = 0; e.trailAcc = 0; e.rollPhase = 0; e.avoiding = false;
+    Object.assign(e, { wingL: WING_HP, wingR: WING_HP, wingOffL: false, wingOffR: false, engHits: 0, engineFire: false, speedCap: 1,
+      crippled: null, crippleT: 0, rollVel: 0, dipV: 0, zoneLog: null });
   }
 
   function spawnWave() {
@@ -707,6 +739,10 @@ export function createCombat(THREE, env) {
     }
     if (e.tac === 'BARREL_ROLL' && !e.avoiding && e.merge <= 0) e.bank = bankT;
     else e.bank = wrapPi(e.bank + clamp(wrapPi(bankT - e.bank), -ROLL_RATE * dt, ROLL_RATE * dt));
+    // Ballistic jolts from wing hits + a persistent wobble from a shot-up wing.
+    const wingBias = ((WING_HP - e.wingL) - (WING_HP - e.wingR)) / WING_HP;
+    e.bank = wrapPi(e.bank + (e.rollVel + wingBias * 0.35 * Math.sin(e.prev.x * 0.01 + e.id)) * dt);
+    e.rollVel *= Math.exp(-2.5 * dt);
     const L = _L.copy(up0).multiplyScalar(Math.cos(e.bank)).addScaledVector(right, -Math.sin(e.bank));
     let n = liftReq.dot(L);                                       // lift actually available in the current lift plane
     if (e.tac === 'EVADE_BREAK' && !e.avoiding) n = Math.max(n, maxG * G0 * 0.95);   // full-G break
@@ -719,15 +755,17 @@ export function createCombat(THREE, env) {
     // Throttle: cruise 360-440 kt, afterburner 520-640 kt; energy trades with climb and G.
     e.ab += ((useAB ? 1 : 0) - e.ab) * Math.min(1, dt * 3);
     if (e.ab > 0.5) ai.abT += dt;
-    const targetSpeed = e.cruise + (e.abSpeed - e.cruise) * e.ab;
+    const targetSpeed = (e.cruise + (e.abSpeed - e.cruise) * e.ab) * e.speedCap;      // engine hit: -40 % top speed
     e.speed += (targetSpeed - e.speed) * Math.min(1, dt * 0.35) - G0 * e.fwd.y * dt * 0.55 - Math.max(0, e.gNow - 3) * 1.1 * dt;
-    e.speed = clamp(e.speed, 140, 345);
+    e.speed = clamp(e.speed, 140, 345 * e.speedCap);
 
     // Smoothed turn acceleration feeds the HUD's LCOS lead computation.
     const nv = _mv.copy(e.fwd).multiplyScalar(e.speed);
     if (dt > 0) e.acc.lerp(_w.copy(nv).sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
     e.vel.copy(nv);
     e.pos.addScaledVector(e.vel, dt);
+    e.pos.y += e.dipV * dt; e.dipV *= Math.exp(-2.2 * dt);                         // hit-induced altitude dip
+    engineFireFx(e, dt);
 
     // ---- hard floor: never below 12 m over ground or water
     const g0 = groundLevel(e.pos.x, e.pos.z);
@@ -825,7 +863,8 @@ export function createCombat(THREE, env) {
     pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
-    if (how !== 'RAM') say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
+    if (how === 'CRASH') say('CRIPPLED BANDIT IMPACT — SPLASH ONE!', 2.2);
+    else if (how !== 'RAM') say(byMissile ? 'SPLASH ONE — GOOD KILL!' : 'GUNS KILL — SPLASH ONE!', 2.2);
   }
 
   function updateWreck(e, dt) {
@@ -849,13 +888,174 @@ export function createCombat(THREE, env) {
     }
   }
 
+  /* ============================================ localized airframe damage */
+  // Every 20 mm hit is transformed into the bandit's local frame (x right, y up,
+  // z aft) and routed to a structural zone:
+  //   |x| > 1.8 inside the wing chord        -> left / right wing (30 hits each)
+  //   |x| <= 1.8, z > 2.2 (and tailplanes)   -> engines / tail: fire, -40 % speed
+  //   |x| <= 1.8, z <= 2.2                   -> fuselage core (e.hp)
+  // Wing hits jolt the jet (roll impulse + altitude dip). A wing at 0 HP is
+  // severed: its instanced part is hidden, a tumbling smoking wing mesh flies
+  // off, the stub sprays fuel vapour + smoke, and the bandit enters CRIPPLED
+  // flight: violent roll toward the missing wing, 18-32 m/s sink, a smoking
+  // spiral until it hits the sea (geyser) or an island (fireball + shockwave).
+  // Kill credit on impact, or immediately if the core is shot out mid-air.
+  const WING_HP = 30, HIT_IMPULSE = 0.45;
+  const DBG_HITS = [];                                          // debug: first hits on bandit 0 (zone@local x/y/z)
+  const _hl = new THREE.Vector3(), _qi = new THREE.Quaternion();
+  function hitZone(e, l) {
+    if (Math.abs(l.y) > 2.6 || l.z < -10.5 || l.z > 10.5) return null;
+    const ax = Math.abs(l.x);
+    if (ax > 6.9) return null;
+    if (ax > 1.8) {
+      if (l.z >= -1.5 && l.z <= 6.2) {
+        const side = l.x < 0 ? 'L' : 'R';
+        return (side === 'L' ? e.wingOffL : e.wingOffR) ? null : side;   // a severed wing is just air
+      }
+      return l.z > 6.2 && ax < 4.8 ? 'TAIL' : null;                       // all-moving tailplanes
+    }
+    return l.z > 2.2 ? 'ENG' : 'CORE';
+  }
+  function hitEnemy(e, zone, p, v) {
+    hitSparks(p, v);
+    C.hitFlash = 0.12; ai.hits = (ai.hits || 0) + 1;
+    if (zone === 'L' || zone === 'R') {
+      ai.wingHits = (ai.wingHits || 0) + 1;
+      e.rollVel += (zone === 'L' ? 1 : -1) * HIT_IMPULSE;                 // the hit wing drops
+      e.dipV -= 2.5;
+      e.hp -= 0.5;                                                         // outer-wing hits barely touch the core
+      if (zone === 'L') { e.wingL -= 1; if (e.wingL <= 0 && !e.wingOffL) severWing(e, 'L'); }
+      else { e.wingR -= 1; if (e.wingR <= 0 && !e.wingOffR) severWing(e, 'R'); }
+    } else if (zone === 'TAIL') {
+      e.hp -= 3; e.rollVel += (Math.random() - 0.5) * 0.3;               // stabilator hits: shake, minor structure
+    } else if (zone === 'ENG') {
+      e.hp -= 6; e.engHits++;
+      if (!e.engineFire && e.engHits >= 2) {
+        e.engineFire = true; e.speedCap = 0.6; ai.engineHits = (ai.engineHits || 0) + 1;
+        pushEvent('DAMAGED', `[ ENGINE HIT ] ${e.type}`, 200, '#ffbf3f'); C.score += 200;
+        say('[ ENGINE HIT ] — ' + e.type + ' ON FIRE', 1.6, '#ffbf3f');
+      }
+    } else {
+      e.hp -= 10;
+    }
+    e.zoneLog = zone;
+    if (e.hp <= 0) destroyEnemy(e, false);
+  }
+  function severWing(e, side) {
+    if (side === 'L') e.wingOffL = true; else e.wingOffR = true;
+    ai.severs = (ai.severs || 0) + 1;
+    spawnWingDebris(e, side);
+    if (!e.crippled) {
+      e.crippled = side; e.tac = e.mode = 'CRIPPLED'; e.crippleT = 0;
+      e.crRoll = (110 + rand() * 70) * D2R;                                // 110-180 deg/s struggled roll
+      e.sinkTarget = 18 + rand() * 14;                                     // 18-32 m/s sink
+      e.burst = 0; e.bLock = 0; e.reactT = null; e.merge = 0;
+    }
+    C.score += 300; C.wingSeveredT = performance.now();
+    pushEvent('DAMAGED', '[ WING SEVERED ]', 300, '#ffbf3f');
+    say(`[ WING SEVERED ] — ${e.type} GOING DOWN`, 2.0, '#ffbf3f');
+    explosion(e.pos.clone().add(new THREE.Vector3(side === 'L' ? -2.5 : 2.5, 0, 1.5).applyQuaternion(e.quat)), 0.7);
+  }
+
+  // Severed wing: a real mesh copy of that side's wing parts, tumbling away.
+  const wingParts = { L: [], R: [] }, debris = [];
+  function spawnWingDebris(e, side) {
+    const parts = wingParts[side]; if (!parts.length) return;
+    const g = new THREE.Group();
+    for (const pt of parts) { const m = new THREE.Mesh(pt.geo, pt.mat); m.castShadow = false; g.add(m); }
+    g.position.copy(parts.center).applyQuaternion(e.quat).add(e.pos);
+    g.quaternion.copy(e.quat);
+    scene.add(g);
+    const out = new THREE.Vector3(side === 'L' ? -1 : 1, 0.25, 0).applyQuaternion(e.quat);
+    debris.push({ g, vel: e.vel.clone().multiplyScalar(0.82).addScaledVector(out, 15),
+      spin: new THREE.Vector3((rand() - 0.5) * 7, (rand() - 0.5) * 5, (rand() - 0.5) * 9), t: 0, acc: 0 });
+  }
+  function updateDebris(dt) {
+    for (let i = debris.length - 1; i >= 0; i--) {
+      const d = debris[i];
+      d.t += dt;
+      d.vel.y -= G0 * dt; d.vel.multiplyScalar(Math.exp(-0.35 * dt));      // flat plate: heavy drag
+      d.g.position.addScaledVector(d.vel, dt);
+      d.g.quaternion.multiply(_q.setFromEuler(new THREE.Euler(d.spin.x * dt, d.spin.y * dt, d.spin.z * dt)));
+      d.acc += dt * 40;
+      while (d.acc >= 1) {
+        d.acc -= 1;
+        const gg = 0.12 + rand() * 0.08, p = d.g.position;
+        smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: (rand() - 0.5) * 3, vy: rand() * 2, vz: (rand() - 0.5) * 3, life: 2.5 + rand() * 1.5, s0: 2, s1: 11, r: gg, g: gg, b: gg, a: 0.65, drag: 0.8, rise: 0.8 });
+        if (d.t < 3 && rand() < 0.4) fire.spawn({ x: p.x, y: p.y, z: p.z, vx: d.vel.x * 0.3, vy: d.vel.y * 0.3, vz: d.vel.z * 0.3, life: 0.25, s0: 3, s1: 1, r: 1, g: 0.6, b: 0.2, a: 0.9, drag: 1 });
+      }
+      const gl = groundLevel(d.g.position.x, d.g.position.z);
+      if (d.g.position.y <= gl + 0.5 || d.t > 30) {
+        if (d.t <= 30) { if (terrainHeight(d.g.position.x, d.g.position.z) < 0) splash(d.g.position, 0.9); else explosion(d.g.position, 0.6); }
+        scene.remove(d.g); debris.splice(i, 1);
+      }
+    }
+  }
+
+  // CRIPPLED flight: one wing gone -> rolling, sinking spiral; the pilot fights it.
+  function updateCrippled(e, dt) {
+    e.prev.copy(e.pos);
+    e.crippleT += dt;
+    const t = e.crippleT, sgn = e.crippled === 'L' ? 1 : -1;               // +bank = left wing down
+    const fight = 0.7 + 0.3 * Math.sin(t * 2.3 + e.id * 1.7);              // stick fighting the roll
+    e.bank = wrapPi(e.bank + sgn * e.crRoll * fight * dt);
+    const hv = _w.set(e.vel.x, 0, e.vel.z);
+    let hs = hv.length(); if (hs < 1) { hv.copy(e.fwd).setY(0); hs = 1; }
+    hs += (150 - hs) * Math.min(1, dt * 0.3);
+    hv.normalize().applyAxisAngle(UP, sgn * 0.42 * dt).multiplyScalar(hs);  // spiral toward the missing wing
+    const vy = e.vel.y + (-e.sinkTarget - e.vel.y) * Math.min(1, dt * 0.7);
+    const nv = _mv.set(hv.x, vy, hv.z);
+    if (dt > 0) e.acc.lerp(_s.copy(nv).sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
+    e.vel.copy(nv); e.speed = nv.length();
+    e.pos.addScaledVector(e.vel, dt);
+    e.fwd.copy(nv).normalize();
+    e.ab = 0; e.gNow = 1;
+    orient(e);
+    // Sheared wing root: fuel vapour (white) + thick dark smoke ribbon.
+    const stub = _s.set(sgn > 0 ? -1.9 : 1.9, -0.3, 2.0).applyQuaternion(e.quat).add(e.pos);
+    e.trailAcc += dt * 70;
+    while (e.trailAcc >= 1) {
+      e.trailAcc -= 1;
+      if (rand() < 0.45) smoke.spawn({ x: stub.x, y: stub.y, z: stub.z, vx: e.vel.x * 0.3, vy: e.vel.y * 0.3, vz: e.vel.z * 0.3, life: 1.4 + rand(), s0: 1.2, s1: 7, r: 0.92, g: 0.94, b: 0.96, a: 0.5, drag: 1.2 });
+      const gg = 0.05 + rand() * 0.06;
+      smoke.spawn({ x: stub.x, y: stub.y, z: stub.z, vx: e.vel.x * 0.3 + (rand() - 0.5) * 3, vy: e.vel.y * 0.3, vz: e.vel.z * 0.3 + (rand() - 0.5) * 3,
+        life: 5 + rand() * 3, s0: 2.5, s1: 18 + rand() * 8, r: gg, g: gg, b: gg, a: 0.75, drag: 0.6, rise: 0.8 });
+      if (rand() < 0.25) fire.spawn({ x: stub.x, y: stub.y, z: stub.z, vx: e.vel.x * 0.5, vy: e.vel.y * 0.5, vz: e.vel.z * 0.5, life: 0.2 + rand() * 0.2, s0: 2.5, s1: 0.8, r: 1, g: 0.55, b: 0.15, a: 1, drag: 1 });
+    }
+    engineFireFx(e, dt);
+    // Impact: sea -> massive geyser, island -> fireball + shockwave; full kill credit.
+    const g0 = groundLevel(e.pos.x, e.pos.z);
+    if (e.pos.y <= g0 + 2) {
+      e.pos.y = g0;
+      const water = terrainHeight(e.pos.x, e.pos.z) < 0;
+      ai.crippledImpacts = (ai.crippledImpacts || 0) + 1;
+      destroyEnemy(e, false, 'CRASH');
+      e.wreck = null;
+      impactFx(e.pos.clone(), water, 1.3);
+      explosion(e.pos, 2.2);
+    }
+  }
+  function engineFireFx(e, dt) {
+    if (!e.engineFire || !nozzles.length) return;
+    e.fireAcc = (e.fireAcc || 0) + dt * 30;
+    while (e.fireAcc >= 1) {
+      e.fireAcc -= 1;
+      const nz = nozzles[(rand() * nozzles.length) | 0];
+      const p = _a.copy(nz).add(new THREE.Vector3(0, 0, 1.4)).applyQuaternion(e.quat).add(e.pos);
+      fire.spawn({ x: p.x, y: p.y, z: p.z, vx: e.vel.x * 0.55 + (rand() - 0.5) * 6, vy: e.vel.y * 0.55 + (rand() - 0.5) * 6, vz: e.vel.z * 0.55 + (rand() - 0.5) * 6,
+        life: 0.25 + rand() * 0.25, s0: 2.6, s1: 0.8, r: 1, g: 0.5 + rand() * 0.3, b: 0.12, a: 1, drag: 1.4 });
+      const gg = 0.08 + rand() * 0.06;
+      smoke.spawn({ x: p.x, y: p.y, z: p.z, vx: e.vel.x * 0.35, vy: e.vel.y * 0.35, vz: e.vel.z * 0.35, life: 3.5 + rand() * 2, s0: 2, s1: 12, r: gg, g: gg, b: gg, a: 0.65, drag: 0.7, rise: 0.6 });
+    }
+  }
+
   function writeFleet() {
     if (!fleet.length) return;
     const one = new THREE.Vector3(1, 1, 1), zero = new THREE.Vector3(0, 0, 0);
     enemies.forEach((e, i) => {
       const vis = e.alive || !!e.wreck;
-      _m4.compose(e.pos, e.quat, vis ? one : zero);
-      for (const inst of fleet) inst.setMatrixAt(i, _m4);
+      const full = _m4.clone().compose(e.pos, e.quat, vis ? one : zero), none = _m4.clone().compose(e.pos, e.quat, zero);
+      for (const f of fleet) f.inst.setMatrixAt(i, (f.part === 'L' && e.wingOffL) || (f.part === 'R' && e.wingOffR) ? none : full);
       const ab = e.alive ? e.ab : 0, on = ab > 0.05;
       nozzles.forEach((nz, k) => {
         const p = nz.clone().add(new THREE.Vector3(0, 0, 1.9)).applyQuaternion(e.quat).add(e.pos);
@@ -869,7 +1069,7 @@ export function createCombat(THREE, env) {
         flameCore.setMatrixAt(i * 2 + k, _m4.compose(pc, e.quat, on ? new THREE.Vector3(1, 1, lc) : zero));
       });
     });
-    for (const inst of fleet) inst.instanceMatrix.needsUpdate = true;
+    for (const f of fleet) f.inst.instanceMatrix.needsUpdate = true;
     glowMesh.instanceMatrix.needsUpdate = true;
     flameOuter.instanceMatrix.needsUpdate = true; flameCore.instanceMatrix.needsUpdate = true;
   }
@@ -1865,10 +2065,11 @@ export function createCombat(THREE, env) {
 
     if (ready) {
       for (const e of enemies) {
-        if (e.alive) updateEnemy(e, dt, playerActive);
+        if (e.alive) { if (e.crippled) updateCrippled(e, dt); else updateEnemy(e, dt, playerActive); }
         else if (e.wreck) updateWreck(e, dt);
       }
       checkRams(playerActive);
+      updateDebris(dt);
       if (!enemies.some(e => e.alive || e.wreck)) {
         waveTimer += dt;
         if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
@@ -1892,9 +2093,11 @@ export function createCombat(THREE, env) {
 
     // Projectiles and hits.
     const seg = new THREE.Vector3(), cp = new THREE.Vector3();
+    let segT = 0;
     const segHit = (b, center, r) => {                              // swept-sphere test along this frame's travel
       seg.subVectors(b.p, b.prev); const len2 = seg.lengthSq();
       const t = len2 > 0 ? clamp(cp.subVectors(center, b.prev).dot(seg) / len2, 0, 1) : 0;
+      segT = t;
       return cp.copy(b.prev).addScaledVector(seg, t).distanceToSquared(center) < r * r;
     };
     playerTracers.step(dt, b => {
@@ -1902,10 +2105,12 @@ export function createCombat(THREE, env) {
         if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
       }
       for (const e of enemies) {
-        if (e.alive && segHit(b, e.pos, 11)) {
-          e.hp -= 10; C.hitFlash = 0.12;
-          hitSparks(b.p, b.v);
-          if (e.hp <= 0) destroyEnemy(e, false);
+        if (e.alive && segHit(b, e.pos, 11) && segT < 0.999) {        // not yet abeam: it passes through next frame
+          // Closest approach of this frame's round path, in the bandit's local frame.
+          const zone = hitZone(e, _hl.copy(cp).sub(e.pos).applyQuaternion(_qi.copy(e.quat).invert()));
+          if (DBG_HITS && e.id === 0 && DBG_HITS.length < 12) DBG_HITS.push((zone || '-') + '@' + _hl.toArray().map(v => v.toFixed(1)).join('/'));
+          if (!zone) continue;                                      // through the empty part of the envelope
+          hitEnemy(e, zone, cp.clone(), b.v);
           return true;
         }
       }
@@ -1977,6 +2182,21 @@ export function createCombat(THREE, env) {
         e.pos.y = groundLevel(e.pos.x, e.pos.z) + 200; e.prev.copy(e.pos); e.mslCD = 999; e.burstCD = 999;
       });
     },
+    // Debug: bandit i flying our heading `dist` m ahead, offset so the gun line
+    // crosses its left wing ('L'), right wing ('R') or core ('C'); passive.
+    wingTest(i, side, dist) {
+      const e = enemies[i]; if (!e) return;
+      aiPassive = true;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion), right = new THREE.Vector3(1, 0, 0).applyQuaternion(S.quaternion);
+      const off = side === 'L' ? 5.0 : side === 'R' ? -5.0 : 0;               // 8 mrad spread stays on the outer wing
+      e.pos.copy(S.position).addScaledVector(fwd, dist).addScaledVector(right, off);
+      e.fwd.copy(fwd); e.alive = true; e.wreck = null; e.hp = 100; resetAI(e); e.noBreak = true;
+      e.speed = S.velocity.length(); e.cruise = e.abSpeed = e.speed; e.vel.copy(fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
+      e.center.copy(e.pos).addScaledVector(new THREE.Vector3(fwd.z, 0, -fwd.x), 60000); e.radius = 60000; e.alt = e.pos.y;
+      { const r = e.pos.clone().sub(e.center).setY(0).normalize(); e.dir = (-r.z * fwd.x + r.x * fwd.z) >= 0 ? 1 : -1; }   // patrol circle runs along our heading
+      e.mslCD = 999; e.burstCD = 999; e.flaresLeft = 0;
+      orient(e); writeFleet();
+    },
     killEnemy(i) { const e = enemies[i]; if (e && e.alive) destroyEnemy(e, true); },
     // Debug: put bogey i on the player's six at `dist` metres, nose on, pursuing.
     placeBehind(i, dist) {
@@ -1989,7 +2209,9 @@ export function createCombat(THREE, env) {
       return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? TAC_CODE[e.tac] || '?' : '-').join(''),
         ai: Object.fromEntries(Object.entries(ai).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(1) : null])),
         e0: enemies[0] ? { tac: enemies[0].tac, bank: Math.round(enemies[0].bank / D2R), g: +enemies[0].gNow.toFixed(1), kt: Math.round(enemies[0].speed / KT), ab: +enemies[0].ab.toFixed(2),
-          alt: Math.round(enemies[0].pos.y), flr: enemies[0].flaresLeft, alive: enemies[0].alive } : null,
+          alt: Math.round(enemies[0].pos.y), flr: enemies[0].flaresLeft, alive: enemies[0].alive,
+          hp: enemies[0].hp, wingL: enemies[0].wingL, wingR: enemies[0].wingR, off: (enemies[0].wingOffL ? 'L' : '') + (enemies[0].wingOffR ? 'R' : ''),
+          hits: DBG_HITS.join(' '), crip: enemies[0].crippled, vy: Math.round(enemies[0].vel.y), eng: enemies[0].engineFire, zone: enemies[0].zoneLog, debris: debris.length } : null,
         tracers: playerTracers.list.length, enemyTracers: enemyTracers.list.length, missiles: missiles.filter(m => m.active).length, wave: C.wave,
         tgt: { armed: C.seekerArmed, wpn: C.weapon, multi: C.multi.map((e, i) => e.label.slice(-2) + ':' + C.multiState[i][0]).join(' '), locked: C.multiLocked,
           aam4: C.aam4, aamRld: +C.aam4Reload.toFixed(1), aamFired: C.aamFired || 0, ripple: ripple.length,

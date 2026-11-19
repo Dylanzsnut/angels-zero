@@ -295,18 +295,18 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s28a';
-import { createHUD } from './src/hud.js?v=s28a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s28a';
-import { createCombat } from './src/combat.js?v=s28a';
-import { createEjection } from './src/eject.js?v=s28a';
-import { createAudio } from './src/audio.js?v=s28a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s28a';
-import { createCanopyFX } from './src/canopy.js?v=s28a';
-import { createNVG } from './src/nvg.js?v=s28a';
-import { createWorld, WORLD } from './src/world.js?v=s28a';
-import { createSurfaces } from './src/surfaces.js?v=s28a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s28a';
+import { createVFX } from './src/vfx.js?v=s29a';
+import { createHUD } from './src/hud.js?v=s29a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s29a';
+import { createCombat } from './src/combat.js?v=s29a';
+import { createEjection } from './src/eject.js?v=s29a';
+import { createAudio } from './src/audio.js?v=s29a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s29a';
+import { createCanopyFX } from './src/canopy.js?v=s29a';
+import { createNVG } from './src/nvg.js?v=s29a';
+import { createWorld, WORLD } from './src/world.js?v=s29a';
+import { createSurfaces } from './src/surfaces.js?v=s29a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s29a';
 
 const Q = new URLSearchParams(location.search);
 const DEBUG = Q.has('debug');
@@ -1478,6 +1478,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
   if (DEBUG && Q.has('merge')) combatSys.placeHeadOn(0, Number(Q.get('merge')) || 1500, false);   // head-on merge
   if (DEBUG && Q.has('ram')) combatSys.placeHeadOn(0, Number(Q.get('ram')) || 900, true);         // deliberate ram (no break)
+  if (DEBUG && Q.has('wingtest')) { const [sd, d] = Q.get('wingtest').split(','); combatSys.wingTest(0, (sd || 'L').toUpperCase(), Number(d) || 450); }   // ?wingtest=L|R|C,dist
   if (DEBUG && Q.has('dmg')) combat.health = 100 - (Number(Q.get('dmg')) || 65);                  // battle-damage test
   if (DEBUG && Q.has('ccrp')) {                                         // ?ccrp=i,dist,alt[,spd]: level run-in at surface target i
     const [ti, dist, alt, spd] = Q.get('ccrp').split(',').map(Number), t = combatSys.surface[ti || 0];
@@ -1540,6 +1541,15 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
+      if (Q.has('wingtrack') && DEBUG_FIRE) {        // ?wingtrack=L|R: test pilot keeps the nose on bandit 0's wing while firing
+        const e = combatSys.enemies[0];
+        if (e && e.alive) {
+          const aim = new THREE.Vector3(Q.get('wingtrack').toUpperCase() === 'L' ? -5.4 : 5.4, 0, 1.0).applyQuaternion(e.quat).add(e.pos);
+          state.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(state.position, aim, new THREE.Vector3(0, 1, 0)));
+          state.velocity.set(0, 0, -state.velocity.length()).applyQuaternion(state.quaternion);
+          state.pitchRate = state.rollRate = state.yawRate = 0;
+        }
+      }
       if (Q.has('fireoff') && Number(Q.get('fireoff')) >= t0 && Number(Q.get('fireoff')) < t1) { DEBUG_FIRE = false; console.log('[ANGELS_ZERO] trigger released @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
       if (Q.has('fireon') && Number(Q.get('fireon')) >= t0 && Number(Q.get('fireon')) < t1) { DEBUG_FIRE = true; console.log('[ANGELS_ZERO] trigger @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
       if (Q.has('mouseoff') && Number(Q.get('mouseoff')) >= t0 && Number(Q.get('mouseoff')) < t1) { mouse.nx = 0; mouse.ny = 0; console.log('[ANGELS_ZERO] stick released @', t1.toFixed(2)); }
