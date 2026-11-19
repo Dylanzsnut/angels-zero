@@ -69,6 +69,9 @@ export function createRadio(env) {
       case 'SWEEP':
         enemy(LEAD, 'Multiple missiles in the air—scatter!', 3, 'sweep', 6);
         break;
+      case 'REARM':
+        awacs('Welcome home, Eagle. Fresh missiles and fuel—get back up there!', 3, 'rearm', 20);
+        break;
       case 'BRIDGE_THREAD':
         awacs('Threading the needle! Nice bridge run!', 2, 'bridge', 8);
         break;
@@ -82,7 +85,7 @@ export function createRadio(env) {
     if (m <= 1 && prevMult > 1) { chainKills = 0; streakSaid = false; }
     prevMult = m;
     // Terrain warning: descending below 250 ft radar altitude.
-    if (flying && !C.dead && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5) awacs('Watch that altitude, Eagle!', 4, 'alt', 15);
+    if (flying && !C.dead && !(S.gear > 0.5) && !S.onGround && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5) awacs('Watch that altitude, Eagle!', 4, 'alt', 15);
     // Key-down: transmission finished -> closing squelch, music back up.
     if (cur && clock >= cur.t0 + cur.dur) {
       audio.radioSquelch(false); audio.setRadio(false);

@@ -441,9 +441,14 @@ export function createCockpit3D(THREE, env) {
   add(new THREE.Mesh(mergeGeometries(toggles), toggleMat), panel);
   // Red SELECT JETT knob, red gear handle, yellow PUSH TO JETT / EMERG BK / PULL handles.
   onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.016, 20).rotateX(Math.PI / 2), redKnobMat), -0.42, -0.1, 0.008);
-  { const g = new THREE.Group(); onFace(g, -0.33, -0.285, 0);
-    add(new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.05, 10).rotateX(Math.PI / 2), toggleMat), g).position.z = 0.025;
-    add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.022, 24).rotateX(Math.PI / 2), redKnobMat), g).position.z = 0.055; }
+  // LDG GR handle: a lever pivoting on the panel face, stem tilted UP (gear up) or
+  // DOWN (gear down), driven live by S.gearDown; its red wheel-shaped knob lights
+  // while the gear is in transit (F-15 handle warning light).
+  const gearKnobMat = new THREE.MeshStandardMaterial({ color: 0xb01818, emissive: 0xff2010, emissiveIntensity: 0, roughness: 0.45 });
+  const gearHandle = new THREE.Group(); onFace(gearHandle, -0.33, -0.285, 0);
+  { add(new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.05, 10).rotateX(Math.PI / 2), toggleMat), gearHandle).position.z = 0.025;
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.022, 24).rotateX(Math.PI / 2), gearKnobMat), gearHandle).position.z = 0.055; }
+  gearHandle.rotation.x = -0.45;
   onFace(new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.012, 20).rotateX(Math.PI / 2), yellowMat), -0.072, 0.036, 0.006);
   onFace(new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.022, 4, 10), yellowMat), -0.072, -0.116, 0.008);
   onFace(new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.022, 4, 10), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6 })), 0.083, -0.09, 0.008);
@@ -931,7 +936,12 @@ export function createCockpit3D(THREE, env) {
     set(lamps.ag, C.weapon === 'BOMB', 1.6); set(lamps.adi, !C.dead, 1.6); set(lamps.vi, false);
     const droop = Math.max(smooth(-S.speed * 1.94384, -260, -170), smooth(S.alpha, 0.12, 0.24));
     set(lamps.flap1, droop > 0.3, 1.6); set(lamps.flap2, droop > 0.3, 1.6);
-    set(lamps.nose, false); set(lamps.left, false); set(lamps.right, false);                 // gear up and locked in flight
+    // Gear: three greens as each unit locks down (nose first), handle follows the command,
+    // red handle light while any unit is in transit.
+    const gp = S.gear || 0;
+    set(lamps.nose, gp >= 0.96, 2.2); set(lamps.left, gp >= 0.985, 2.2); set(lamps.right, gp >= 0.995, 2.2);
+    gearHandle.rotation.x += ((S.gearDown ? 0.55 : -0.45) - gearHandle.rotation.x) * 0.25;
+    gearKnobMat.emissiveIntensity = gp > 0.01 && gp < 0.99 ? 2.6 * nvgDim : 0;
     set(lamps.fireL, !!C.engineFire && C.engineOut === 'L' && flash, 3); set(lamps.fireR, !!C.engineFire && C.engineOut === 'R' && flash, 3);
     adiOuter.rotation.z = -S.bank;                       // ball rolls about the view axis ...
     adiInner.rotation.x = S.pitch;                       // ... and pitches inside the roll

@@ -503,6 +503,51 @@ export function createAudio() {
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.66);
     src.connect(hp).connect(bp).connect(g).connect(N.body); src.start(t, Math.random() * 2); src.stop(t + 0.7);
   }
+  // Landing gear hydraulics: 1.6 s actuator whine (pump saw 210 -> 150 Hz down /
+  // 150 -> 210 Hz up, low-passed) over pressurised-fluid hiss, through the cockpit filter.
+  function gearMotor(down = true) {
+    if (!ready || !N.whiteBuf) return;
+    const t = ctx.currentTime, T = 1.6;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(down ? 210 : 150, t); o.frequency.linearRampToValueAtTime(down ? 150 : 210, t + T);
+    const lp = filt('lowpass', 900, 1.2), g = gain(0);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.09, t + 0.12); g.gain.setValueAtTime(0.08, t + T - 0.15); g.gain.linearRampToValueAtTime(0, t + T);
+    o.connect(lp).connect(g).connect(cockpitLP); o.start(t); o.stop(t + T + 0.05);
+    const s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+    const bp = filt('bandpass', 2400, 0.9), sg = gain(0);
+    sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.05, t + 0.1); sg.gain.linearRampToValueAtTime(0, t + T);
+    s.connect(bp).connect(sg).connect(cockpitLP); s.start(t, Math.random() * 2); s.stop(t + T + 0.05);
+  }
+  // Up-and-locked / down-and-locked: a heavy mechanical clunk felt through the airframe.
+  function gearLock(down = true) {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(down ? 120 : 140, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.14);
+    const g = gain(0); g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(g).connect(cockpitLP); o.start(t); o.stop(t + 0.22);
+    flareClack();
+  }
+  // Touchdown: two rubber screeches (main tyres spinning up), band-passed noise
+  // swept 2.6 -> 1.4 kHz with a tonal squeal, k 0..1.2 by sink rate.
+  function tireScreech(k = 1) {
+    if (!ready || !N.whiteBuf) return;
+    const t0 = ctx.currentTime;
+    [0, 0.07].forEach((dt, i) => {
+      const t = t0 + dt, s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+      const bp = filt('bandpass', 2600, 6), g = gain(0);
+      bp.frequency.setValueAtTime(2600 - i * 200, t); bp.frequency.exponentialRampToValueAtTime(1400, t + 0.45);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5 * k, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      s.connect(bp).connect(g).connect(master); s.start(t, Math.random() * 2); s.stop(t + 0.55);
+      const o = ctx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(1900 - i * 150, t); o.frequency.exponentialRampToValueAtTime(1100, t + 0.35);
+      const og = gain(0); og.gain.setValueAtTime(0.08 * k, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+      o.connect(og).connect(master); o.start(t); o.stop(t + 0.4);
+    });
+    const th = ctx.createOscillator(); th.type = 'sine'; th.frequency.setValueAtTime(70, t0); th.frequency.exponentialRampToValueAtTime(35, t0 + 0.2);
+    const tg = gain(0); tg.gain.setValueAtTime(0.4 * k, t0); tg.gain.exponentialRampToValueAtTime(0.001, t0 + 0.25);
+    th.connect(tg).connect(master); th.start(t0); th.stop(t0 + 0.27);           // oleo thump
+  }
   // Flare-reload clack: two crisp mechanical transients (noise click + damped
   // 420 / 260 Hz body knock) 55 ms apart — the dispenser magazine seating.
   function flareClack() {
@@ -839,7 +884,9 @@ export function createAudio() {
     // Turbine lug: 70-130 Hz rumble that deepens as the intakes fight the airflow.
     set(N.lug.frequency, 130 - 60 * lugK, 0.15); set(N.lugGain.gain, 0.22 * lugK, 0.12);
     // Wing buffet / wind rush: AoA > 9 deg or very high speed.
-    const buffK = live * Math.max(sm(aoa, 9, 20), 0.45 * sm(kts, 520, 680), 0.5 * sm(gl, 3.2, 8));
+    // + dorsal speedbrake wind buffet, gear-out wind roar and runway tyre rumble.
+    const buffK = live * Math.max(sm(aoa, 9, 20), 0.45 * sm(kts, 520, 680), 0.5 * sm(gl, 3.2, 8),
+      0.55 * (p.airbrake || 0) * sm(kts, 140, 420), 0.28 * (p.gear || 0) * sm(kts, 120, 300), 0.32 * sm((p.rolling || 0) * 1.944, 4, 90));
     set(N.buffSweep.frequency, 220 + 460 * buffK, 0.1); set(N.buffGain2.gain, 0.42 * buffK, 0.1);
     if (N.buff) { set(N.buffGain.gain, 0.25 * buffK, 0.12); set(N.buff.playbackRate, 0.9 + 0.3 * buffK, 0.2); }
     set(N.buffFGain.gain, 0.25 * buffK * (0.7 + 0.3 * Math.random()), 0.05);
@@ -915,7 +962,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.

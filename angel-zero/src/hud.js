@@ -101,7 +101,8 @@ export function createHUD(THREE, A) {
 
   let alertState = 'NORMAL', alertOverride = null;
   const alertOn = () => alertState === 'MISSILE_ALERT';
-  const pullUpOn = () => !C.dead && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5;
+  // (gear down = landing configuration: no PULL UP nag on a deliberate approach / on the runway)
+  const pullUpOn = () => !C.dead && !(S.gear > 0.9) && !S.onGround && S.radalt * 3.28084 < 250 && S.velocity.y < -1.5;
   // Near the 24 deg critical AoA below ~260 kt, an actual departure, or very slow flight.
   // Debounced in the flight loop (state.stallWarnT holds >= 0.25 s of sim time): no flicker at the boundary.
   const stallOn = () => !C.dead && (S.stallWarnT || 0) > 0;
@@ -1151,6 +1152,8 @@ export function createHUD(THREE, A) {
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
     rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
+    if (S.gear > 0 || S.gearDown) rows.push(['  GEAR', S.gear >= 1 ? (S.onGround ? 'WOW' : 'DOWN') : 'TRANSIT', S.gear >= 1 ? G : AMBER]);
+    if (S.ctl && S.ctl.airbrake > 0.05) rows.push(['  S/BRK', `${Math.round(48 * S.ctl.airbrake)}°`, S.brakeLatch ? GB : G]);
     if (C.engineOut) rows.push([`  ${C.engineOut} ENG`, C.engineFire ? 'FIRE' : 'OUT', WARN]);
     if (C.hydraulic) rows.push(['  HYD', 'LEAK', AMBER]);
     let y = y0;
@@ -1246,6 +1249,8 @@ export function createHUD(THREE, A) {
       }
     }
 
+    if (!C.dead && S.gear > 0.05 && !S.onGround && S.speed * 1.94384 > 280)
+      drawBanner(ctx, cx, lowerY + 68, '[ GEAR OVERSPEED ]', AMBER, 230, pulseAlpha(220));
     if (C.gunOverheat && !C.dead) drawBanner(ctx, cx, lowerY + (pullUpOn() || stallOn() ? 34 : 0), '[ GUN OVERHEAT ]', WARN, 220, pulseAlpha(200));
     if (C.engineFire && !C.dead && Math.floor(now / 400) % 2) drawBanner(ctx, cx, upperY + 34, 'ENGINE FIRE — EJECT [E]', WARN, 280, 1);
     if (pullUpOn()) {
@@ -1464,6 +1469,7 @@ export function createHUD(THREE, A) {
     drawSquareRadar(hctx);
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
+    if (!C.dead) drawApproach(hctx, g);
     drawStyleFeed(hctx, g);
     drawDangerPill(hctx);
     drawComms(hctx, fp ? HH * 0.71 : HH * 0.84);
@@ -1511,6 +1517,94 @@ export function createHUD(THREE, A) {
       ctx.restore();
     });
     ctx.restore();
+  }
+
+  /* ------------------------------ approach: ILS RWY 36, E-bracket, pit stop */
+  // ARCHIPELAGO AFB runway runs 18/36 along world Z (x = 900); the ILS serves
+  // RWY 36 (approach from the south, threshold at z1, approach lights south of
+  // it). Active with the gear commanded down, or automatically inside 5,500 m of
+  // the threshold below 2,500 ft AGL heading within 60 deg of 360.
+  //   LOC: angle off the centreline (full scale +/-2.5 deg); GS: angle off the
+  //   3 deg glide path from the touchdown point (full scale +/-0.7 deg).
+  //   Needles show where the path is: fly toward them.
+  function ilsState() {
+    const R = A.runway; if (!R || C.dead || S.onGround) return null;
+    const along = S.position.z - R.z1, dx = S.position.x - R.x;
+    const dist = Math.hypot(dx, along), aglFt = S.radalt * 3.28084;
+    const hdgErr = Math.abs((((S.heading || 0) - 360 + 540) % 360) - 180);
+    const auto = dist < 5500 && aglFt < 2500 && hdgErr < 60 && along > -200;
+    if (!(S.gearDown || auto) || along < -(R.z1 - R.z0)) return null;
+    const a = Math.max(along, 60);
+    const hAbove = S.position.y - (A.gearH || 2.9) - R.elev;
+    return { loc: Math.atan2(dx, a) * R2D, gs: Math.atan2(hAbove, a) * R2D - 3, dist, along, hAbove, auto };
+  }
+  function drawApproach(ctx, g) {
+    const ils = ilsState();
+    const fp = A.isFirstPerson();
+    const cx = g ? g.cx + (fp ? 0 : inertia.x) : HW / 2, cy = g ? g.cy + (fp ? 0 : inertia.y) : HH / 2;
+    if (ils) {
+      ctx.save();
+      // Synthetic runway outline (world corners projected), so the strip reads through haze.
+      const R = A.runway, E = R.elev + 0.3, hw = R.width / 2;
+      const cs = [[R.x - hw, R.z1], [R.x + hw, R.z1], [R.x + hw, R.z0], [R.x - hw, R.z0]].map(([x, z]) => toScreen(new THREE.Vector3(x, E, z)));
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+      const ahead = new THREE.Vector3(R.x, E, R.z1).sub(cam.position).dot(fwd) > 0;
+      if (ahead && cs.every(p => p.ok)) {
+        glow(ctx, G, 4); ctx.lineWidth = 1.2; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); cs.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Localizer / glide-slope alignment cross.
+      const Rr = 78, locK = clamp(ils.loc / 2.5, -1, 1), gsK = clamp(ils.gs / 0.7, -1, 1);
+      const onLoc = Math.abs(ils.loc) < 0.5, onGs = Math.abs(ils.gs) < 0.25;
+      glow(ctx, GD, 0); ctx.fillStyle = GD;
+      for (const k of [-1, -0.5, 0.5, 1]) { ctx.beginPath(); ctx.arc(cx + k * Rr, cy, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(cx, cy + k * Rr, 2.2, 0, Math.PI * 2); ctx.fill(); }
+      glow(ctx, G, 3); ctx.lineWidth = 1.2; ctx.strokeRect(cx - 5, cy - 5, 10, 10);
+      const lx = cx - locK * Rr, gy = cy + gsK * Rr;
+      glow(ctx, onLoc ? G : AMBER, 6); ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(lx, cy - Rr); ctx.lineTo(lx, cy + Rr); ctx.stroke();
+      glow(ctx, onGs ? G : AMBER, 6);
+      ctx.beginPath(); ctx.moveTo(cx - Rr, gy); ctx.lineTo(cx + Rr, gy); ctx.stroke();
+      ctx.font = f(14, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      labelText(ctx, '[ ILS LOCK // RWY 36 ]', cx, cy - Rr - 22, onLoc && onGs ? G : GB, 6);
+      ctx.font = f(11, true);
+      const locTxt = `LOC ${Math.abs(ils.loc).toFixed(1)}°${ils.loc > 0.05 ? 'R' : ils.loc < -0.05 ? 'L' : ''}`;
+      const gsTxt = `GS ${Math.abs(ils.gs).toFixed(1)}°${ils.gs > 0.05 ? ' HI' : ils.gs < -0.05 ? ' LO' : ''}`;
+      labelText(ctx, `${locTxt}   ${gsTxt}   ${(Math.max(0, ils.along) / 1852).toFixed(1)} NM`, cx, cy - Rr - 6, GD, 3);
+      ctx.restore();
+    }
+    // AoA E-bracket beside the flight-path vector (gear down, airborne): on-speed
+    // alpha 13 deg (= ~160 kt at landing weight), band +/-2.3 deg (~145-175 kt).
+    // FPV centred in the bracket = on speed; FPV below the bracket centre = slow.
+    if (S.gear > 0.9 && !S.onGround && !C.dead) {
+      const p = toScreen(cam.position.clone().addScaledVector(S.velocity.clone().normalize(), 4500));
+      if (p.ok) {
+        const aDeg = S.alpha * R2D, k = 9, ON = 13, BAND = 2.3;
+        const by = p.y - (aDeg - ON) * k, bh = BAND * k, bx = p.x - 26;
+        const kts = S.speed * 1.94384, on = Math.abs(aDeg - ON) <= BAND;
+        const col = on ? G : AMBER;
+        ctx.save(); glow(ctx, col, 5); ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(bx + 8, by - bh); ctx.lineTo(bx, by - bh); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + 8, by + bh);
+        ctx.moveTo(bx, by); ctx.lineTo(bx + 6, by);
+        ctx.stroke();
+        ctx.font = f(11, true); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        labelText(ctx, `${Math.round(kts)}`, bx - 5, by - bh + 2, col, 3);
+        labelText(ctx, on ? 'ON SPD' : aDeg > ON ? 'SLOW' : 'FAST', bx - 5, by + bh - 2, col, 3);
+        ctx.restore();
+      }
+    }
+    // Runway pit stop progress.
+    if (S.pit && S.pit.active) {
+      const k = clamp(S.pit.t / 4, 0, 1), w = 300, x0 = HW / 2 - w / 2, y0 = HH * 0.3;
+      ctx.save(); ctx.font = f(16, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      labelText(ctx, '[ REARMING & REPAIRING... ]', HW / 2, y0 - 6, G, 8);
+      noGlow(ctx); ctx.fillStyle = 'rgba(0,14,8,0.6)'; ctx.fillRect(x0 - 2, y0 - 2, w + 4, 12);
+      glow(ctx, G, 8); ctx.fillStyle = G; ctx.fillRect(x0, y0, w * k, 8);
+      ctx.font = f(11, true); ctx.textBaseline = 'top';
+      labelText(ctx, `MSL · 4AAM · UGB · GUN · FLR · FUEL · AIRFRAME   ${Math.round(k * 100)}%`, HW / 2, y0 + 14, GD, 3);
+      ctx.restore();
+    }
   }
 
   // PHASE 3 Ace marker: slow-rotating crimson double diamond around the jet,

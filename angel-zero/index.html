@@ -309,7 +309,9 @@
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
             <div class="bind"><span class="k"><kbd>K</kbd></span><span class="a">Combat music on / off</span></div>
             <div class="bind"><span class="k"><kbd>Q</kbd> / <kbd>2x A/D</kbd></span><span class="a">Barrel roll</span></div>
-            <div class="bind"><span class="k"><kbd>X</kbd> <kbd>G</kbd></span><span class="a">Deploy flares</span></div>
+            <div class="bind"><span class="k"><kbd>X</kbd></span><span class="a">Deploy flares</span></div>
+            <div class="bind"><span class="k"><kbd>G</kbd></span><span class="a">Landing gear up / down</span></div>
+            <div class="bind"><span class="k"><kbd>B</kbd></span><span class="a">Speedbrake / wheel brakes</span></div>
             <div class="bind"><span class="k"><kbd>SPACE</kbd></span><span class="a">Cockpit / chase view</span></div>
             <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject bailout</span></div>
             <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Tactical menu</span></div>
@@ -424,21 +426,22 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s33b';
-import { createHUD } from './src/hud.js?v=s33b';
-import { createCockpit3D } from './src/cockpit3d.js?v=s33b';
-import { createCombat } from './src/combat.js?v=s33b';
-import { createEjection } from './src/eject.js?v=s33b';
-import { createAudio } from './src/audio.js?v=s33b';
-import { createRadio } from './src/radio.js?v=s33b';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s33b';
-import { createLivery } from './src/livery.js?v=s33b';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s33b';
-import { createCanopyFX } from './src/canopy.js?v=s33b';
-import { createNVG } from './src/nvg.js?v=s33b';
-import { createWorld, WORLD } from './src/world.js?v=s33b';
-import { createSurfaces } from './src/surfaces.js?v=s33b';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s33b';
+import { createVFX } from './src/vfx.js?v=s34a';
+import { createHUD } from './src/hud.js?v=s34a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s34a';
+import { createCombat } from './src/combat.js?v=s34a';
+import { createEjection } from './src/eject.js?v=s34a';
+import { createAudio } from './src/audio.js?v=s34a';
+import { createRadio } from './src/radio.js?v=s34a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s34a';
+import { createLivery } from './src/livery.js?v=s34a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s34a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s34a';
+import { createCanopyFX } from './src/canopy.js?v=s34a';
+import { createNVG } from './src/nvg.js?v=s34a';
+import { createWorld, WORLD } from './src/world.js?v=s34a';
+import { createSurfaces } from './src/surfaces.js?v=s34a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s34a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -727,11 +730,14 @@ const state = {
   gLoad: 1, alpha: 0, speed: 200, mach: 0.6, heading: 0, pitch: 0, bank: 0, radalt: 1500,
   gStrain: 0, negGStrain: 0,                        // pilot G physiology: 0 fresh .. 1 G-LOC / redout
   beta: 0, mass: 20400, cl: 0, cd: 0, stalled: false, fuel: 13455, fuelFlow: 0,   // internal fuel (lb) / total burn (pph)   // sideslip, mass, aero coefficients, low-speed stall (hysteresis)
-  ctl: { pitch: 0, roll: 0, yaw: 0, airbrake: 0 }
+  ctl: { pitch: 0, roll: 0, yaw: 0, airbrake: 0 },
+  // Landing gear (G): commanded down + 0..1 progress (1.6 s travel); dorsal speedbrake latch (B);
+  // ON_GROUND roll state + pit-stop timer (runway rearm / repair).
+  gearDown: false, gear: 0, brakeLatch: false, brakeHeld: false, onGround: false, wheelBrake: false, pit: { t: 0, done: false, active: false }
 };
 
 const mouse = { nx: 0, ny: 0 };
-const keys = { w: false, s: false, a: false, d: false, shift: false, fire: false };
+const keys = { w: false, s: false, a: false, d: false, shift: false, fire: false, b: false };
 let uiModal = false, firstPerson = Q.has('cockpit');
 if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mouse.nx = mx || 0; mouse.ny = my || 0; }
 
@@ -757,6 +763,8 @@ function resetAircraft() {
   state.throttle = 0.65; state.afterburner = 0;
   state.pitchRate = state.rollRate = state.yawRate = 0;
   state.gLoad = 1; state.speed = 200; state.gStrain = 0; state.negGStrain = 0; state.stalled = false; state.fuel = 13455;
+  Object.assign(state, { gearDown: false, gear: 0, brakeLatch: false, brakeHeld: false, onGround: false, wheelBrake: false });
+  Object.assign(state.pit, { t: 0, done: false, active: false });
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
   applyPose();
@@ -785,6 +793,7 @@ let flightMode = 'FLY', viewBeforeEject = false;
 function triggerEject(reason) {
   if (flightMode !== 'FLY' || !modelReady) return;
   flightMode = 'EJECT';
+  state.onGround = false; state.pit.active = false;
   combat.dead = true; combat.deaths++; combat.lockTarget = null;
   sortie.failReason = reason === 'crash' ? 'AIRCRAFT LOST — IMPACT' : reason === 'damage' ? 'SHOT DOWN — PILOT EJECTED' : 'PILOT EJECTED';
   keys.fire = false;
@@ -1145,7 +1154,10 @@ addEventListener('keydown', e => {
   if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
   if (k === '3' && !e.repeat) combatSys.setWeapon('AAM4');
   if (k === 'z' && !e.repeat) combatSys.activateECM();
-  if ((k === 'x' || k === 'g') && !e.repeat) combatSys.dispenseFlares();
+  if (k === 'x' && !e.repeat) combatSys.dispenseFlares();
+  if (k === 'g' && !e.repeat) toggleGear();
+  // B: dorsal speedbrake / wheel brakes. Tap (< 0.35 s) toggles the latch; hold = momentary.
+  if (k === 'b' && !e.repeat) { keys.b = true; state.brakeHeld = true; brakeTap = { t: performance.now(), was: state.brakeLatch }; state.brakeLatch = !state.brakeLatch; }
   if (k === 'c' && !e.repeat) combatSys.designateInSight();
   if (k === 'n' && !e.repeat) setNVG(!nvg.active);
   if (k === 'k' && !e.repeat) toggleMusic();
@@ -1162,6 +1174,11 @@ addEventListener('keyup', e => {
   if (k === 'shift') keys.shift = false;
   if (k === 'f') keys.fire = false;
   if (k === 'm') combatSys.pickleUp();
+  if (k === 'b') {
+    keys.b = false; state.brakeHeld = false;
+    if (brakeTap && performance.now() - brakeTap.t > 350) state.brakeLatch = brakeTap.was;   // it was a hold: restore
+    brakeTap = null;
+  }
 });
 addEventListener('mousedown', e => {
   if (uiModal || appMode !== 'PLAY') return;
@@ -1211,6 +1228,13 @@ function shaped(v, dz = 0.03) {
 function updatePhysics(dt) {
   const clamp = THREE.MathUtils.clamp, sstep = THREE.MathUtils.smoothstep;
   const q = state.quaternion;
+  // Landing gear travel: 1.6 s up <-> down; lock clunk at either end.
+  {
+    const g0 = state.gear, tgt = state.gearDown ? 1 : 0;
+    state.gear = clamp(state.gear + Math.sign(tgt - state.gear) * dt / GEAR_TRAVEL, 0, 1);
+    if (g0 !== state.gear && (state.gear === 0 || state.gear === 1)) audio.gearLock(state.gear === 1);
+  }
+  if (state.onGround) { updateGround(dt); return; }
   _fwd.set(0, 0, -1).applyQuaternion(q); _up.set(0, 1, 0).applyQuaternion(q); _right.set(1, 0, 0).applyQuaternion(q);
   const bank = Math.atan2(_right.y, _up.y);
   state.bank = bank;
@@ -1264,10 +1288,13 @@ function updatePhysics(dt) {
   // True low-speed stall with hysteresis: enter below 160 kt (or nose > +65 deg
   // below 190 kt), stay stalled until above 180 kt AND AoA < 16 deg.
   const kts = speed * 1.94384, pitchDeg = (state.pitch || 0) * 180 / Math.PI;
-  if (!state.stalled && (kts < 160 || (pitchDeg > 65 && kts < 190))) state.stalled = true;
-  else if (state.stalled && kts > 180 && alpha < 16 * Math.PI / 180) state.stalled = false;
+  // Landing configuration (gear down -> F-15 flaps follow the gear): the stall
+  // moves down to 118 kt in / 132 kt out so the 145-175 kt approach is flyable.
+  const ldg = state.gear > 0.9, stallIn = ldg ? 118 : 160, stallOut = ldg ? 132 : 180;
+  if (!state.stalled && (kts < stallIn || (pitchDeg > 65 && kts < 190))) state.stalled = true;
+  else if (state.stalled && kts > stallOut && alpha < 16 * Math.PI / 180) state.stalled = false;
   // STALL warning, debounced in sim time: once triggered it holds >= 0.25 s.
-  const stallCue = state.stalled || (alpha > 23.8 * Math.PI / 180 && kts < 260) || kts < 135;
+  const stallCue = state.stalled || (alpha > 23.8 * Math.PI / 180 && kts < 260) || kts < (ldg ? 125 : 135);
   state.stallWarnT = stallCue ? 0.25 : Math.max(0, (state.stallWarnT || 0) - dt);
   // Flight-path turn rate produced by the current lift (body pitch must add it to hold AoA).
   const clNow = liftCoefficient(alpha);
@@ -1317,16 +1344,8 @@ function updatePhysics(dt) {
   state.ctl.pitch = clamp(pitchIn * pilotK + (qCmd - state.pitchRate) * 0.6, -1, 1);
   state.ctl.roll = clamp(state.rollRate / 4.2 + (pCmd - state.rollRate) * 0.15, -1, 1);
   state.ctl.yaw = clamp(rudderIn * 0.8 + state.yawRate * 1.5, -1, 1);
-  state.ctl.airbrake += ((keys.s || mach > 1.25 ? 1 : 0) - state.ctl.airbrake) * Math.min(1, 3 * dt);
-
-  if (keys.w) state.throttle += 0.5 * dt;
-  if (keys.s) state.throttle -= 0.5 * dt;
-  state.throttle = clamp(state.throttle, 0, 1);
-  const abWanted = (keys.shift || Q.has('ab')) ? 1 : 0;
-  state.afterburner += (abWanted - state.afterburner) * Math.min(1, 4 * dt);
-  // Internal fuel: 13,455 lb; per-engine burn 700 pph idle + 4,300 x throttle + 17,000 x AB (cockpit gauges, FUEL LOW cautions).
-  state.fuelFlow = (combat.engineOut ? 1 : 2) * (700 + 4300 * state.throttle + 17000 * state.afterburner);
-  state.fuel = Math.max(0, state.fuel - state.fuelFlow * dt / 3600);
+  updateAirbrake(dt, mach);
+  updateThrottle(dt);
 
   // --- forces (body axes after this step's rotation)
   _fwd.set(0, 0, -1).applyQuaternion(q); _up.set(0, 1, 0).applyQuaternion(q); _right.set(1, 0, 0).applyQuaternion(q);
@@ -1344,7 +1363,7 @@ function updatePhysics(dt) {
   // Drag build-up.
   const wave = 0.034 * sstep(mach, 0.92, 1.04) - 0.012 * sstep(mach, 1.15, 1.7);   // transonic drag rise
   const form = 1.1 * Math.pow(Math.sin(Math.min(Math.abs(a2), 1.2)), 2) * sstep(Math.abs(a2), 0.3, 0.6);
-  const CD = CD0 + K_INDUCED * CL * CL + wave + form + 0.045 * state.ctl.airbrake;
+  const CD = CD0 + K_INDUCED * CL * CL + wave + form + configDrag();
   state.cd = CD; state.cl = CL;
   const thrust = (THRUST_DRY * state.throttle + THRUST_AB * state.afterburner) * (0.55 + 0.45 * rho / 1.225) * (1 + 0.12 * Math.min(mach, 1.6))
     * (outSide ? 0.72 : 1);
@@ -1374,11 +1393,189 @@ function updatePhysics(dt) {
 
   const ground = groundLevel(state.position.x, state.position.z);
   state.radalt = state.position.y - ground;
-  if (state.radalt <= 0.5 && flightMode === 'FLY') triggerEject('crash');
-  else if (flightMode === 'FLY' && world.collide(state.position, 3)) triggerEject('crash');      // bridges, towers, hangars, turbines
-
   state.pitch = Math.asin(THREE.MathUtils.clamp(_fwd.y, -1, 1));
   state.heading = (Math.atan2(_fwd.x, -_fwd.z) * 180 / Math.PI + 360) % 360;
+  if (flightMode === 'FLY') {
+    // Gear out: the lowest tyre is the first contact. A valid runway touchdown
+    // goes ON_GROUND, anything else (off the strip, gear in transit, banked,
+    // too fast, slammed in) is a crash. Gear up: belly contact = crash.
+    if (state.gear > 0.05 && lowestWheelY() <= ground + 0.02) {
+      const td = touchdownCheck(ground);
+      if (td.ok) enterGround(td); else { if (DEBUG) console.log('[ANGELS_ZERO] touchdown rejected:', td.why); triggerEject('crash'); }
+    } else if (state.radalt <= 0.5) triggerEject('crash');
+    else if (world.collide(state.position, 3)) triggerEject('crash');      // bridges, towers, hangars, turbines
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   LANDING GEAR, SPEEDBRAKE, TOUCHDOWN, GROUND ROLL, RUNWAY PIT STOP
+   - Drag: gear +0.35 and speedbrake +0.9 "drag factor", scaled to the F-15's
+     ~0.05 cruise CD: gear dCD +0.0175 x progress, brake dCD +0.045 x deflection.
+   - Touchdown on ARCHIPELAGO AFB (RWY 18/36) needs gear > 0.9, |bank| < 18 deg,
+     < 205 kt, sink rate better than -9.5 m/s, pitch -4..+17 deg.
+   - ON_GROUND: heading + pitch only, nose-wheel steering on A/D (0.42 rad/s
+     taxiing -> 0.05 at 140 kt), rolling friction 0.025 N, wheel brakes 0.5 N
+     on S or B, rotation above 120 kt (pitch up to 14 deg), lift-off above
+     155 kt once lift reaches the weight. Leaving the paved airfield = crash.
+   - Below 25 kt: 4 s REARMING & REPAIRING, then full stores / gun / flares /
+     airframe / engines / fuel; rolling above 30 kt first aborts it.
+   --------------------------------------------------------------------------- */
+const GEAR_TRAVEL = 1.6, GEAR_DCD = 0.0175, BRAKE_DCD = 0.045, GEAR_OVERSPEED_KT = 280;
+let brakeTap = null, overspeedCaution = false;
+const _wp = new THREE.Vector3(), _gq = new THREE.Quaternion(), _ge = new THREE.Euler(0, 0, 0, 'YXZ');
+function configDrag() { return GEAR_DCD * state.gear + BRAKE_DCD * state.ctl.airbrake; }
+function updateAirbrake(dt, mach) {
+  const want = keys.s || state.brakeLatch || state.brakeHeld || mach > 1.25 || (state.onGround && state.wheelBrake);
+  state.ctl.airbrake += ((want ? 1 : 0) - state.ctl.airbrake) * Math.min(1, 3 * dt);
+}
+function updateThrottle(dt) {
+  if (keys.w) state.throttle += 0.5 * dt;
+  if (keys.s) state.throttle -= 0.5 * dt;
+  state.throttle = THREE.MathUtils.clamp(state.throttle, 0, 1);
+  const abWanted = (keys.shift || Q.has('ab')) ? 1 : 0;
+  state.afterburner += (abWanted - state.afterburner) * Math.min(1, 4 * dt);
+  // Internal fuel: 13,455 lb; per-engine burn 700 pph idle + 4,300 x throttle + 17,000 x AB (cockpit gauges, FUEL LOW cautions).
+  state.fuelFlow = (combat.engineOut ? 1 : 2) * (700 + 4300 * state.throttle + 17000 * state.afterburner);
+  state.fuel = Math.max(0, state.fuel - state.fuelFlow * dt / 3600);
+}
+function engineThrust(mach) {
+  const rho = airDensity(state.position.y);
+  return (THRUST_DRY * state.throttle + THRUST_AB * state.afterburner) * (0.55 + 0.45 * rho / 1.225) * (1 + 0.12 * Math.min(mach, 1.6))
+    * (combat.engineOut ? 0.72 : 1);
+}
+// World y of the lowest tyre contact point (gear geometry from src/gear.js).
+function lowestWheelY() {
+  let y = Infinity;
+  for (const p of Object.values(GEAR_PTS)) { _wp.set(p[0], p[1], p[2]).applyQuaternion(state.quaternion); y = Math.min(y, _wp.y); }
+  return state.position.y + y;
+}
+function onAirfield(x, z) {
+  const R = world.runway;
+  return Math.abs(groundLevel(x, z) - R.elev) < 0.9 && x > R.x - 300 && x < R.x + 470 && z > R.z0 - 140 && z < R.z1 + 160;
+}
+function touchdownCheck(ground) {
+  const R = world.runway, p = state.position, kts = state.speed * 1.94384;
+  const bankDeg = Math.abs(state.bank) * 180 / Math.PI, pitchDeg = state.pitch * 180 / Math.PI, vy = state.velocity.y;
+  const onStrip = Math.abs(p.x - R.x) <= R.width / 2 + 6 && p.z >= R.z0 - 30 && p.z <= R.z1 + 30 && Math.abs(ground - R.elev) < 0.6;
+  const why = !onStrip ? 'off runway' : state.gear <= 0.9 ? 'gear not locked' : bankDeg >= 18 ? `bank ${bankDeg.toFixed(0)}` :
+    kts >= 205 ? `${kts.toFixed(0)} kt` : vy <= -9.5 ? `sink ${vy.toFixed(1)} m/s` : pitchDeg < -4 || pitchDeg > 17 ? `pitch ${pitchDeg.toFixed(0)}` : '';
+  return { ok: !why, why, kts, vy, bank: bankDeg, pitch: pitchDeg };
+}
+function enterGround(td) {
+  const fwdH = _fwd.set(0, 0, -1).applyQuaternion(state.quaternion).setY(0);
+  if (fwdH.lengthSq() < 1e-6) fwdH.set(0, 0, -1);
+  fwdH.normalize();
+  state.onGround = true;
+  state.groundSpeed = Math.max(0, state.velocity.dot(fwdH));
+  state.groundYaw = Math.atan2(-fwdH.x, -fwdH.z);
+  state.groundPitch = Math.max(0, state.pitch);
+  state.pitchRate = state.rollRate = state.yawRate = 0;
+  state.touchdown = { kts: +td.kts.toFixed(0), vy: +td.vy.toFixed(2), bank: +td.bank.toFixed(1), pitch: +td.pitch.toFixed(1), t: simTime };
+  state.pit.done = false; state.pit.active = false; state.pit.t = 0;
+  const firm = Math.min(1, -td.vy / 9.5);
+  audio.tireScreech(0.6 + 0.6 * firm);
+  // Twin white touchdown puffs at the main tyres.
+  for (const k of ['mainL', 'mainR']) {
+    const pt = GEAR_PTS[k];
+    _wp.set(pt[0], pt[1], pt[2]).applyQuaternion(state.quaternion).add(state.position);
+    for (let i = 0; i < 14; i++) combatSys.emitSmoke({ x: _wp.x, y: _wp.y + 0.2, z: _wp.z, vx: (Math.random() - 0.5) * 4, vy: 0.8 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 4 + state.groundSpeed * 0.15,
+      life: 1.6 + Math.random() * 1.2, s0: 0.8, s1: 5 + Math.random() * 3, r: 0.95, g: 0.95, b: 0.95, a: 0.7, drag: 2.2, rise: 0.5 });
+  }
+  combatSys.say(td.vy > -2.5 ? 'TOUCHDOWN — GREASED IT' : td.vy > -5.5 ? 'TOUCHDOWN — ON THE NUMBERS' : 'TOUCHDOWN — FIRM ARRIVAL', 2.0, '#52ff9c');
+  if (DEBUG) console.log('[ANGELS_ZERO] touchdown', JSON.stringify(state.touchdown));
+}
+function updateGround(dt) {
+  const clamp = THREE.MathUtils.clamp, sstep = THREE.MathUtils.smoothstep, R = world.runway;
+  const kts = state.groundSpeed * 1.94384;
+  const pitchIn = shaped(mouse.ny), rudderIn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0);
+  state.wheelBrake = !!(keys.s || keys.b || state.brakeHeld || state.brakeLatch);
+  updateAirbrake(dt, 0);
+  updateThrottle(dt);
+  // Nose-wheel steering: sharp while taxiing, a few deg/s at rotation speed.
+  const steer = rudderIn * (0.42 - 0.37 * sstep(kts, 20, 140));
+  state.groundYaw += steer * dt;
+  // Rotation: above 120 kt the stick lifts the nose (max 14 deg); otherwise it settles on the nose wheel.
+  const pTgt = kts > 120 && pitchIn > 0.1 ? Math.min(14, pitchIn * 16) * Math.PI / 180 : 0;
+  state.groundPitch += clamp(pTgt - state.groundPitch, -0.07 * dt, 0.1 * dt);   // derotate 4 deg/s, rotate 5.7 deg/s
+  state.groundPitch = clamp(state.groundPitch, 0, 14 * Math.PI / 180);
+  // Forces along the runway.
+  const v = state.groundSpeed, rho = airDensity(state.position.y), qBar = 0.5 * rho * v * v;
+  const CL = liftCoefficient(state.groundPitch), mass = aircraftMass(), W = mass * GRAVITY;
+  const lift = qBar * WING_AREA * CL;
+  const drag = qBar * WING_AREA * (CD0 + K_INDUCED * CL * CL + configDrag());
+  const thrust = engineThrust(v / 340);
+  const N = Math.max(0, W - lift);
+  const brake = state.wheelBrake && v > 0.3 ? 0.5 * N : 0;
+  let a = (thrust - drag - 0.025 * N - brake) / mass;
+  state.groundSpeed = Math.max(0, v + a * dt);
+  if (state.groundSpeed < 0.25 && thrust < 0.025 * N + brake) state.groundSpeed = 0;
+  // Attitude + position: main tyres on the runway, pivoting about them.
+  _ge.set(state.groundPitch, state.groundYaw, 0, 'YXZ');
+  state.quaternion.setFromEuler(_ge);
+  const fwd = _fwd.set(0, 0, -1).applyQuaternion(state.quaternion), fwdH = _right.copy(fwd).setY(0).normalize();
+  state.position.addScaledVector(fwdH, state.groundSpeed * dt);
+  const E = groundLevel(state.position.x, state.position.z), th = state.groundPitch;
+  state.position.y = E + GEAR_H * Math.cos(th) + GEAR_PTS.mainL[2] * Math.sin(th);
+  state.velocity.copy(fwdH).multiplyScalar(state.groundSpeed);
+  Object.assign(state, { speed: Math.max(1, state.groundSpeed), alpha: th, beta: 0, bank: 0, pitch: th, gLoad: 1 + Math.min(0.2, Math.abs(a) / 40),
+    radalt: state.position.y - E, stalled: false, stallWarnT: 0, mach: state.groundSpeed / 340, cl: CL, cd: drag / Math.max(1, qBar * WING_AREA),
+    heading: (Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI + 360) % 360, pitchRate: 0, rollRate: 0, yawRate: steer, highG: false, barrelRoll: false });
+  state.gStrain = Math.max(0, state.gStrain - 0.2 * dt); state.negGStrain = Math.max(0, state.negGStrain - 0.35 * dt);
+  state.ctl.pitch = clamp(pitchIn, -1, 1); state.ctl.roll = clamp(shaped(mouse.nx) * 0.5, -1, 1); state.ctl.yaw = clamp(rudderIn * 0.8, -1, 1);
+  // Lift-off.
+  if (kts > 155 && lift > 0.98 * W && th > 4 * Math.PI / 180) {
+    state.onGround = false;
+    state.velocity.copy(fwd).multiplyScalar(state.groundSpeed).y += 1.5;
+    state.pitchRate = 0.03; state.pit.done = false; state.pit.active = false;
+    combatSys.say('WHEELS UP — RAISE THE GEAR [G]', 1.8, '#52ff9c');
+    if (DEBUG) console.log('[ANGELS_ZERO] lift-off at', kts.toFixed(0), 'kt');
+    return;
+  }
+  // Ran off the paved airfield (water, sand, rough ground) or hit a hangar.
+  if (flightMode === 'FLY' && (!onAirfield(state.position.x, state.position.z) || world.collide(state.position, 3))) { state.onGround = false; triggerEject('crash'); return; }
+  updatePitStop(dt, kts);
+}
+// Runway pit stop: < 25 kt for 4 s -> full rearm / repair / refuel.
+function updatePitStop(dt, kts) {
+  const p = state.pit;
+  if (p.done || flightMode !== 'FLY') return;
+  if (kts < 25) {
+    if (!p.active) {
+      p.active = true; p.t = 0; p.clack = 0;
+      audio.steamHiss();
+      combatSys.say('[ REARMING & REPAIRING... ]', 4.2, '#52ff9c');
+      radioSys.event('REARM');
+    }
+    p.t += dt; p.clack -= dt;
+    if (p.clack <= 0) { audio.flareClack(); p.clack = 0.55; }           // ordnance loaders seating stores
+    if (p.t >= 4) {
+      p.active = false; p.done = true;
+      combatSys.pitStop(); state.fuel = 13455;
+      audio.styleChime(3);
+      combatSys.say('REARM COMPLETE — FUEL, STORES, AIRFRAME 100% // CLEARED FOR TAKEOFF', 3, '#52ff9c');
+      if (DEBUG) console.log('[ANGELS_ZERO] pit stop complete', JSON.stringify({ hp: combat.health, msl: combat.missiles, aam4: combat.aam4, ugb: combat.bombs, gun: combat.ammo, flr: combat.flares, heat: combat.gunHeat }));
+    }
+  } else if (p.active && kts > 30) {
+    p.active = false; p.t = 0;
+    combatSys.say('REARM ABORTED — ROLLING', 1.6, '#ffbf3f');
+  }
+}
+// Debug / test: jet at rest on the RWY 36 centreline at world z, heading 360, gear down and locked.
+function placeOnRunway(z) {
+  const R = world.runway;
+  state.position.set(R.x, R.elev + GEAR_H, z);
+  state.quaternion.identity(); state.velocity.set(0, 0, 0);
+  Object.assign(state, { gearDown: true, gear: 1, onGround: true, groundSpeed: 0, groundYaw: 0, groundPitch: 0, throttle: 0.2, afterburner: 0,
+    speed: 1, pitchRate: 0, rollRate: 0, yawRate: 0 });
+  Object.assign(state.pit, { t: 0, done: false, active: false });
+  camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position); prevPlanePos.copy(state.position);
+}
+function toggleGear() {
+  if (flightMode !== 'FLY' || !modelReady) return;
+  if (state.onGround && state.gearDown) { combatSys.say('GEAR LOCKED — WEIGHT ON WHEELS', 1.2, '#ffbf3f'); return; }
+  state.gearDown = !state.gearDown;
+  audio.gearMotor(state.gearDown);
+  combatSys.say(state.gearDown ? 'GEAR DOWN' : 'GEAR UP', 1.0, '#52ff9c');
 }
 
 function updateCameraAndVisuals(dt, now) {
@@ -1487,6 +1684,7 @@ function updateCameraAndVisuals(dt, now) {
   if (surfaces) surfaces.update(dt, { pitch: state.ctl.pitch, roll: state.ctl.roll, yaw: state.ctl.yaw, airbrake: state.ctl.airbrake,
     kts: state.speed * 1.94384, mach: state.mach, alpha: state.alpha, throttle: state.throttle, afterburner: state.afterburner,
     active: flightMode === 'FLY' || appMode === 'MENU' });
+  if (landingGear) landingGear.pose(state.gear, state.onGround ? state.groundSpeed : 0, dt);
   if (DEBUG_OVERVIEW) {                                // test hook: ?overview[=height] top-down map camera
     camera.position.set(WORLD.CX, DEBUG_OVERVIEW, WORLD.CZ + 1); camera.up.set(0, 0, -1);
     camera.lookAt(WORLD.CX, 0, WORLD.CZ); camera.fov = 52; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
@@ -1540,8 +1738,14 @@ function updateAudio() {
     gLoad: flightMode === 'FLY' ? state.gLoad : 1, aoa: flightMode === 'FLY' ? state.alpha * 180 / Math.PI : 0,
     gStrain: flightMode === 'FLY' ? state.gStrain : 0, glocWarn: flightMode === 'FLY' && state.gStrain > 0.72,
     kts: state.speed * 1.94384,
-    music: { airborne: flightMode === 'FLY', banditDist: nearestBandit(), combo: combat.comboMult || 1, ace: !!(combat.ace && combat.ace.alive) }
+    music: { airborne: flightMode === 'FLY', banditDist: nearestBandit(), combo: combat.comboMult || 1, ace: !!(combat.ace && combat.ace.alive) },
+    airbrake: flightMode === 'FLY' ? state.ctl.airbrake : 0, gear: flightMode === 'FLY' ? state.gear : 0,
+    rolling: flightMode === 'FLY' && state.onGround ? state.groundSpeed : 0
   });
+  // GEAR OVERSPEED: gear out above 280 kt -> master caution tone once per exceedance.
+  const over = flightMode === 'FLY' && state.gear > 0.05 && state.speed * 1.94384 > GEAR_OVERSPEED_KT;
+  if (over && !overspeedCaution) audio.masterCaution();
+  overspeedCaution = over || (overspeedCaution && state.gear > 0.05 && state.speed * 1.94384 > GEAR_OVERSPEED_KT - 10);
 }
 // Range (m) to the closest live bandit, for the music intensity (furball < 3 km).
 function nearestBandit() {
@@ -1717,7 +1921,7 @@ const hud = createHUD(THREE, {
   sunAzimuth: SUN_AZIMUTH, callsign: 'ALPHA 1',
   terrain: { height: terrainHeight, cx: TERRAIN_CENTER.x, cz: TERRAIN_CENTER.y, size: TERRAIN_SIZE, marks: world.marks },
   getEnemies: () => combatSys.enemies, isFirstPerson: () => firstPerson, isModal: () => uiModal,
-  getSurface: () => combatSys.surface,
+  getSurface: () => combatSys.surface, runway: world.runway, gearH: GEAR_H,
   getWeather: () => ({ rain: weather.rainHere, label: weather.active.label, storm: weather.active.storm }),
   getMode: () => flightMode, isHidden: () => appMode === 'MENU' || appMode === 'DEBRIEF', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist,
@@ -1793,6 +1997,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   combatSys.init(model, nozzleLocal);
   model.updateMatrixWorld(true);
   surfaces = createSurfaces(THREE, model);              // Ctrl_* hinges + Nozzle_L/R (after the fleet clone)
+  landingGear = createGear(THREE, model);               // procedural tricycle gear (after the fleet clone)
   livery = createLivery(THREE, model, LIVERIES);        // after the fleet clone: bandits keep their own paint
   livery.applyF15Livery(profile.data.selectedLivery);
   if (DEBUG) console.log('[ANGELS_ZERO] livery', JSON.stringify(livery.stats()), 'profile', profile.persistent ? 'persistent' : 'memory-only');
@@ -1820,6 +2025,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   if (DEBUG && Q.has('bshot')) combatSys.banditShot(0, Q.get('bshot') === 'soft');
   if (DEBUG && Q.has('merge')) combatSys.placeHeadOn(0, Number(Q.get('merge')) || 1500, false);   // head-on merge
   if (DEBUG && Q.has('ram')) combatSys.placeHeadOn(0, Number(Q.get('ram')) || 900, true);         // deliberate ram (no break)
+  if (DEBUG && Q.has('onrwy')) placeOnRunway(Number(Q.get('onrwy')) || world.runway.z1 - 150);   // ?onrwy[=z]: stopped on RWY 36, gear down
+  if (DEBUG && Q.has('gear')) { state.gearDown = true; state.gear = 1; }
   if (DEBUG && Q.has('ace')) combatSys.spawnAce();                  // ?ace: start in PHASE 3 (Ace + escorts)
   if (DEBUG && Q.has('wingtest')) { const [sd, d] = Q.get('wingtest').split(','); combatSys.wingTest(0, (sd || 'L').toUpperCase(), Number(d) || 450); }   // ?wingtest=L|R|C,dist
   if (DEBUG && Q.has('dmg')) combat.health = 100 - (Number(Q.get('dmg')) || 65);                  // battle-damage test
@@ -1940,7 +2147,7 @@ let lastTime = performance.now(), simTime = 0;
 const FREEZE = Q.has('freeze');
 let DEBUG_FIRE = DEBUG && Q.has('fire');
 const DEBUG_HOLD = DEBUG && Q.has('hold') ? Q.get('hold').split(',') : null;
-let surfaces = null;
+let surfaces = null, landingGear = null;
 const RWY_X = () => world.runway.x;
 const DEBUG_OVERVIEW = DEBUG && Q.has('overview') ? (Number(Q.get('overview')) || 22000) : 0;
 const DEBUG_BANDCAM = DEBUG && Q.has('bandcam') ? Q.get('bandcam').split(',').map(Number) : null;
@@ -1999,15 +2206,15 @@ addEventListener('resize', () => {
 if (DEBUG) {
   window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView,
     get appMode() { return appMode; },
-    triggerEject, startRoll, stepSim, profile, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
+    triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
 resetAircraft();
 hud.resize();
 if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; hBadge.style.display = 'block'; startSortie(); }   // test hook: skip the briefing (sortie tracked)
+else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 // Debug: ?debrief=CLEARED|FAILED[,score] ends the sortie at load + 3 s with that outcome (debrief / unlock checks).
 if (DEBUG && Q.has('debrief')) setTimeout(() => { const [o, s] = Q.get('debrief').split(','); if (s) combat.score = Number(s); endSortie((o || 'CLEARED').toUpperCase() === 'FAILED' ? 'FAILED' : 'CLEARED'); }, 3000);
-else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 if (document.fonts && document.fonts.load) {
   document.fonts.load("600 16px 'Rajdhani'").catch(() => {});
   document.fonts.load("16px 'Share Tech Mono'").catch(() => {});

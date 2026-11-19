@@ -76,7 +76,7 @@ export function createSurfaces(THREE, model) {
       Intake_Ramp_L: ramp, Intake_Ramp_R: ramp,
       Ctrl_Rudder_L: clamp(-c.yaw * 22, -22, 22),
       Ctrl_Rudder_R: clamp(-c.yaw * 22, -22, 22),
-      Ctrl_Speedbrake: -46 * clamp(c.airbrake, 0, 1)
+      Ctrl_Speedbrake: -48 * clamp(c.airbrake, 0, 1)                     // dorsal spine brake, 0 -> 48 deg
     };
     // Auto flaps: droop at low speed / high AoA, flush at high speed.
     const droop = Math.max(smooth(-c.kts, -260, -170), smooth(c.alpha, 0.12, 0.24));

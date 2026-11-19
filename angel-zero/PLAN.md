@@ -462,6 +462,62 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     a FAILED (ejected) 60,000 run -> rank capped at B, MIDNIGHT STEALTH
     unlocked, CIPHER BLUE still locked; selection + record survive a reload;
     zero page console errors (headless debrief, wingtest, cockpit, menu).
+- [x] **Landing gear (G), dorsal speedbrake (B), ILS RWY 36, touchdown, ground roll, runway pit stop**
+  *(build `s34a`, new `src/gear.js`; flight model in `index.html`)*
+  - Gear: procedural tricycle gear (the asset's struts were stripped):
+    nose + two mains with oleo, torque links, drag brace, tyres / hubs, bay
+    doors + wells; all retract FORWARD over 1.6 s (doors first, hydraulic
+    whine, lock clunk). Tyre contacts at y = -2.90 (`GEAR_H`), so the jet sits
+    level. Drag factors scaled to the F-15's ~0.05 cruise CD: gear dCD
+    +0.0175 (x0.35), speedbrake +0.045 (x0.9). `[ GEAR OVERSPEED ]` banner +
+    master caution above 280 kt with gear out.
+  - Keys: G = gear (flares moved to X only); B = speedbrake, tap toggles a
+    latch, hold (> 0.35 s) is momentary; S still deploys it as before.
+    Ctrl_Speedbrake now opens to 48 deg; speedbrake / gear wind and tyre roll
+    feed the buffet rumble layer.
+  - Landing configuration: with gear down the true stall moves from
+    160 / 180 kt (in / out) to 118 / 132 kt and the stall cue to < 125 kt,
+    so the 145-175 kt approach is flyable (before, the approach band stalled).
+  - Cockpit: LDG GR lever follows the command (up / down), its red knob
+    lights while any unit is in transit, NOSE / LEFT / RIGHT greens as each
+    unit locks down. HUD stores list: GEAR DOWN / TRANSIT / WOW, S/BRK deg.
+  - ILS: ARCHIPELAGO AFB's runway is 18/36 along world Z (x 900, z -1400 ..
+    1600, elev 10 m, approach lights south of the 1600 end), so the ILS is
+    `[ ILS LOCK // RWY 36 ]` (the brief said RWY 09). Active with gear down or
+    inside 5.5 km / 2,500 ft AGL heading within 60 deg of 360: LOC (+/-2.5
+    deg full scale) and 3 deg GS (+/-0.7 deg) needles, LOC / GS / NM readout,
+    synthetic runway outline. AoA E-bracket beside the FPV with gear down:
+    on-speed 13 deg +/-2.3 (~145-175 kt), SLOW / ON SPD / FAST. No PULL UP /
+    "watch that altitude" nag with gear down.
+  - Touchdown: lowest tyre contact on the strip with gear > 0.9, |bank| < 18,
+    < 205 kt, sink better than -9.5 m/s, pitch -4..17 -> ON_GROUND (tyre
+    screech + oleo thump, twin white smoke puffs, TOUCHDOWN call); otherwise
+    (gear up / in transit, banked, slammed, off the strip) = crash.
+  - ON_GROUND: nose-wheel steering on A/D, rolling friction, wheel brakes on
+    S / B (speedbrake deploys with them), rotation above 120 kt, lift-off
+    above 155 kt once lift reaches the weight; leaving the paved airfield or
+    hitting a hangar = crash.
+  - Pit stop: < 25 kt -> 4 s `[ REARMING & REPAIRING... ]` bar, loader
+    clacks, AWACS "Welcome home, Eagle. Fresh missiles and fuel—get back up
+    there!"; then DMG 0 %, engine fire out / both engines, MSL / 4AAM / UGB /
+    GUN / FLR full, gun heat 0, fuel full (`combatSys.pitStop()`; combo and
+    score untouched). Rolling above 30 kt first aborts it.
+  - Fix: the `?debrief` hook (s33b) had split the `?nointro` if/else, so
+    `?nointro` loads also showed the briefing over the flight. Restored.
+  - Debug: `?onrwy[=z]` (stopped on RWY 36, gear down), `?gear`;
+    `__az.toggleGear()`, `__az.placeOnRunway(z)`, `__az.landingGear`.
+  - Verified in the pane: AB takeoff from rest -> rotate 141 kt, lift-off 180
+    kt after 402 m, gear up in 1.62 s; level 250 kt idle decel clean 3.2 /
+    gear 3.9 / brake 5.0 / both 5.7 kt/s; scripted ILS approach from 3.5 km
+    held the 3 deg path at 165 kt / AoA 11.7 deg, flare, touchdown 152 kt at
+    -0.35 m/s -> ON_GROUND; braked to a stop in 640 m / ~16 s, pit stop
+    restored 40 % -> 100 % and all stores in 4 s, then took off again; hard
+    sink (-12.7 m/s), gear-up, 30 deg bank and off-runway touchdowns crash
+    with the right reason; cockpit lamps 3 greens / handle 0.55 down, red
+    handle light + 0 greens in transit; ILS cross / tag / E-bracket rendered
+    in chase and on the cockpit combiner; briefing still fits 1280x720; zero
+    page console errors (headless onrwy pit stop, approach, lowpatrol,
+    cockpit, menu).
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
@@ -553,7 +609,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `flare` / `flareat=s` · `breakat=m` · `cloudpos=az:el:dist` · `cloudon=t:i`
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
 · `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
-· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load)
+· `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load) · `onrwy[=z]` (stopped on RWY 36, gear down) · `gear` (start gear down)
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
 

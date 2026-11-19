@@ -2298,6 +2298,15 @@ export function createCombat(THREE, env) {
     ready = true;
   }
 
+  // Runway pit stop (index.html, after the 4 s rearm / repair): stores, gun, flares,
+  // airframe and engines restored; the combo chain, locks and score are left alone.
+  function pitStop() {
+    rearm('msl'); rearm('bomb');
+    for (const st of stores.msl) st.aamHidden = false;
+    ripple.length = 0; aamRack = 0; flareRecharge = 0;
+    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
+      reload: 0, missileReload: 0, gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, health: 100, hitFlash: 0 });
+  }
   function resetPlayer() {
     rearm('msl'); rearm('bomb');
     Object.assign(C, { comboMult: 1, comboTimer: 0, dangerClose: false, dangerMult: 1, styleFeed: [] });
@@ -2404,7 +2413,7 @@ export function createCombat(THREE, env) {
   }
 
   return {
-    init, update, resetPlayer, fireMissile, designateInSight, designate, explosion, splash, say,
+    init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
     // Debug: jump the phase cycle straight to PHASE 3 (Ace + escorts).
