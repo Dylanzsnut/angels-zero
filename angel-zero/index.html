@@ -426,25 +426,29 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s45a';
-import { createHUD } from './src/hud.js?v=s45a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s45a';
-import { createCombat } from './src/combat.js?v=s45a';
-import { createEjection } from './src/eject.js?v=s45a';
-import { createAudio } from './src/audio.js?v=s45a';
-import { createRadio } from './src/radio.js?v=s45a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s45a';
-import { createLivery } from './src/livery.js?v=s45a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s45a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s45a';
-import { createCanopyFX } from './src/canopy.js?v=s45a';
-import { createNVG } from './src/nvg.js?v=s45a';
-import { createWorld, WORLD } from './src/world.js?v=s45a';
-import { createSurfaces } from './src/surfaces.js?v=s45a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s45a';
-import { createFreeLook } from './src/freelook.js?v=s45a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s45a';
+import { createVFX } from './src/vfx.js?v=s46a';
+import { createHUD } from './src/hud.js?v=s46a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s46a';
+import { createCombat } from './src/combat.js?v=s46a';
+import { createEjection } from './src/eject.js?v=s46a';
+import { createAudio } from './src/audio.js?v=s46a';
+import { createRadio } from './src/radio.js?v=s46a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s46a';
+import { createLivery } from './src/livery.js?v=s46a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s46a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s46a';
+import { createCanopyFX } from './src/canopy.js?v=s46a';
+import { createNVG } from './src/nvg.js?v=s46a';
+import { createWorld, WORLD } from './src/world.js?v=s46a';
+import { createSurfaces } from './src/surfaces.js?v=s46a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s46a';
+import { createFreeLook } from './src/freelook.js?v=s46a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s46a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -824,6 +828,7 @@ function resetAircraft() {
   Object.assign(state.pit, { t: 0, done: false, active: false });
   if (DEBUG && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;
   if (DEBUG && Q.has('spd')) { state.speed = Number(Q.get('spd')) || 200; state.velocity.set(0, 0, -state.speed); }
+  if (DEBUG && Q.has('thr')) state.throttle = THREE.MathUtils.clamp(Number(Q.get('thr')), 0, 1);   // ?thr=0..1 throttle
   applyPose();
   if (DEBUG && Q.has('at')) {                           // test hook: ?at=x,y,z,hdg or a named spot
     const spots = {
@@ -919,18 +924,21 @@ const _warmEye = new THREE.Vector3();
 function applyWarmState(fp, nv) {
   setView(fp); setNVG(nv, true);                       // the real toggles: identical side effects to flight
   updateCameraAndVisuals(1 / 60, simTime);
-  if (fp) cockpit.update(1 / 60, simTime, _warmEye.copy(EYE).applyQuaternion(state.quaternion).add(state.position), state.quaternion);
+  // Cockpit: 9 updates so the 2-dials-per-frame scheduler paints (and caches) all 16 dial faces now.
+  if (fp) for (let i = 0; i < 9; i++) cockpit.update(1 / 60, simTime, _warmEye.copy(EYE).applyQuaternion(state.quaternion).add(state.position), state.quaternion);
   weather.rainMesh.visible = true;                     // rain streak program even in dry weather
+  combatSys.warmVisuals(true);                         // HDR muzzle flash + tracer bolt programs
 }
 function warmupGPUAsync() {
   if (gpuWarm.done || gpuWarm.pending || !renderer.compileAsync) return gpuWarm.pending;
   const fp0 = firstPerson, nv0 = nvg.active, t0 = performance.now(), jobs = [];
   for (const [fp, nv] of WARM_STATES) {
     applyWarmState(fp, nv);
-    renderer.setRenderTarget(nv ? nvg.target : null);
+    renderer.setRenderTarget(nvg.target);              // every frame now renders into a half-float target (composer / NVG)
     jobs.push(renderer.compileAsync(scene, camera).catch(() => {}));
   }
   renderer.setRenderTarget(null);
+  combatSys.warmVisuals(false);
   setView(fp0); setNVG(nv0, true);
   gpuWarm.pending = Promise.all(jobs).then(() => { gpuWarm.asyncMs = Math.round(performance.now() - t0); });
   return gpuWarm.pending;
@@ -940,6 +948,7 @@ function warmupGPUSync() {
   const fp0 = firstPerson, nv0 = nvg.active, t0 = performance.now();
   for (const [fp, nv] of WARM_STATES) { applyWarmState(fp, nv); nvg.render(scene, camera, simTime, fp); }
   renderer.getContext().finish();
+  combatSys.warmVisuals(false);
   setView(fp0); setNVG(nv0, true);
   updateCameraAndVisuals(1 / 60, simTime);
   gpuWarm.done = true; gpuWarm.ms = Math.round(performance.now() - t0); gpuWarm.programs = renderer.info.programs.length;
@@ -1971,7 +1980,8 @@ const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunD
 const SUN_AZIMUTH = (Math.atan2(SUN_DIR.x, -SUN_DIR.z) * 180 / Math.PI + 360) % 360;
 const canopyFx = createCanopyFX();
 // AN/AVS-9 night vision (N): light intensification + green-phosphor tube composite.
-const nvg = createNVG(THREE, renderer);
+const nvg = createNVG(THREE, renderer, { EffectComposer, RenderPass, UnrealBloomPass, OutputPass });   // + HDR bloom composer
+if (DEBUG && Q.has('nobloom') && nvg.bloom) nvg.bloom.enabled = false;            // A/B check of the bloom pass
 function setNVG(on, silent) {
   nvg.active = on;
   document.body.classList.toggle('nvg', nvg.active);

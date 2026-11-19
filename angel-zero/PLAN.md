@@ -901,6 +901,43 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     ignites, unattended fire -> airframe lost at exactly 16.0 s; odds 38 % at
     389 kt. Headless: chase fire trail, cockpit prompt + lamps, crank bar,
     SEIZED / relit runs, zero page errors.
+- [x] **Visual Pass 1: selective HDR bloom, glowing cannon tracers, incandescent afterburner** *(build `s46a`, `src/nvg.js`, `src/combat.js`, `src/vfx.js`, `src/cockpit3d.js`, `index.html`)*
+  - Bloom pipeline (`src/nvg.js`, normal vision): EffectComposer (three r160
+    addons from the same import map) into a half-float MSAA x4 target ->
+    RenderPass -> UnrealBloomPass at half resolution (threshold 0.92,
+    strength 0.48, radius 0.32) -> OutputPass (ACES Filmic + sRGB, once).
+    Materials render linear HDR (no per-material tone mapping), so only
+    emissives > 1 bloom. NVG keeps its own tube composite. Resize updates the
+    composer and the half-res bloom chain. HUD / overlays are 2D canvases above
+    WebGL (never blurred). `?nobloom` A/B switch.
+  - Side effect handled: transparent layers now blend in linear space; the
+    gauge glass sheen (0.07 -> 0.022) was retuned so black dial faces stay
+    black (measured dial-area luminance 32 vs 34 before).
+  - Cannon tracers: luminous tapered bolts 14-22 m long (with closure speed,
+    growing out of the muzzle) along the velocity, white-hot nose -> amber
+    tail, additive, HDR colours player (2.6, 2.0, 1.15) / enemy + CIWS (2.4,
+    0.95, 0.45) / base CIWS; one InstancedMesh per stream with a pre-allocated
+    round pool (no per-shot / per-frame allocation); width >= ~3 px at range.
+  - Muzzle flash: HDR (2.8, 2.1, 1.2) star sprite + a streak laid along the
+    projected bore, re-rolled rotation / scale, 40 ms pulse per firing frame,
+    starboard wing-root port.
+  - Afterburner: incandescent radial core disc inside each nozzle: muted
+    orange <= (0.75, 0.30, 0.08) scaled by throttle with the burner off (no
+    glare), ramping with afterburner to HDR (2.5, 1.65, 1.05) with a 23 / 31 Hz
+    +/-8 % shimmer; outer cone peach at the lip -> deep orange-red tip, HDR lip
+    and shock diamonds only in AB (dry shock-diamond intensity reduced so 50 %
+    throttle does not bloom). A damaged engine's whole plume group (cone, core,
+    disc, light) stays dark.
+  - Warm-up: every frame now renders into a half-float target, so the program
+    set collapsed to ~100 and all of it is pre-built; warm-up also forces the
+    muzzle flash + one bolt per tracer pool visible and paints all 16 dial
+    faces.
+  - Verified (pane, 1280x720): composer 1280x720 HalfFloat x4, bloom chain
+    half-res; 24 view / NVG toggles while firing in AB: 4.4-15.6 ms, no new
+    programs; frame ~6-8 ms; resize to 1000x640 -> composer 1000x640, bloom
+    250x160, aspect updated. Headless: 50 % throttle no nozzle glare, sky /
+    clouds unchanged; AB + gun: white-hot cores, glowing bolts converging
+    ahead, muzzle starburst; night AB; NVG; menu; zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

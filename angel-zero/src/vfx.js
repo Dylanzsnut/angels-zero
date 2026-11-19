@@ -73,7 +73,7 @@ export function createVFX(THREE, env) {
       #include <logdepthbuf_vertex>
     }`;
   const PLUME_F = LOG_F + `
-    uniform float uTime; uniform float uInt; uniform float uDiam;
+    uniform float uTime; uniform float uInt; uniform float uDiam; uniform float uAB;
     varying float vT; varying vec3 vN; varying vec3 vV; varying float vAng; varying float vSide;
     void main() {
       #include <logdepthbuf_fragment>
@@ -87,34 +87,61 @@ export function createVFX(THREE, env) {
         float a = pow(facing, 1.6) * pow(1.0 - t, 1.25) * (0.28 + 1.15 * shock * osc) * smoothstep(0.0, 0.04, t);
       #else
         float flick = 0.74 + 0.26 * sin(t * 21.0 - uTime * 33.0 + vAng * 3.0) * sin(uTime * 9.0 + t * 7.0);
-        vec3 col = mix(vec3(1.0, 0.74, 0.32), vec3(1.0, 0.38, 0.07), smoothstep(0.0, 0.8, t));
+        // Bright peach at the nozzle lip -> translucent deep orange-red at the tip;
+        // in afterburner the lip goes HDR (> 1) so it carries a little bloom.
+        vec3 col = mix(vec3(1.0, 0.74, 0.40), vec3(0.9, 0.24, 0.05), smoothstep(0.0, 0.8, t)) * (1.0 + 0.9 * uAB * (1.0 - smoothstep(0.0, 0.35, t)));
         float a = pow(facing, 2.4) * pow(1.0 - t, 1.7) * smoothstep(0.0, 0.10, t) * flick * 0.55;
+      #endif
+      #ifdef CORE
+        col *= 1.0 + 1.2 * uAB;                                    // shock diamonds go HDR only in afterburner
       #endif
       gl_FragColor = vec4(col, clamp(a * uInt, 0.0, 1.0));
     }`;
   function plumeMaterial(core) {
     return new THREE.ShaderMaterial({
       defines: core ? { CORE: '' } : {},
-      uniforms: { uLen: { value: 4 }, uRad: { value: 0.3 }, uDiam: { value: 4 }, uTime: { value: 0 }, uInt: { value: 1 } },
+      uniforms: { uLen: { value: 4 }, uRad: { value: 0.3 }, uDiam: { value: 4 }, uTime: { value: 0 }, uInt: { value: 1 }, uAB: { value: 0 } },
       vertexShader: PLUME_V, fragmentShader: PLUME_F,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false
     });
   }
   const coreMat = plumeMaterial(true), outerMat = plumeMaterial(false);
+  // Incandescent turbine core (Visual Pass 1): a radial-gradient disc deep inside
+  // each nozzle ring. Muted warm orange (<= 0.75 / 0.30 / 0.08, no glare) at
+  // idle-MIL; ramps with afterburner to HDR white-peach (2.5 / 1.65 / 1.05) with a
+  // 23 / 31 Hz +/-8 % thrust shimmer. toneMapped: false, additive.
+  const glowCoreMat = new THREE.ShaderMaterial({
+    uniforms: { uCol: { value: new THREE.Color(0.5, 0.2, 0.05) } },
+    vertexShader: LOG_V + `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
+    }`,
+    fragmentShader: LOG_F + `uniform vec3 uCol; varying vec2 vUv;
+      void main() {
+        #include <logdepthbuf_fragment>
+        float r = length(vUv - 0.5) * 2.0;
+        float k = pow(1.0 - smoothstep(0.0, 1.0, r), 1.6);
+        gl_FragColor = vec4(uCol * k * (0.75 + 0.25 * (1.0 - r)), 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false
+  });
+  const glowCoreGeo = new THREE.CircleGeometry(0.46, 32);
   const plumes = [];
   function attachPlume(localPos) {
     const g = new THREE.Group();
     g.position.copy(localPos).add(new THREE.Vector3(0, 0, 0.45));
     const outer = new THREE.Mesh(plumeGeo, outerMat);
     const core = new THREE.Mesh(plumeGeo, coreMat);
-    outer.frustumCulled = core.frustumCulled = false;
-    outer.renderOrder = 2; core.renderOrder = 3;
+    const glow = new THREE.Mesh(glowCoreGeo, glowCoreMat);
+    glow.position.z = -0.55;                         // inside the nozzle ring, facing aft (+Z)
+    outer.frustumCulled = core.frustumCulled = glow.frustumCulled = false;
+    outer.renderOrder = 2; core.renderOrder = 3; glow.renderOrder = 2;
     const light = new THREE.PointLight(0xff8a30, 2.5, 26, 2);
     light.position.z = 1.4;
-    g.add(outer, core, light);
+    g.add(outer, core, glow, light);
     jet.add(g);
     plumes.push({ g, light });
   }
+  const CORE_COOL = new THREE.Color(0.75, 0.30, 0.08), CORE_HOT = new THREE.Color(2.5, 1.65, 1.05);
   let engineOut = -1;
   function setEngineOut(i) {                         // battle damage: the dead F100's plume + glow go out
     if (i === engineOut) return;
@@ -128,11 +155,16 @@ export function createVFX(THREE, env) {
     coreMat.uniforms.uLen.value = coreLen;
     coreMat.uniforms.uDiam.value = coreLen / 1.05;
     coreMat.uniforms.uRad.value = 0.30 * (0.85 + 0.15 * t + 0.12 * ab);
-    coreMat.uniforms.uInt.value = (0.35 + 0.65 * t + 0.9 * ab) * pulse;
+    // Dry thrust stays below the 0.92 bloom threshold; burner level drives the HDR glare.
+    coreMat.uniforms.uInt.value = ((0.2 + 0.32 * t) * (1 - ab) + 1.25 * ab) * pulse;
     outerMat.uniforms.uLen.value = (2.0 + 4.6 * t + 6.8 * ab) * (1 + 0.04 * Math.sin(now * 23));
     outerMat.uniforms.uRad.value = 0.48 * (0.9 + 0.22 * ab);
-    outerMat.uniforms.uInt.value = (0.12 + 0.35 * t + 1.15 * ab) * pulse;
+    outerMat.uniforms.uInt.value = (0.12 + 0.3 * t + 1.15 * ab) * pulse;
     coreMat.uniforms.uTime.value = outerMat.uniforms.uTime.value = now;
+    coreMat.uniforms.uAB.value = outerMat.uniforms.uAB.value = ab;
+    // Incandescent core: warm orange scaled by throttle below the burner, HDR white-peach in AB.
+    const shimmer = 1 + ab * 0.08 * (0.6 * Math.sin(now * 2 * Math.PI * 23) + 0.4 * Math.sin(now * 2 * Math.PI * 31));
+    glowCoreMat.uniforms.uCol.value.copy(CORE_COOL).multiplyScalar(0.4 + 0.6 * t).lerp(CORE_HOT, smooth(ab, 0, 1)).multiplyScalar(shimmer);
     for (const p of plumes) {
       p.light.intensity = (0.8 + t * 2.0 + ab * 6.5) * pulse;
       p.light.color.setRGB(1.0, 0.55 + 0.15 * (1 - ab), 0.25 + 0.35 * (1 - ab));

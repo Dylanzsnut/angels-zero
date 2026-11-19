@@ -12,9 +12,25 @@
 //      (dual-tube binocular mask in the cockpit view).
 // The 2D HUD canvas sits above the WebGL canvas, so symbology stays razor-sharp.
 
-export function createNVG(THREE, renderer) {
+export function createNVG(THREE, renderer, post) {
   const size = new THREE.Vector2();
   renderer.getDrawingBufferSize(size);
+
+  // Normal (non-NVG) frames: selective HDR bloom pipeline (Visual Pass 1).
+  //   RenderPass -> half-float MSAA target (linear HDR, no tone mapping in the
+  //   materials), UnrealBloomPass at half resolution (threshold 0.92, strength
+  //   0.48, radius 0.32: only HDR emissives > 1 -- tracers, muzzle flash,
+  //   afterburner cores, the sun -- cross it), OutputPass applies ACES Filmic +
+  //   sRGB exactly once. The 2D HUD canvas sits above WebGL, so it never blurs.
+  let composer = null, renderPass = null, bloom = null;
+  if (post) {
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: renderer.capabilities.isWebGL2 ? 4 : 0 });
+    composer = new post.EffectComposer(renderer, rt);
+    renderPass = new post.RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
+    bloom = new post.UnrealBloomPass(new THREE.Vector2(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5)), 0.48, 0.32, 0.92);
+    composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(new post.OutputPass());
+    bloom.setSize(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5));      // composer.addPass set it full-res
+  }
   const mk = (w, h) => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: true, samples: 4 });
   const sceneRT = mk(size.x, size.y);
   const bloomRT = new THREE.WebGLRenderTarget(Math.max(1, size.x >> 2), Math.max(1, size.y >> 2), { type: THREE.HalfFloatType, depthBuffer: false });
@@ -109,10 +125,19 @@ export function createNVG(THREE, renderer) {
     brightMat.uniforms.uTexel.value.set(1 / size.x, 1 / size.y);
     compMat.uniforms.uTexel.value.set(1 / size.x, 1 / size.y);
     compMat.uniforms.uAspect.value = size.x / size.y;
+    if (composer) {
+      composer.setSize(size.x, size.y);                                       // target pixel ratio is 1: drawing-buffer px
+      bloom.setSize(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5));      // half-res bloom chain
+    }
   }
-  // Renders the frame: straight to the screen in daylight, through the tubes with NVG.
+  // Renders the frame: through the HDR bloom composer in normal vision, through the tubes with NVG.
   function render(scene, camera, t, cockpit) {
-    if (!active) { renderer.render(scene, camera); return; }
+    if (!active) {
+      if (!composer) { renderer.render(scene, camera); return; }
+      renderPass.scene = scene; renderPass.camera = camera;
+      composer.render();
+      return;
+    }
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
@@ -128,6 +153,7 @@ export function createNVG(THREE, renderer) {
   return {
     render, setSize,
     target: sceneRT,                                   // pre-allocated HDR target (shader warm-up compiles against it)
+    get bloom() { return bloom; }, get composer() { return composer; },
     setGain(k) { compMat.uniforms.uGain.value = k; },
     get gain() { return compMat.uniforms.uGain.value; },
     get active() { return active; },

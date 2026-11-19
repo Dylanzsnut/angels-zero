@@ -155,53 +155,78 @@ export function createCombat(THREE, env) {
   }
 
   /* ============================================================== tracers */
-  // Razor-thin additive line streaks stretched along each round's velocity:
-  // hot white-gold head fading to a transparent amber tail (1 px at any range).
+  // Luminous HDR cannon bolts (Visual Pass 1). Each round is a tapered tube
+  // stretched 14-22 m along its velocity (growing out of the muzzle, longer with
+  // closure speed), white-hot nose -> warm amber tail, additive, colour > 1 so
+  // only the bolts cross the bloom threshold. One InstancedMesh per stream with a
+  // pre-allocated round pool: zero allocations per shot or per frame. The tube
+  // widens with range so a bolt never drops below ~1.2 px at the 62 deg chase FOV.
+  const boltGeo = new THREE.CylinderGeometry(1, 0.3, 1, 6, 1, true); boltGeo.translate(0, 0.5, 0);   // y 0 = tail .. 1 = nose
+  const BOLT_V = LOG_V + `
+    varying float vT; varying float vF;
+    void main() {
+      vT = position.y; vF = instanceColor.r;
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
+    }`;
+  const BOLT_F = LOG_F + `
+    uniform vec3 uHead; uniform vec3 uTail;
+    varying float vT; varying float vF;
+    void main() {
+      #include <logdepthbuf_fragment>
+      vec3 c = mix(uTail, uHead, smoothstep(0.2, 0.92, vT)) * (0.35 + 0.65 * vT) * vF;
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  const _trbq = new THREE.Quaternion(), _trbm = new THREE.Matrix4(), _trbs = new THREE.Vector3(), _trbd = new THREE.Vector3(), _trbp = new THREE.Vector3(), _trbc = new THREE.Color(), _trBY = new THREE.Vector3(0, 1, 0);
   class Tracers {
-    constructor(max, head, tail, len) {
-      this.max = max; this.list = []; this.len = len;
-      this.head = new THREE.Color(head); this.tail = new THREE.Color(tail);
-      const geo = new THREE.BufferGeometry();
-      this.pos = new Float32Array(max * 6); this.col = new Float32Array(max * 8);
-      geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
-      geo.setDrawRange(0, 0);
-      this.geo = geo;
-      // Normal blending (not additive) so the gold streaks stay visible against bright haze as well as the sea.
-      this.lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, toneMapped: false }));
-      this.lines.frustumCulled = false; this.lines.renderOrder = 9;
-      scene.add(this.lines);
-      this._d = new THREE.Vector3();
+    constructor(max, head, tail, lenMin = 14, lenMax = 22) {
+      this.max = max; this.lenMin = lenMin; this.lenMax = lenMax;
+      this.pool = Array.from({ length: max }, () => ({ p: new THREE.Vector3(), prev: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, age: 0 }));
+      this.free = this.pool.slice();                       // recycled round objects
+      this.list = [];                                      // live rounds (oldest first)
+      const mat = new THREE.ShaderMaterial({ uniforms: { uHead: { value: head }, uTail: { value: tail } }, vertexShader: BOLT_V, fragmentShader: BOLT_F,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide, fog: false });
+      this.mesh = new THREE.InstancedMesh(boltGeo, mat, max);
+      for (let i = 0; i < max; i++) this.mesh.setColorAt(i, _trbc.setRGB(0, 0, 0));   // creates instanceColor (per-bolt fade)
+      this.mesh.count = 0; this.mesh.frustumCulled = false; this.mesh.renderOrder = 9;
+      scene.add(this.mesh);
     }
-    add(p, v, life) { if (this.list.length >= this.max) this.list.shift(); this.list.push({ p: p.clone(), prev: p.clone(), v: v.clone(), life, age: 0 }); }
-    clear() { this.list.length = 0; this.geo.setDrawRange(0, 0); }
+    add(p, v, life) {
+      const b = this.free.length ? this.free.pop() : this.list.shift();         // pool full: recycle the oldest round
+      b.p.copy(p); b.prev.copy(p); b.v.copy(v); b.life = life; b.age = 0;
+      this.list.push(b);
+    }
+    clear() { for (const b of this.list) this.free.push(b); this.list.length = 0; this.mesh.count = 0; }
     step(dt, hitTest) {
-      const out = [];
-      for (const b of this.list) {
+      let w = 0;
+      for (let r = 0; r < this.list.length; r++) {
+        const b = this.list[r];
         b.prev.copy(b.p); b.p.addScaledVector(b.v, dt); b.v.y -= G0 * dt; b.life -= dt; b.age += dt;
-        if (b.life <= 0 || b.p.y < groundLevel(b.p.x, b.p.z)) continue;
-        if (hitTest && hitTest(b)) continue;
-        out.push(b);
+        if (b.life <= 0 || b.p.y < groundLevel(b.p.x, b.p.z) || (hitTest && hitTest(b))) { this.free.push(b); continue; }
+        this.list[w++] = b;
       }
-      this.list = out;
-      let i = 0;
-      for (const b of this.list) {
-        const L = this.len * Math.min(1, b.age * 30);                 // streak grows out of the muzzle
-        this._d.copy(b.v).normalize();
-        const o = i * 6, c = i * 8, fade = Math.min(1, b.life * 2);
-        this.pos[o] = b.p.x; this.pos[o + 1] = b.p.y; this.pos[o + 2] = b.p.z;
-        this.pos[o + 3] = b.p.x - this._d.x * L; this.pos[o + 4] = b.p.y - this._d.y * L; this.pos[o + 5] = b.p.z - this._d.z * L;
-        this.col[c] = this.head.r; this.col[c + 1] = this.head.g; this.col[c + 2] = this.head.b; this.col[c + 3] = fade;
-        this.col[c + 4] = this.tail.r; this.col[c + 5] = this.tail.g; this.col[c + 6] = this.tail.b; this.col[c + 7] = 0;
-        i++;
+      this.list.length = w;
+      const cam = camera.position;
+      for (let i = 0; i < w; i++) {
+        const b = this.list[i];
+        const sp = b.v.length();
+        _trbd.copy(b.v).divideScalar(Math.max(sp, 1e-3));
+        const rel = _trbp.copy(b.v).sub(S.velocity).length();
+        const L = (this.lenMin + (this.lenMax - this.lenMin) * Math.min(1, rel / 1100)) * Math.min(1, b.age * 30);
+        const r = Math.max(0.22, b.p.distanceTo(cam) * 0.0024);            // >= ~3 px wide at the 62 deg FOV
+        _trbq.setFromUnitVectors(_trBY, _trbd);
+        _trbm.compose(_trbp.copy(b.p).addScaledVector(_trbd, -L), _trbq, _trbs.set(r, Math.max(L, 0.5), r));
+        this.mesh.setMatrixAt(i, _trbm);
+        this.mesh.setColorAt(i, _trbc.setRGB(Math.min(1, b.life * 2), 0, 0));
       }
-      this.geo.setDrawRange(0, i * 2);
-      this.geo.attributes.position.needsUpdate = true;
-      this.geo.attributes.color.needsUpdate = true;
+      this.mesh.count = w;
+      this.mesh.instanceMatrix.needsUpdate = true;
+      if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     }
   }
-  const playerTracers = new Tracers(320, 0xffd36b, 0xff7a10, 26);   // white-gold head -> amber tail
-  const enemyTracers = new Tracers(220, 0xff5a40, 0xc0100a, 22);
+  // HDR bolt colours: player white-gold (2.6, 2.0, 1.15) -> amber; enemy / AAA red-orange.
+  const playerTracers = new Tracers(320, new THREE.Color(2.6, 2.0, 1.15), new THREE.Color(1.0, 0.42, 0.1));
+  const enemyTracers = new Tracers(220, new THREE.Color(2.4, 0.95, 0.45), new THREE.Color(0.85, 0.16, 0.04));
 
   // M61A1 in the starboard wing-root fairing; rounds converge on the boresight at 1,500 ft.
   const GUN_PORT = new THREE.Vector3(1.45, 0.35, -1.8);
@@ -216,10 +241,18 @@ export function createCombat(THREE, env) {
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4; x.beginPath(); x.moveTo(64 - Math.cos(a) * 60, 64 - Math.sin(a) * 60); x.lineTo(64 + Math.cos(a) * 60, 64 + Math.sin(a) * 60); x.stroke(); }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
-  const muzzle = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
+  // Starboard wing-root muzzle flash: HDR star sprite + forward streak (colour
+  // (2.8, 2.1, 1.2) > 1 -> crisp bloom), re-rolled rotation / scale and a fresh
+  // 40 ms pulse on every frame that fires rounds.
+  const muzzle = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: new THREE.Color(2.8, 2.1, 1.2), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
   muzzle.position.copy(GUN_PORT).add(new THREE.Vector3(0, 0, -0.9));
   muzzle.visible = false;
   jet.add(muzzle);
+  const muzzleStreak = new THREE.Sprite(muzzle.material.clone());
+  muzzleStreak.position.copy(GUN_PORT).add(new THREE.Vector3(0, 0, -2.4));
+  muzzleStreak.visible = false;
+  jet.add(muzzleStreak);
+  let muzzleT = 0;
   const muzzleLight = new THREE.PointLight(0xffb050, 0, 32, 1.6);   // lights the starboard wing / canopy frame
   muzzleLight.position.copy(muzzle.position);
   jet.add(muzzleLight);
@@ -307,7 +340,8 @@ export function createCombat(THREE, env) {
   // with airspeed); at 1.0 the gun locks out ([ GUN OVERHEAT ]) until below 0.45.
   const GUN_HEAT_T = 3.2, GUN_COOL = 0.28, GUN_RESUME = 0.45;
   Object.assign(C, { gunHeat: 0, gunOverheat: false });
-  function gunIdle() { muzzle.visible = false; muzzleLight.intensity = 0; C.gunFiring = false; }
+  const _ms0 = new THREE.Vector3(), _ms1 = new THREE.Vector3();
+  function gunIdle() { muzzle.visible = muzzleStreak.visible = false; muzzleT = 0; muzzleLight.intensity = 0; C.gunFiring = false; }
   function updateGunHeat(dt, triggerHeld) {
     if (C.gunFiring) C.gunHeat = Math.min(1, C.gunHeat + dt / GUN_HEAT_T);
     else C.gunHeat = Math.max(0, C.gunHeat - (GUN_COOL + 0.12 * clamp((S.speed - 150) / 200, 0, 1)) * dt);
@@ -347,10 +381,18 @@ export function createCombat(THREE, env) {
     }
     if (C.ammo <= 0) { C.reload = 5; say('WINCHESTER GUN — RELOADING', 2); }
     C.gunFiring = n > 0;
-    muzzle.visible = n > 0;
-    muzzle.material.rotation = rand() * Math.PI;
-    muzzle.scale.setScalar(1.4 + rand() * 1.6);
-    muzzleLight.intensity = n > 0 ? 18 + rand() * 14 : 0;
+    if (n > 0) {                                                  // fresh 40 ms flash pulse, new star rotation / size
+      muzzleT = 0.04;
+      muzzle.material.rotation = rand() * Math.PI;
+      muzzle.scale.setScalar(1.3 + rand() * 1.5);
+      // Streak laid along the bore as seen on screen (camera-facing sprite rotated to the projected muzzle line).
+      _ms0.copy(port).project(camera); _ms1.copy(port).addScaledVector(bore, 12).project(camera);
+      muzzleStreak.material.rotation = Math.atan2(_ms1.y - _ms0.y, (_ms1.x - _ms0.x) * camera.aspect) - Math.PI / 2 + (rand() - 0.5) * 0.12;
+      muzzleStreak.scale.set(0.8 + rand() * 0.5, 3.0 + rand() * 2.2, 1);
+    }
+    muzzleT = Math.max(0, muzzleT - dt);
+    muzzle.visible = muzzleStreak.visible = muzzleT > 0;
+    muzzleLight.intensity = muzzleT > 0 ? 18 + rand() * 14 : 0;
     // Cordite gun gas streaming back over the starboard wing.
     smokeAcc += dt * 45;
     while (smokeAcc >= 1) {
@@ -2685,7 +2727,7 @@ export function createCombat(THREE, env) {
     return { g, spin, mats: [sand, olive, dark], r: 10, kind: 'FLAK', hp: 40, aimSpin: true };
   }
   const BASE = { ciws: [], sams: [], samCD: 4, ciwsT: 0, acc: 0 };
-  const baseTracers = new Tracers(200, 0xfff3c4, 0xffa040, 22);
+  const baseTracers = new Tracers(200, new THREE.Color(2.5, 2.2, 1.5), new THREE.Color(1.0, 0.5, 0.15));
   function buildBaseDefences() {
     const R = env.runway; if (!R) return;
     const white = surfMat(0xe6e8e4, 0.5, 0.2), grey = surfMat(0x8d918f, 0.7, 0.3), olive = surfMat(0x4b5233, 0.8, 0.2);
@@ -3181,6 +3223,12 @@ export function createCombat(THREE, env) {
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
+    // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
+    // pool on screen so their shader programs are built before flight.
+    warmVisuals(on) {
+      muzzle.visible = muzzleStreak.visible = !!on;
+      for (const t of [playerTracers, enemyTracers, baseTracers]) t.mesh.count = on ? Math.max(1, t.list.length) : t.list.length;
+    },
     // Engine emergency: F routes here while a fire / relight is pending.
     engineEmergency, fireKey, relightOdds,
     get relightHold() { return RELIGHT_HOLD; },

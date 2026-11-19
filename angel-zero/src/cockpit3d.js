@@ -266,7 +266,9 @@ export function createCockpit3D(THREE, env) {
   const toggleMat = new THREE.MeshStandardMaterial({ color: 0xd6dadf, roughness: 0.25, metalness: 0.9, envMap: envTex });
   const redKnobMat = new THREE.MeshStandardMaterial({ color: 0xb3121b, roughness: 0.38, metalness: 0.1, emissive: 0x200000 });
   const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5, metalness: 0.1 });
-  const glassSheen = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.07, roughness: 0.08, metalness: 0, envMap: envTex, envMapIntensity: 0.9, depthWrite: false });
+  // (opacity tuned for linear-space blending in the HDR composer target: 0.07 under the
+  // old sRGB framebuffer blend lifted the black dial faces to grey once blending went linear)
+  const glassSheen = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.022, roughness: 0.08, metalness: 0, envMap: envTex, envMapIntensity: 0.9, depthWrite: false });
   // panel (x, y) in metres -> faceplate pixels
   const FW = 2048, FH = Math.round(2048 * PH / PW);
   const fx = x => (x + PW / 2) / PW * FW, fy = y => (PTOP - y) / PH * FH, fs = m => m / PW * FW;
