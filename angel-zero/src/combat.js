@@ -8,6 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s51a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -23,10 +24,9 @@ export function createCombat(THREE, env) {
   let MSL_MAX = 6;                                            // becomes the pylon-missile count once the GLB loads
   const MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
   const BOMB_INTERVAL = 0.22, BOMB_RELOAD = 10, BOMB_EJECT = 2.5, BOMB_RADIUS = 70;
-  const FLR_MAX = 4, FLR_RECHARGE = 8, FLR_PER_SALVO = 6, FLR_DECOY_RANGE = 1.2 * NM, FLR_DECOY_P = 0.85;
+  const FLR_MAX = 4, FLR_RECHARGE = 8, FLR_PER_SALVO = 6, FLR_DECOY_RANGE = 1.2 * NM;
   const LOCK_RANGE = 3.5 * NM, PURSUE_RANGE = 4.0 * NM;
-  // Player IR seeker: 14 deg cone (7 deg half-angle) around the nose, ~1.3 s to a solid lock.
-  const SEEKER_HALF = 7 * D2R, LOCK_TIME = 1.3, LOCK_DECAY = 0.8;
+  const LOCK_DECAY = 0.8;   // seeker half-angle / lock time: DIFF.seekerHalf / DIFF.lockTime
   // Bandit seekers: within 3.2 NM, player inside a 22 deg cone off the bandit's nose
   // while the bandit sits in the player's rear hemisphere; ~2.2 s to a full lock.
   const B_LOCK_RANGE = 3.2 * NM, B_CONE = 22 * D2R, B_LOCK_TIME = 2.2, B_SOFT = 0.45;
@@ -35,6 +35,16 @@ export function createCombat(THREE, env) {
   const MSL_SOFT = { turn: 14 * D2R, fov: 18 * D2R, N: 3.0, noise: 0.35, err: 5 * D2R, tag: 'SOFT' };
   const BANDIT_FULL = { turn: 30 * D2R, fov: 45 * D2R, N: 3.6, noise: 0.05, tag: 'B-FULL' };
   const BANDIT_SOFT = { turn: 13 * D2R, fov: 14 * D2R, N: 2.6, noise: 0.6, err: 9 * D2R, tag: 'B-SOFT' };
+
+  // Active difficulty (src/difficulty.js). Angles are pre-converted to radians.
+  const DIFF = {};
+  function applyDifficulty(id) {
+    const p = DIFFICULTY_PRESETS[id] || DIFFICULTY_PRESETS.NORMAL;
+    Object.assign(DIFF, p, { seekerHalf: p.seekerHalfDeg * D2R, aam4Half: p.aam4HalfDeg * D2R });
+    director.max = p.maxEnemyMissiles; director.stagger = p.launchStagger;
+    C.difficulty = p.id;
+  }
+
   Object.assign(C, { designated: null, nextTarget: null, lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0 });
   Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, missileReloadMax: MSL_RELOAD, bombReloadMax: BOMB_RELOAD,
     bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], events: [], wave: 0, gunFiring: false, hitMarker: 0 });
@@ -199,9 +209,9 @@ export function createCombat(THREE, env) {
       this.mesh.count = 0; this.mesh.frustumCulled = false; this.mesh.renderOrder = 9;
       scene.add(this.mesh);
     }
-    add(p, v, life) {
+    add(p, v, life, dmg = 2.5) {
       const b = this.free.length ? this.free.pop() : this.list.shift();         // pool full: recycle the oldest round
-      b.p.copy(p); b.prev.copy(p); b.v.copy(v); b.life = life; b.age = 0;
+      b.p.copy(p); b.prev.copy(p); b.v.copy(v); b.life = life; b.age = 0; b.dmg = dmg;
       this.list.push(b);
     }
     clear() { for (const b of this.list) this.free.push(b); this.list.length = 0; this.mesh.count = 0; }
@@ -287,9 +297,34 @@ export function createCombat(THREE, env) {
   const RAILS = [new THREE.Vector3(-2.7, -0.95, 0.9), new THREE.Vector3(2.7, -0.95, 0.9)];
   let railNext = 0, mslCooldown = 0;
 
+  // CombatDirector: one shared budget for every hostile missile aimed at the player
+  // (bandit full / soft shots, land SAM sites, shipborne SAMs, debug banditShot).
+  //   max      concurrent hostile missiles still tracking the player (decoyed / lost ones free their slot)
+  //   stagger  minimum seconds between any two hostile launches
+  const director = { max: 2, stagger: 3.5, cooldown: 0, inFlight: 0, peak: 0, launches: 0, denied: 0 };
+  function hostileTracking() {
+    let n = 0;
+    for (const m of missiles) if (m.active && m.enemy && m.target && m.target.isPlayer && !m.lostTrack) n++;
+    return n;
+  }
+  director.canLaunch = () => director.cooldown <= 0 && hostileTracking() < director.max;
+  director.noteLaunch = () => {
+    director.launches++; director.cooldown = director.stagger;
+    director.inFlight = hostileTracking(); director.peak = Math.max(director.peak, director.inFlight);
+  };
+  director.tick = dt => {
+    director.cooldown = Math.max(0, director.cooldown - dt);
+    director.inFlight = hostileTracking();
+    director.peak = Math.max(director.peak, director.inFlight);
+  };
+  director.reset = () => { director.cooldown = 0; director.inFlight = 0; director.peak = 0; director.launches = 0; director.denied = 0; };
+  applyDifficulty(env.difficulty || 'NORMAL');
+
   // `visual` (optional): a store node from the F-15 GLB. Its exact mesh is cloned
   // into the missile body in place of the procedural AIM-9 parts.
   function launch(fromPos, fromQuat, fromVel, target, enemy, quality, visual) {
+    const hostileAtPlayer = enemy && target && target.isPlayer;
+    if (hostileAtPlayer && !director.canLaunch()) { director.denied++; return null; }
     const m = missiles.find(x => !x.active); if (!m) return null;
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
@@ -316,6 +351,7 @@ export function createCombat(THREE, env) {
       if (ax.lengthSq() > 0.5) m.vel.applyAxisAngle(ax, m.q.err * (0.7 + 0.5 * rand()));
     }
     if (target) m.losPrev.copy(target.pos).sub(fromPos).normalize();
+    if (hostileAtPlayer) director.noteLaunch();
     if (env.onSfx) env.onSfx('launch', fromPos, 1);
     return m;
   }
@@ -1290,15 +1326,16 @@ export function createCombat(THREE, env) {
   const DBG_HITS = [];                                          // debug: first hits on bandit 0 (zone@local x/y/z)
   const _hl = new THREE.Vector3(), _qi = new THREE.Quaternion();
   function hitZone(e, l) {
-    if (Math.abs(l.y) > 2.6 || l.z < -10.5 || l.z > 10.5) return null;
+    const k = DIFF.gunZoneScale;                                           // >1 = more forgiving envelope
+    if (Math.abs(l.y) > 2.6 * k || l.z < -10.5 * k || l.z > 10.5 * k) return null;
     const ax = Math.abs(l.x);
-    if (ax > 6.9) return null;
+    if (ax > 6.9 * k) return null;
     if (ax > 1.8) {
-      if (l.z >= -1.5 && l.z <= 6.2) {
+      if (l.z >= -1.5 * k && l.z <= 6.2) {
         const side = l.x < 0 ? 'L' : 'R';
         return (side === 'L' ? e.wingOffL : e.wingOffR) ? null : side;   // a severed wing is just air
       }
-      return l.z > 6.2 && ax < 4.8 ? 'TAIL' : null;                       // all-moving tailplanes
+      return l.z > 6.2 && ax < 4.8 * k ? 'TAIL' : null;                   // all-moving tailplanes
     }
     return l.z > 2.2 ? 'ENG' : 'CORE';
   }
@@ -1478,7 +1515,7 @@ export function createCombat(THREE, env) {
   // back to passive designation until C is pressed again.
   const SIGHT_HALF = 11 * D2R;
   const RADAR_HALF = 30 * D2R, RADAR_RANGE = 8 * NM;
-  const AAM4_HALF = 25 * D2R, AAM4_RANGE = 4.5 * NM, AAM4_LOCK = 1.6, AAM4_MAX = 20, AAM4_RELOAD = 12, AAM4_RACK = 3.5, AAM4_STAGGER = 0.09;
+  const AAM4_RANGE = 4.5 * NM, AAM4_MAX = 20, AAM4_RELOAD = 12, AAM4_RACK = 3.5, AAM4_STAGGER = 0.09;
   const SEEKER_GIVEUP = 5;
   // Cloud cover: IR seekers and radar lose their picture through thick cloud.
   const CLOUD_T = 0.35;                                      // cloudDensity above this = "in cloud"
@@ -1607,8 +1644,8 @@ export function createCombat(THREE, env) {
     C.targetObscured = obscured; C.seekerOff = off; C.targetRange = d;
     if (!C.seekerArmed) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
     // Progressive IR seeker: build while inside the 14 deg circle and 3.5 NM, decay when it leaves.
-    const inSeeker = d < LOCK_RANGE && off < SEEKER_HALF && C.missiles > 0 && C.missileReload <= 0;
-    C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / LOCK_TIME : -LOCK_DECAY * dt), 0, 1);
+    const inSeeker = d < LOCK_RANGE && off < DIFF.seekerHalf && C.missiles > 0 && C.missileReload <= 0;
+    C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / DIFF.lockTime : -LOCK_DECAY * dt), 0, 1);
     const prev = C.lockState;
     if (obscured && !wasObscured) {
       say('CLOUD OBSCURED — ' + t.label, 1.4, '#ffbf3f');
@@ -1638,9 +1675,9 @@ export function createCombat(THREE, env) {
       const to = e.pos.clone().sub(S.position), d = to.length();
       const off = Math.acos(clamp(to.divideScalar(d).dot(fwd), -1, 1));
       const obsc = (e.cloud || 0) > CLOUD_T;
-      const inCone = d < AAM4_RANGE && off < AAM4_HALF && C.aam4 > 0 && C.aam4Reload <= 0;
+      const inCone = d < AAM4_RANGE && off < DIFF.aam4Half && C.aam4 > 0 && C.aam4Reload <= 0;
       const prev = C.multiState[i];
-      let p = C.seekerArmed ? clamp(C.multiProg[i] + (obsc ? -1.0 * dt : inCone ? dt / AAM4_LOCK : -LOCK_DECAY * dt), 0, 1) : 0;
+      let p = C.seekerArmed ? clamp(C.multiProg[i] + (obsc ? -1.0 * dt : inCone ? dt / DIFF.aam4Lock : -LOCK_DECAY * dt), 0, 1) : 0;
       C.multiProg[i] = p;
       const st = p >= 1 ? 'LOCK' : p > 0 ? 'ACQ' : 'NONE';
       C.multiState[i] = st;
@@ -1846,7 +1883,7 @@ export function createCombat(THREE, env) {
               if (tgt.isPlayer) {
                 explosion(pos, 0.9); damagePlayer(q === BANDIT_FULL ? 40 : 26); m.hitPlayer = true;
                 // Critical hit on two healthy engines: 35 % chance one of them catches fire.
-                if (!C.engSide && C.fireArmed && !C.dead && rand() < 0.35) igniteEngine('MISSILE HIT');
+                if (!C.engSide && C.fireArmed && !C.dead && rand() < DIFF.missileIgniteP) igniteEngine('MISSILE HIT');
               }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
               else if (tgt.fleet) { explosion(pos, 1.3, { kind: 'ship' }); damageSurface(tgt, 90); }          // ship: multi-hit
@@ -2216,7 +2253,7 @@ export function createCombat(THREE, env) {
       const near = flares.find(f => f.alive && !f.owner && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
       if (!near) continue;
       m.flareSalvo = near.salvo;
-      if (rand() < FLR_DECOY_P) {
+      if (rand() < DIFF.flareDecoyP) {
         m.target = near; m.losPrev.copy(near.pos).sub(m.mesh.position).normalize();
         C.decoyed = (C.decoyed || 0) + 1; C.score += 250;
         pushEvent('EVADED', 'MISSILE EVADED', 250, '#52ff9c');
@@ -2621,7 +2658,7 @@ export function createCombat(THREE, env) {
     }
     fire.spawn({ x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, life: 0.14, s0: 9, s1: 20, r: 1, g: 0.7, b: 0.3, a: 0.95, drag: 0 });
     if (env.onSfx) env.onSfx('explosion', p, 0.3);
-    if (playerActiveNow && !C.dead && S.position.distanceTo(p) < 30) { damagePlayer(4); C.hitFlash = 0.12; }
+    if (playerActiveNow && !C.dead && S.position.distanceTo(p) < DIFF.flakRadius) { damagePlayer(DIFF.flakDmg); C.hitFlash = 0.12; }
   }
   const PLAYER_TGT = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
   function samsInAir() { let n = 0; for (const m of missiles) if (m.active && m.sam) n++; return n; }
@@ -2691,8 +2728,9 @@ export function createCombat(THREE, env) {
             t.ciwsAcc -= 1;
             const tof = Math.sqrt(bd) / 1100;
             _dv.copy(S.position).addScaledVector(S.velocity, tof).sub(_db).normalize();
-            _dv.x += (rand() - 0.5) * 0.08; _dv.y += (rand() - 0.5) * 0.08; _dv.z += (rand() - 0.5) * 0.08;
-            enemyTracers.add(_db, _dv.normalize().multiplyScalar(1100), 2.4);
+            const sp = DIFF.ciwsSpread;
+            _dv.x += (rand() - 0.5) * sp; _dv.y += (rand() - 0.5) * sp; _dv.z += (rand() - 0.5) * sp;
+            enemyTracers.add(_db, _dv.normalize().multiplyScalar(1100), 2.4, DIFF.ciwsDmg);
           }
           if (rand() < dt * 20) fire.spawn({ x: _db.x, y: _db.y, z: _db.z, vx: 0, vy: 0, vz: 0, life: 0.06, s0: 3, s1: 5, r: 1, g: 0.8, b: 0.4, a: 0.9, drag: 0 });
           C.missileWarning = Math.max(C.missileWarning, 0.3);
@@ -2712,7 +2750,7 @@ export function createCombat(THREE, env) {
       if (t.samCD <= 0 && dist < 7500 && S.position.y > 260) {
         t.samCD = 16 + rand() * 8;
         mountWorld(t, t.sams[Math.floor(rand() * t.sams.length)], _fp);
-        if (!occluded(_fp, S.position)) surfaceSAM(_fp.clone(), t.kind);
+        if (!occluded(_fp, S.position) && !surfaceSAM(_fp.clone(), t.kind)) t.samCD = 2 + rand() * 2;   // director said wait
       }
     }
     // Locking a ship with the seeker provokes the whole group.
@@ -2780,7 +2818,7 @@ export function createCombat(THREE, env) {
         t.samCD = (t.samCD ?? 8 + rand() * 8) - dt;
         if (fire_ok && t.samCD <= 0 && dist < 8000 && S.position.y > 260) {
           t.samCD = 18 + rand() * 8;
-          if (!occluded(_fp.copy(t.pos).setY(t.pos.y + 6), S.position)) surfaceSAM(_fp.clone(), t.label);
+          if (!occluded(_fp.copy(t.pos).setY(t.pos.y + 6), S.position) && !surfaceSAM(_fp.clone(), t.label)) t.samCD = 2 + rand() * 2;
         }
       }
     }
@@ -2887,8 +2925,8 @@ export function createCombat(THREE, env) {
   //
   // Single-engine fire, Halon bottle, slim-chance windmill relight. Each F100 has a
   // state: HEALTHY | ON_FIRE | EXTINGUISHED | RELIGHTING | SEIZED (C.engL / C.engR).
-  //   Ignition: DMG crossing 45 % (re-arms below 40 %), or a direct missile hit on
-  //     two healthy engines (35 %). One engine (random side) goes ON_FIRE: thrust
+  //   Ignition: DMG crossing the preset threshold (65 / 55 / 45 %), or a direct missile hit on
+  //     two healthy engines (preset chance). One engine (random side) goes ON_FIRE: thrust
   //     capped at 58 %, dead plume, yaw / roll drift toward it, fire spreads +2.2 %
   //     DMG/s and the airframe explodes after 16 s.
   //   F (press) while ON_FIRE: Halon discharge -> EXTINGUISHED (spread stops).
@@ -2897,7 +2935,7 @@ export function createCombat(THREE, env) {
   //     -> HEALTHY (DMG -20 %), else -> SEIZED (single-engine ops until AFB repair).
   // Legacy flags derived for the flight model / VFX / gauges: C.engineOut = the
   // affected side unless HEALTHY, C.engineFire = ON_FIRE.
-  const FIRE_DMG_RATE = 2.2, FIRE_FATAL_T = 16, RELIGHT_HOLD = 2.5, FIRE_DMG = 45, FIRE_REARM = 40;
+  const FIRE_DMG_RATE = 2.2, FIRE_FATAL_T = 16, RELIGHT_HOLD = 2.5;
   Object.assign(C, { engL: 'HEALTHY', engR: 'HEALTHY', engSide: null, engState: 'HEALTHY', fireT: 0, fireArmed: true,
     relightT: 0, relightUsed: false, relightResult: null, relightResultT: 0, relightP: 0, relightForce: null, fNeedRelease: false });
   let dmgSmokeAcc = 0, cautionT = 0;
@@ -3007,8 +3045,8 @@ export function createCombat(THREE, env) {
     const dmg = 100 - C.health;
     C.hydraulic = playerActive && dmg >= 35;
     if (!playerActive) return;
-    if (dmg < FIRE_REARM) C.fireArmed = true;
-    if (dmg >= FIRE_DMG && C.fireArmed && !C.engSide) igniteEngine(`DMG ${Math.round(dmg)}%`);
+    if (dmg < DIFF.engineFireRearm) C.fireArmed = true;
+    if (dmg >= DIFF.engineFireDmg && C.fireArmed && !C.engSide) igniteEngine(`DMG ${Math.round(dmg)}%`);
     const st = C.engState;
     if (st === 'ON_FIRE') {
       C.fireT += dt;
@@ -3064,6 +3102,7 @@ export function createCombat(THREE, env) {
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
       reload: 0, missileReload: 0, gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, health: 100, hitFlash: 0 });
     resetEngines();                                         // both F100s back to HEALTHY
+    director.reset();
   }
   function resetPlayer() {
     rearm('msl'); rearm('bomb');
@@ -3073,6 +3112,7 @@ export function createCombat(THREE, env) {
     ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
     Object.assign(C, { gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, ccrpArmed: false });
     resetEngines();
+    director.reset();
     flareRecharge = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
@@ -3205,7 +3245,7 @@ export function createCombat(THREE, env) {
         if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
       }
       for (const e of enemies) {
-        if (e.alive && segHit(b, e.pos, 11) && segT < 0.999) {        // not yet abeam: it passes through next frame
+        if (e.alive && segHit(b, e.pos, DIFF.gunHitRadius) && segT < 0.999) {        // not yet abeam: it passes through next frame
           // Closest approach of this frame's round path, in the bandit's local frame.
           const zone = hitZone(e, _hl.copy(cp).sub(e.pos).applyQuaternion(_qi.copy(e.quat).invert()));
           if (DBG_HITS && e.id === 0 && DBG_HITS.length < 12) DBG_HITS.push((zone || '-') + '@' + _hl.toArray().map(v => v.toFixed(1)).join('/'));
@@ -3217,9 +3257,10 @@ export function createCombat(THREE, env) {
       return false;
     });
     enemyTracers.step(dt, b => {
-      if (playerActive && segHit(b, S.position, 9)) { damagePlayer(2.5); return true; }
+      if (playerActive && segHit(b, S.position, 9)) { damagePlayer(b.dmg); return true; }
       return false;
     });
+    director.tick(dt);
     updateMissiles(dt, playerActive);
     updateBombs(dt); updateRings(dt); updateFlares(dt);
     updateRipple(dt); updateECM(dt); updateRWR(playerActive && !C.playerSafe);   // safe: RWR scope clears
@@ -3233,6 +3274,8 @@ export function createCombat(THREE, env) {
 
   return {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
+    setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
+    get difficulty() { return C.difficulty; },
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
@@ -3333,7 +3376,10 @@ export function createCombat(THREE, env) {
       resetAI(e); e.tac = e.mode = 'ENGAGE'; e.speed = S.velocity.length(); e.vel.copy(fwd).multiplyScalar(e.speed); e.prev.copy(e.pos); e.mslCD = 0; e.bLock = 0; orient(e); writeFleet();
     },
     stats() {
-      return { alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? TAC_CODE[e.tac] || '?' : '-').join(''),
+      return { difficulty: C.difficulty,
+        director: { max: director.max, stagger: director.stagger, inFlight: director.inFlight, peak: director.peak,
+          launches: director.launches, denied: director.denied, cooldown: +director.cooldown.toFixed(2) },
+        alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? TAC_CODE[e.tac] || '?' : '-').join(''),
         ai: Object.fromEntries(Object.entries(ai).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(1) : null])),
         e0: enemies[0] ? { tac: enemies[0].tac, bank: Math.round(enemies[0].bank / D2R), g: +enemies[0].gNow.toFixed(1), kt: Math.round(enemies[0].speed / KT), ab: +enemies[0].ab.toFixed(2),
           alt: Math.round(enemies[0].pos.y), flr: enemies[0].flaresLeft, alive: enemies[0].alive,

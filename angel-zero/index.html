@@ -261,6 +261,8 @@
           <button class="tod-btn" id="todBtn" type="button">[ CYCLE TIME: RANDOM ]</button>
           <span id="wxChip">WX: --</span>
           <button class="tod-btn" id="wxBtn" type="button">[ CYCLE WEATHER: RANDOM ]</button>
+          <span id="diffChip">THREAT: NORMAL</span>
+          <button class="tod-btn" id="diffBtn" type="button">[ DIFFICULTY: NORMAL ]</button>
           <span>ROE: WEAPONS FREE</span>
         </div>
       </div>
@@ -431,25 +433,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s50a';
-import { createBlastFX } from './src/blastfx.js?v=s50a';
-import { createHUD } from './src/hud.js?v=s50a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s50a';
-import { createCombat } from './src/combat.js?v=s50a';
-import { createEjection } from './src/eject.js?v=s50a';
-import { createAudio } from './src/audio.js?v=s50a';
-import { createRadio } from './src/radio.js?v=s50a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s50a';
-import { createLivery } from './src/livery.js?v=s50a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s50a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s50a';
-import { createCanopyFX } from './src/canopy.js?v=s50a';
-import { createNVG } from './src/nvg.js?v=s50a';
-import { createWorld, WORLD } from './src/world.js?v=s50a';
-import { createSurfaces } from './src/surfaces.js?v=s50a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s50a';
-import { createFreeLook } from './src/freelook.js?v=s50a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s50a';
+import { createVFX } from './src/vfx.js?v=s51a';
+import { createBlastFX } from './src/blastfx.js?v=s51a';
+import { createHUD } from './src/hud.js?v=s51a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s51a';
+import { createCombat } from './src/combat.js?v=s51a';
+import { createEjection } from './src/eject.js?v=s51a';
+import { createAudio } from './src/audio.js?v=s51a';
+import { createRadio } from './src/radio.js?v=s51a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s51a';
+import { createLivery } from './src/livery.js?v=s51a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s51a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s51a';
+import { createCanopyFX } from './src/canopy.js?v=s51a';
+import { createNVG } from './src/nvg.js?v=s51a';
+import { createWorld, WORLD } from './src/world.js?v=s51a';
+import { createSurfaces } from './src/surfaces.js?v=s51a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s51a';
+import { createFreeLook } from './src/freelook.js?v=s51a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s51a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s51a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -2011,7 +2014,9 @@ let radioSys = null;
 function onRadio(kind, d) { if (radioSys) radioSys.event(kind, d); }
 // Pooled impact detonations (Visual Pass 5): fireballs, rings, sparks, debris, hanging smoke, geysers.
 blast = createBlastFX(THREE, { scene, camera, terrainHeight, sunDir: SUN_DIR, wind: vfx.wind, sunLight, hemiLight });
+const DIFF_FORCED = DEBUG && Q.has('difficulty') && DIFFICULTY_PRESETS[Q.get('difficulty').toUpperCase()] ? Q.get('difficulty').toUpperCase() : null;
 const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio, runway: world.runway, blast,
+  difficulty: DIFF_FORCED || loadDifficulty(),
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
@@ -2145,6 +2150,32 @@ todBtn.addEventListener('click', e => {
     atmosphere.applyTimeOfDay(forced, { instant: true, mode: todMode, az: Q.has('az') ? Number(Q.get('az')) : undefined });
   } else rollSortieConditions(true);
 }
+
+/* ---- difficulty: ROOKIE / NORMAL / ACE (CombatDirector cap + stagger, forgiveness, damage) ---- */
+const diffChip = document.getElementById('diffChip'), diffBtn = document.getElementById('diffBtn');
+let diffMode = combatSys.difficulty || 'NORMAL';
+const DIFF_CHIP = { ROOKIE: 'THREAT: LOW // 1 MSL', NORMAL: 'THREAT: STANDARD // 2 MSL', ACE: 'THREAT: EXTREME // 3 MSL' };
+function syncDifficultyUI() {
+  diffChip.textContent = DIFF_CHIP[diffMode];
+  diffChip.classList.toggle('hot', diffMode === 'ACE');
+  diffBtn.textContent = `[ DIFFICULTY: ${DIFFICULTY_PRESETS[diffMode].label} ]`;
+}
+function setDifficulty(id, persist = true) {
+  diffMode = DIFFICULTY_PRESETS[id] ? id : 'NORMAL';
+  combatSys.setDifficulty(diffMode);
+  if (persist) saveDifficulty(diffMode);
+  syncDifficultyUI();
+  if (DEBUG) console.log('[ANGELS_ZERO] difficulty', diffMode, JSON.stringify(combatSys.stats().director), 'saved', (() => { try { return localStorage.getItem('angels_zero_difficulty'); } catch (e) { return null; } })());
+}
+diffBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (appMode !== 'MENU') return;                        // locked once the sortie is airborne
+  setDifficulty(DIFFICULTY_ORDER[(DIFFICULTY_ORDER.indexOf(diffMode) + 1) % DIFFICULTY_ORDER.length]);
+});
+syncDifficultyUI();
+if (DEBUG) console.log('[ANGELS_ZERO] difficulty boot', diffMode, DIFF_FORCED ? '(forced)' : '(stored)');
+// ?diffcycle=n: press [ DIFFICULTY ] n times at boot (headless persistence test).
+if (DEBUG && Q.has('diffcycle')) for (let i = 0; i < (Number(Q.get('diffcycle')) || 1); i++) diffBtn.click();
 
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
   missiles, STALL_AOA, getEnemies: () => combatSys.enemies });

@@ -1087,6 +1087,41 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     plume off a hillside; zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
+- [x] **Difficulty presets + global CombatDirector** *(build `s51a`, new `src/difficulty.js`,
+  `src/combat.js`, `index.html`)*
+  - Briefing selector `ROOKIE | NORMAL (default) | ACE`, persisted in
+    `localStorage` key `angels_zero_difficulty` (plain string, try/catch).
+    Debug flags `?difficulty=ROOKIE|NORMAL|ACE` (forced, not saved) and
+    `?diffcycle=n` (n clicks at boot, MENU only).
+  - Preset table (hostile missile cap / stagger, player seeker half-angle / lock,
+    4AAM cone / lock, gun radius / zone scale, flare decoy P, CIWS damage / spread,
+    flak damage / radius, engine-fire DMG ignition / re-arm, missile ignition P):
+
+    | Preset | MSL | stagger | seeker | lock | 4AAM | 4AAM lock | gun R | zone | flare | CIWS dmg/spread | flak dmg/R | fire on/off | missile ignite |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | ROOKIE | 1 | 5.5 s | 10 deg | 1.0 s | 30 deg | 1.3 s | 14 m | 1.30 | 0.95 | 1.0 / 0.12 | 2 / 24 m | 65 / 60 % | 0.20 |
+    | NORMAL | 2 | 3.5 s | 8.5 deg | 1.15 s | 27 deg | 1.45 s | 12.5 m | 1.15 | 0.90 | 1.6 / 0.10 | 3 / 27 m | 55 / 50 % | 0.28 |
+    | ACE | 3 | 1.8 s | 7 deg | 1.3 s | 25 deg | 1.6 s | 11 m | 1.00 | 0.85 | 2.2 / 0.08 | 4 / 30 m | 45 / 40 % | 0.35 |
+
+  - Director formula: `canLaunch = cooldown <= 0 && count(active && enemy &&
+    target.isPlayer && !lostTrack) < max`; on launch `cooldown = stagger`;
+    each frame `cooldown = max(0, cooldown - dt)`. Applies to bandit full/soft,
+    land SAM, ship SAM and debug banditShot; per-source cooldowns still apply.
+    Denied SAM retries in 2-4 s. Reset on `resetPlayer()` / `pitStop()`.
+  - Verified `peak <= max` (SEC-04 fleet, `at=fleet&phase=2&warp=40`, headless):
+    ROOKIE max 1 / stagger 5.5 → peak 1, launches 4, denied 145;
+    NORMAL max 2 / stagger 3.5 → peak 1, launches 1, denied 1;
+    ACE max 3 / stagger 1.8 → peak 1, launches 1, denied 0.
+    ACE 3.5 s / 210-frame sample of hostile missiles tracking the player: max 0
+    observed (≤ 3). Engine fire: ROOKIE 60 % DMG stays HEALTHY, 66 % ignites;
+    ACE 46 % ignites. `setDifficulty('ROOKIE')` returns ROOKIE.
+  - Verified persistence: `?diffcycle=2` boots NORMAL → ACE (saved) → ROOKIE
+    (saved); next boot ROOKIE (stored); `?difficulty=ace` boots ACE (forced) and
+    does not save; in-sortie `diffBtn.click()` is inert. Storage-blocked boot
+    falls back to NORMAL via try/catch (no page errors).
+  - No new materials or shaders: program count 109 before/after. Pass 1-5
+    visuals unchanged, 375 px briefing wraps cleanly, zero page / WebGL errors.
+    No per-frame allocations added (director is a preallocated closure + loop).
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
@@ -1178,7 +1213,7 @@ bridgeB|volcano|wind|harbor` · `overview[=h]` · `tod=NAME&az=deg` ·
 `at=final18|rig|stack` (3.6 km RWY 18 final / oil rig run / sea-stack run) ·
 `at=fleet` · `phase=1|2|3` · `sinkat=s[,i]` (sink task-force ship i) · `maskshot=s` (aimed bandit shot)
 · `wingtest=L|R|C,dist` (passive bandit on the gun line) · `wingtrack=L|R` (keep the nose on its wing while firing) · `dmg=pct` · `ccrp=i,dist,alt[,spd]` (level run-in at surface target i) · `fireon=t` / `fireoff=t` (trigger)
-· `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
+· `wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM` · `difficulty=ROOKIE|NORMAL|ACE` (forced, not saved) · `diffcycle=n` (n briefing clicks; no `nointro`) · `logat=t,...` · `fireat=t` (RMB) · `ecmat=t` (Z) · `wpn=aam4` · `fire` · `msl` · `eject` · `alert` · `force=cone,vapor,mist`
 · `merge=m` (head-on bandit) · `ram=m` (head-on, no break) · `lowpatrol=m` · `ace` (start in PHASE 3: SCARLET 1 + 2 escorts) · `debrief=CLEARED|FAILED[,score]` (end the sortie 3 s after load) · `onrwy[=z]` (stopped on RWY 36, gear down) · `gear` (start gear down)
 (wave patrols low over the islands, no engaging) · `bandcam=i,dist` (chase
 camera on bandit i).
