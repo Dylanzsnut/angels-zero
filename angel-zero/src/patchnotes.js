@@ -3,6 +3,12 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.0.9', title: 'FOUR-PHASE MISSION + TACTICAL HUD', bullets: [
+    'Missions now flow through four objectives: sweep, strike, ace intercept and carrier recovery.',
+    'An objective card and off-screen chevron keep the next target in view, with a contextual prompt pill for threats and recovery.',
+    'Press F1 for a compact in-flight keybind cheat-sheet.',
+    'Carrier approach gates appear when damaged, winchester or on final approach. FURBALL remains endless.'
+  ] },
   { version: 'v1.0.8', title: 'COCKPIT MFD SUB-PAGES', bullets: [
     'Cycle the VSD radar through TACTICAL RADAR, STORES & DMG and RWR THREAT SCOPE with the [ and ] keys.',
     'The tactical page plots wingmen, bandits, aces and strike bunkers heading-up over a 10 NM sweep.',

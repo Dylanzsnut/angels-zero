@@ -1436,6 +1436,22 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     `renderer.info.programs` (99) and `__perfDebug.calls` (29) unchanged across
     page switches; zero JS/WebGL errors across three Edge CLI URLs.
     Debug `?mfdpage=0..2`. Every `?v=` tag bumped to s66a.
+- [x] **Four-phase mission flow + tactical HUD** *(build `s67a`, `src/combat.js`,
+  `src/hud.js`, `index.html`)*
+  - MISSION now runs SWEEP → STRIKE → CRIMSON INTERCEPT → CARRIER RTB; the old
+    CLEARED-on-Ace trigger is gone and completion is the #3 arrest trap.
+    `primaryTargets()` reuses an 8-slot array; `stats().mission` reports the
+    phase, label, objective counts and primary count. FURBALL stays endless.
+  - HUD adds a top-right objective card with nearest-target range, an off-screen
+    chevron / on-screen bracket, a five-rule contextual prompt pill (radar /
+    IR / RTB / missile cam / wingmen) and an F1 keybind cheat-sheet.
+  - One instanced approach-gate mesh (three frames) always in scene, opacity
+    driven by damage / winchester / phase 4, so its program is compiled at warm-up.
+  - Verified headless: phase 1 card reads `OBJ: SWEEP BANDITS [0/6] — 8.1 KM`;
+    `?mphaseat=1,2` gives four strike primaries, `=1,4` gives the carrier with
+    gates visible (opacity 0.26); `?radarshot` produces a RADAR `msl` RWR entry;
+    F1 toggles the sheet; zero JS/WebGL errors across four Edge CLI URLs.
+    Debug `?mphaseat=s,n`, `?radarshot=s`. Every `?v=` tag bumped to s67a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

@@ -406,6 +406,7 @@
             <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject bailout</span></div>
             <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Tactical menu</span></div>
             <div class="bind"><span class="k"><kbd>[</kbd> <kbd>]</kbd></span><span class="a">Cockpit MFD page</span></div>
+            <div class="bind"><span class="k"><kbd>F1</kbd></span><span class="a">Keybind cheat-sheet</span></div>
             <div class="bind"><span class="k"><kbd>TAB</kbd> <kbd>TAB</kbd></span><span class="a">End sortie / debrief</span></div>
             <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
           </div>
@@ -492,29 +493,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s66a';
-import { createBlastFX } from './src/blastfx.js?v=s66a';
-import { createHUD } from './src/hud.js?v=s66a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s66a';
-import { createCombat } from './src/combat.js?v=s66a';
-import { createEjection } from './src/eject.js?v=s66a';
-import { createAudio } from './src/audio.js?v=s66a';
-import { createRadio } from './src/radio.js?v=s66a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s66a';
-import { createLivery } from './src/livery.js?v=s66a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s66a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s66a';
-import { createCanopyFX } from './src/canopy.js?v=s66a';
-import { createNVG } from './src/nvg.js?v=s66a';
-import { createWorld, WORLD } from './src/world.js?v=s66a';
-import { createSurfaces } from './src/surfaces.js?v=s66a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s66a';
-import { createFreeLook } from './src/freelook.js?v=s66a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s66a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s66a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s66a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s66a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s66a';
+import { createVFX } from './src/vfx.js?v=s67a';
+import { createBlastFX } from './src/blastfx.js?v=s67a';
+import { createHUD } from './src/hud.js?v=s67a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s67a';
+import { createCombat } from './src/combat.js?v=s67a';
+import { createEjection } from './src/eject.js?v=s67a';
+import { createAudio } from './src/audio.js?v=s67a';
+import { createRadio } from './src/radio.js?v=s67a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s67a';
+import { createLivery } from './src/livery.js?v=s67a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s67a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s67a';
+import { createCanopyFX } from './src/canopy.js?v=s67a';
+import { createNVG } from './src/nvg.js?v=s67a';
+import { createWorld, WORLD } from './src/world.js?v=s67a';
+import { createSurfaces } from './src/surfaces.js?v=s67a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s67a';
+import { createFreeLook } from './src/freelook.js?v=s67a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s67a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s67a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s67a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s67a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s67a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1239,9 +1240,8 @@ function sortieStats() {
     phase: combat.phase || 1 };
 }
 function watchSortie() {
-  if (!sortie.active || appMode !== 'PLAY' || combat.mode === 'FURBALL') return;
-  if (sortie.endAt === null && (combat.aceDowns || 0) > sortie.ace0) sortie.endAt = simTime + 4.5;   // victory lap, then debrief
-  if (sortie.endAt !== null && simTime >= sortie.endAt) endSortie('CLEARED');
+  // MISSION now ends via the phase-4 carrier trap (combat.onCarrierTrap → onMissionComplete).
+  // FURBALL ends only via the Tab / pause-menu debrief.
 }
 function endSortie(outcome) {
   if (!sortie.active) return;
@@ -1582,6 +1582,11 @@ addEventListener('keydown', e => {
   if (freeLook.onKey(e, true)) return;
   const k = keyOf(e);
   if (k === 'escape' && patchOverlay.classList.contains('open')) { setPatchOpen(false); return; }
+  if (k === 'f1') {
+    e.preventDefault();
+    if (!e.repeat) combat.cheat = !combat.cheat;
+    return;
+  }
   if (e.altKey && appMode === 'PLAY') e.preventDefault();
   if (appMode === 'DEBRIEF') {                         // debrief: Enter = primary action, B = briefing; no flight input
     if (k === 'enter' && !['dbBrief', 'dbReplay', 'dbEquip'].includes(document.activeElement?.id)) { e.preventDefault(); replaySortie(dbEquipId); }
@@ -1833,6 +1838,7 @@ function updatePhysics(dt) {
         combat.trapT = performance.now(); combat.trapWire = wire;
         combat.traps = (combat.traps || 0) + 1;
         tele.event(EV.CARRIER_TRAP, state.position.x, state.position.z, simTime);
+        combatSys.onCarrierTrap();
         blastShake = Math.max(blastShake, 0.45);
         onSfx('trap');
       }
@@ -2614,6 +2620,7 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx, onFlyby, onWing,
   onSlowMo: triggerSlowMo, getWingmen: () => wingmen, addBox: world.addBox,
+  onMissionComplete: () => endSortie('CLEARED'),
   onTele: (type, p) => tele.event(EV[type], p.x, p.z, simTime),
   getTeleStats: () => ({ n: tele.n, ne: tele.ne }),
   getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }),
@@ -2817,6 +2824,7 @@ const hud = createHUD(THREE, {
   isReady: () => modelReady, getMist: () => vfx.mist, getFreeLook: () => freeLook,
   getMissileCam: () => (mcam.active && mcam.m) ? { dist: mcam.m.target ? mcam.m.mesh.position.distanceTo(mcam.m.target.pos) : 0, k: mcam.k } : null,
   getStrikeTargets: () => combatSys.strikeTargets,
+  getPrimary: () => combatSys.primaryTargets(),
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
 });
@@ -3014,6 +3022,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     const trapAt = Q.has('trapat') ? Number(Q.get('trapat')) : -1, catAt = Q.has('catat') ? Number(Q.get('catat')) : -1;
     const strikeKillAt = Q.has('strikekillat') ? Number(Q.get('strikekillat')) : -1;
     const debriefAt = Q.has('debriefat') ? Number(Q.get('debriefat')) : -1;
+    const mphaseAt = Q.has('mphaseat') ? Q.get('mphaseat').split(',').map(Number) : null;
+    const radarShotAt = Q.has('radarshot') ? Number(Q.get('radarshot')) : -1;
     const nearAt = Q.has('nearat') ? Number(Q.get('nearat')) : -1;
     const killAts = Q.has('killat') ? Q.get('killat').split(',').map(Number) : [];
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
@@ -3030,6 +3040,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       updateMissileCamState(h);
       if (strikeKillAt >= t0 && strikeKillAt < t1) { combatSys.killStrikes(); console.log('[ANGELS_ZERO] strike kill @', t1.toFixed(2), JSON.stringify(combatSys.stats().strike), 'score', combat.score); }
       if (nearAt >= t0 && nearAt < t1) { tele.event(EV.NEAR_MISS, state.position.x, state.position.z, simTime); console.log('[ANGELS_ZERO] near miss @', t1.toFixed(2)); }
+      if (radarShotAt >= t0 && radarShotAt < t1) { combatSys.banditShot(0, false, true, 'RADAR'); console.log('[ANGELS_ZERO] radar shot @', t1.toFixed(2)); }
+      if (mphaseAt && t1 >= mphaseAt[0] && t0 < mphaseAt[0]) { console.log('[ANGELS_ZERO] mphase @', t1.toFixed(2), combatSys.setMissionPhase(mphaseAt[1])); }
       if (t1 >= debriefAt && t0 < debriefAt) { console.log('[ANGELS_ZERO] debrief @', t1.toFixed(2), JSON.stringify(combatSys.stats().tele)); endSortie('CLEARED'); }
       if (mslAt >= t0 && mslAt < t1) { console.log('[ANGELS_ZERO] fire @', t1.toFixed(2), combat.lockState, combat.lockProgress.toFixed(2)); combatSys.fireMissile(); }
       if (rollAt >= t0 && rollAt < t1) startRoll(1);

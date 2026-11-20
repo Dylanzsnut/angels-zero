@@ -6,7 +6,7 @@
 // clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
 // list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
 // open-corner target brackets, edge pointers, minimal top-left telemetry.
-import { SPW } from './loadout.js?v=s66a';
+import { SPW } from './loadout.js?v=s67a';
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -31,6 +31,19 @@ export function createHUD(THREE, A) {
   const inertia = { x: 0, y: 0, vx: 0, vy: 0 };
   const fpvDir = new THREE.Vector3(0, 0, -1);
   const _wv = new THREE.Vector3();
+  const _ov = new THREE.Vector3();
+  const MP_LABELS = ['', 'SWEEP BANDITS', 'CANYON/BRIDGE STRIKE', 'CRIMSON ACE INTERCEPT', 'CARRIER RTB'];
+  const P_RDR = '[ Z ] CHAFF / NOTCH 90°', P_IR = '[ X ] FLARES', P_RTB = '[ CARRIER RTB ]',
+    P_MCAM = '[ HOLD FIRE ] MISSILE CAM', P_WING = '[ G ] WINGMEN ENGAGE';
+  const CHEAT_ROWS = [
+    ['MOUSE', 'Pitch/roll'], ['LMB/F', 'Gun'], ['RMB/M', 'Missile / SPW'],
+    ['1-3/R', 'Weapon'], ['C', 'Lock'], ['X', 'Flares'],
+    ['Z', 'Chaff'], ['J', 'ECM'], ['G', 'Wingmen'],
+    ['L', 'Gear'], ['B', 'Brake'], ['Q', 'Roll'],
+    ['SPACE', 'View'], ['[ ]', 'MFD'], ['ALT', 'Free look'],
+    ['TABx2', 'Debrief'], ['F1', 'This sheet']
+  ];
+  let promptKey = '', promptT = 0;
 
   function resize() {
     DPR = Math.min(devicePixelRatio || 1, 3);
@@ -1560,6 +1573,116 @@ export function createHUD(THREE, A) {
       ctx.restore();
     }
   }
+  function drawObjective(ctx) {
+    ctx.save();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    if (C.mode === 'FURBALL') {
+      const txt = 'FURBALL // KILLS ' + (C.kills || 0);
+      ctx.font = f(14, true);
+      const w = ctx.measureText(txt).width + 26;
+      numBack(ctx, HW - 24 - w, 80, w, 28);
+      labelText(ctx, txt, HW - 24, 94, G, 4);
+      ctx.restore();
+      return;
+    }
+    const p = C.missionPhase || 1, label = MP_LABELS[p] || 'COMPLETE';
+    const targets = A.getPrimary ? A.getPrimary() : null;
+    let nearest = null, nd = Infinity;
+    if (targets) for (let i = 0; i < targets.length; i++) {
+      const t = targets[i]; if (!t || !t.pos) continue;
+      const d = Math.hypot(t.pos.x - S.position.x, t.pos.z - S.position.z);
+      if (d < nd) { nd = d; nearest = t; }
+    }
+    const done = C.obj ? C.obj.done : 0, total = C.obj ? C.obj.total : 0;
+    const line = 'OBJ: ' + label + ' [' + done + '/' + total + '] — ' + (nd / 1000).toFixed(1) + ' KM';
+    ctx.font = f(14, true);
+    const w = ctx.measureText(line).width + 28;
+    numBack(ctx, HW - 24 - w, 92 - 15, w, 30);
+    labelText(ctx, line, HW - 24, 92, G, 4);
+    ctx.font = f(11);
+    labelText(ctx, 'PHASE ' + Math.min(4, p) + '/4', HW - 24, 70, GD, 2);
+    if (nearest) {
+      _ov.copy(nearest.pos).project(cam);
+      let x = _ov.x, y = _ov.y, z = _ov.z;
+      if (z > 1) { x = -x; y = -y; }
+      const col = p === 2 ? AMBER : p === 3 ? '#ffd45a' : p === 4 ? '#5fe8ff' : G;
+      const px = (x * 0.5 + 0.5) * HW, py = (-y * 0.5 + 0.5) * HH;
+      if (Math.abs(x) > 0.92 || Math.abs(y) > 0.88 || z > 1) {
+        const a = Math.atan2(y, x), ex = HW / 2 + Math.cos(a) * HW * 0.42, ey = HH / 2 - Math.sin(a) * HH * 0.38;
+        ctx.save(); ctx.translate(ex, ey); ctx.rotate(-a);
+        glow(ctx, col, 5); ctx.fillStyle = col; ctx.beginPath();
+        ctx.moveTo(12, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        ctx.font = f(11, true); ctx.textAlign = 'center';
+        labelText(ctx, (nd / 1000).toFixed(1) + ' KM', ex - Math.cos(a) * 18, ey + Math.sin(a) * 18, col, 3);
+      } else if (px > 16 && px < HW - 16 && py > 16 && py < HH - 16) {
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
+        ctx.moveTo(px - 10, py - 5); ctx.lineTo(px - 10, py); ctx.lineTo(px - 5, py);
+        ctx.moveTo(px + 5, py); ctx.lineTo(px + 10, py); ctx.lineTo(px + 10, py + 5);
+        ctx.moveTo(px + 5, py + 10); ctx.lineTo(px, py + 10); ctx.lineTo(px, py + 5);
+        ctx.moveTo(px - 5, py - 10); ctx.lineTo(px, py - 10); ctx.lineTo(px, py - 5);
+        ctx.stroke(); ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawPrompt(ctx) {
+    if (C.dead) return;
+    let txt = '', prio = 0;
+    const rwr = C.rwr || [];
+    for (let i = 0; i < rwr.length; i++) if (rwr[i].kind === 'msl' && rwr[i].g === 'RADAR') { txt = P_RDR; prio = 1; break; }
+    if (!txt) for (let i = 0; i < rwr.length; i++) if (rwr[i].kind === 'msl') { txt = P_IR; prio = 2; break; }
+    if (!txt) {
+      const spw = C.spw || '4AAM';
+      const ammo = spw === '4AAM' ? C.aam4 : spw === 'UGB' ? C.bombs : C.qaam;
+      const winchester = C.missiles === 0 && ammo === 0;
+      if ((100 - C.health > 45 || winchester) && C.ally) { txt = P_RTB; prio = 3; }
+    }
+    if (!txt && C.lockState === 'LOCK') { txt = P_MCAM; prio = 4; }
+    if (!txt && C.wingOrder === 'FORM') {
+      const foes = A.getEnemies ? A.getEnemies() : null;
+      if (foes) for (let i = 0; i < foes.length; i++) {
+        const e = foes[i];
+        if (e && e.alive && e.pos.distanceTo(S.position) < 6000) { txt = P_WING; prio = 5; break; }
+      }
+    }
+    if (!txt) { promptKey = ''; promptT = 0; return; }
+    const now = performance.now();
+    if (txt !== promptKey) { promptKey = txt; promptT = now; }
+    const a = Math.min(1, (now - promptT) / 150), cx = HW / 2, cy = HH - 96;
+    ctx.save();
+    ctx.font = f(15, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(txt).width + 36, h = 30, r = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2 + r, cy - r); ctx.lineTo(cx + w / 2 - r, cy - r);
+    ctx.arc(cx + w / 2 - r, cy, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(cx - w / 2 + r, cy + r); ctx.arc(cx - w / 2 + r, cy, r, Math.PI / 2, Math.PI * 1.5);
+    ctx.closePath();
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 14, 8, 0.6)'; ctx.fill();
+    const col = prio <= 2 ? WARN : prio === 3 ? AMBER : G;
+    glow(ctx, col, 6); ctx.lineWidth = 1.5; ctx.globalAlpha = a; ctx.stroke();
+    labelText(ctx, txt, cx, cy + 1, col, 6);
+    ctx.restore();
+  }
+
+  function drawCheat(ctx) {
+    if (!C.cheat) return;
+    const w = 320, h = 260, x = 20, y = HH / 2 - h / 2;
+    ctx.save();
+    noGlow(ctx); ctx.fillStyle = 'rgba(0, 20, 10, 0.62)'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.font = f(12); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const colW = (w - 24) / 3;
+    for (let i = 0; i < CHEAT_ROWS.length; i++) {
+      const row = CHEAT_ROWS[i], rx = x + 12 + (i % 3) * colW, ry = y + 28 + Math.floor(i / 3) * 34;
+      labelText(ctx, row[0], rx, ry - 7, G, 2);
+      labelText(ctx, row[1], rx, ry + 8, GB, 2);
+    }
+    labelText(ctx, 'F1 — CLOSE', x + 12, y + h - 16, AMBER, 3);
+    ctx.restore();
+  }
+
   function draw() {
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastT) / 1000);
@@ -1628,10 +1751,13 @@ export function createHUD(THREE, A) {
     } else drawSquareRadar(hctx);
     drawSectorBadge(hctx);
     drawBottomRight(hctx);
+    drawObjective(hctx);
     drawCenterBanners(hctx, fp ? g : null);
     if (!C.dead) drawApproach(hctx, g);
     drawStyleFeed(hctx, g);
     drawDangerPill(hctx);
+    drawPrompt(hctx);
+    drawCheat(hctx);
     drawComms(hctx, fp ? HH * 0.71 : HH * 0.84);
     if (!A.isModal()) drawStickCue(hctx);
     drawFreeLookTag(hctx);

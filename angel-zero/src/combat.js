@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s66a';
-import { SPW } from './loadout.js?v=s66a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s67a';
+import { SPW } from './loadout.js?v=s67a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -23,6 +23,8 @@ export function createCombat(THREE, env) {
   const rand = Math.random;
 
   const WAVE_SIZE = 6;
+  const MP = [null, { id: 1, label: 'SWEEP BANDITS' }, { id: 2, label: 'CANYON/BRIDGE STRIKE' },
+    { id: 3, label: 'CRIMSON ACE INTERCEPT' }, { id: 4, label: 'CARRIER RTB' }];
   const FURBALL_TICK = 3.5, FURBALL_MIN = 6, FURBALL_ACE_EVERY = 5;
   let FURBALL_MAX = 8;                                      // set once the bandit pool exists
   const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1050;   // M61A1: 6,000 rpm, 1,050 m/s
@@ -643,8 +645,10 @@ export function createCombat(THREE, env) {
   const CRIMSON_TINT = new THREE.Color(0x9e1b2c);
   const ACE_FLIGHT_HP = 1.6, ACE_FLIGHT_TURN = 1.25, ACE_DECOY_CD = 8, ACE_DECOY_N = 2, ACE_FLIGHT_BONUS = 2500;
   let aceFlightDone = false;
-  Object.assign(C, { phase: 0, ace: null, aceDowns: 0, mode: 'MISSION', furballKills: 0 });
-  let furT = 0;
+  Object.assign(C, { phase: 0, ace: null, aceDowns: 0, mode: 'MISSION', furballKills: 0,
+    missionPhase: 1, mpT: 0, obj: { done: 0, total: WAVE_SIZE } });
+  let furT = 0, waveKill0 = 0;
+  const _primary = new Array(8);
   function makeAce(e) {
     e.ace = true; e.label = ACE.label; e.type = ACE.type;
     e.hp = e.hpMax = ACE.hp; e.wingL = e.wingR = ACE.wing; e.flaresLeft = ACE.flares;
@@ -1901,6 +1905,49 @@ export function createCombat(THREE, env) {
     const a = Math.atan2(p.x - S.position.x, -(p.z - S.position.z)) - S.heading * D2R;
     return Math.atan2(Math.sin(a), Math.cos(a));
   }
+  // MISSION objective flow (FURBALL keeps its endless wave loop untouched).
+  function primaryTargets() {
+    let n = 0;
+    if (C.mode !== 'FURBALL') {
+      const p = C.missionPhase;
+      if (p === 1) {
+        for (const e of enemies) if (n < 8 && e.alive && !e.aceFlight && !e.ace && !e.bomber) _primary[n++] = e;
+      } else if (p === 2) {
+        for (const t of strikeTargets) if (n < 8 && t.alive) _primary[n++] = t;
+      } else if (p === 3) {
+        for (const e of enemies) if (n < 8 && e.alive && e.aceFlight) _primary[n++] = e;
+      } else if (p === 4 && C.ally && n < 8) _primary[n++] = C.ally;
+    }
+    _primary.length = n;
+    return _primary;
+  }
+  function setMissionPhase(p) {
+    if (p < 1 || p > 4 || p === C.missionPhase) return;
+    C.missionPhase = p; C.mpT = performance.now();
+    const label = MP[p].label;
+    say('[ OBJECTIVE ] ' + label, 3, '#00ff66');
+    if (env.onWing) env.onWing(label + ', Lead. WARDEN-2 copies.', 'WARDEN-2');
+    if (p === 3) { aceFlightDone = false; spawnAceFlight(); }
+  }
+  function updateMissionPhase() {
+    if (C.mode === 'FURBALL') return;
+    const p = C.missionPhase;
+    if (p === 1) {
+      if (waveAlive() === 0) {
+        C.obj = { done: Math.max(0, C.kills - waveKill0), total: WAVE_SIZE };
+        setMissionPhase(2);
+      }
+    } else if (p === 2) {
+      let n = 0; for (const t of strikeTargets) if (t.alive) n++;
+      C.obj = { done: (strikeTargets.length || 4) - n, total: strikeTargets.length || 4 };
+      if (n === 0) setMissionPhase(3);
+    } else if (p === 3) {
+      let aces = 0; for (const e of enemies) if (e.alive && e.aceFlight) aces++;
+      C.obj = { done: 2 - aces, total: 2 };
+      if (aces === 0 && aceFlightDone) setMissionPhase(4);
+    } else if (p === 4) C.obj = { done: 0, total: 1 };
+  }
+
   function updateRWR(playerActive) {
     const list = [];
     let level = 0;
@@ -2952,6 +2999,38 @@ export function createCombat(THREE, env) {
     return C.ally;
   }
   const _allyScratch = new THREE.Vector3();
+  // Approach gates: one instanced frame mesh, always in scene so gpuWarm compiles it.
+  const gateGeo = mergeGeometries([
+    new THREE.BoxGeometry(60, 1.5, 1.5).translate(0, 15, 0),
+    new THREE.BoxGeometry(60, 1.5, 1.5).translate(0, -15, 0),
+    new THREE.BoxGeometry(1.5, 30, 1.5).translate(-30, 0, 0),
+    new THREE.BoxGeometry(1.5, 30, 1.5).translate(30, 0, 0)
+  ]);
+  const gateMat = new THREE.MeshBasicMaterial({ color: 0x00cc55, transparent: true, opacity: 0, depthWrite: false, toneMapped: true });
+  const gates = new THREE.InstancedMesh(gateGeo, gateMat, 3);
+  gates.frustumCulled = false; gates.visible = true; scene.add(gates);
+  const _gateM = new THREE.Matrix4(), _gateP = new THREE.Vector3(), _gateQ = new THREE.Quaternion(),
+    _gateE = new THREE.Euler(), _gateS = new THREE.Vector3(1, 1, 1);
+  function updateGates(dt, now) {
+    const a = C.ally;
+    const spw = C.spw || '4AAM';
+    const ammo = spw === '4AAM' ? C.aam4 : spw === 'UGB' ? C.bombs : C.qaam;
+    const winchester = C.missiles === 0 && ammo === 0;
+    const show = !!a && (100 - C.health > 45 || winchester || C.missionPhase === 4);
+    if (a) {
+      for (let i = 0; i < 3; i++) {
+        const d = 400 * (i + 1);
+        _gateP.copy(a.pos).addScaledVector(a.fwd, -a.len / 2 - d);
+        _gateP.y = a.deckY + d * Math.tan(3.5 * D2R);
+        _gateE.set(0, a.g.rotation.y, 0); _gateQ.setFromEuler(_gateE);
+        _gateM.compose(_gateP, _gateQ, _gateS);
+        gates.setMatrixAt(i, _gateM);
+      }
+      gates.instanceMatrix.needsUpdate = true;
+    }
+    const target = show ? 0.32 + 0.08 * Math.sin(now * 3) : 0;
+    gateMat.opacity += (target - gateMat.opacity) * Math.min(1, dt * 3);
+  }
   function updateAlly(dt) {
     const a = C.ally;
     if (!a) return;
@@ -3528,7 +3607,9 @@ export function createCombat(THREE, env) {
       t.alive = true; t.hp = t.hpMax; t.burn = 0; t.g.visible = true;
       for (let i = 0; i < t.mats.length; i++) t.mats[i].color.setHex(t.matHex[i]);
     }
-    Object.assign(C, { jamming: 0, sectorLow: false, strikeDoneT: 0 });
+    Object.assign(C, { jamming: 0, sectorLow: false, strikeDoneT: 0,
+      missionPhase: 1, mpT: 0, obj: { done: 0, total: WAVE_SIZE } });
+    waveKill0 = C.kills || 0;
     sectorLowPrev = false; sectorLowT = -1e9;
     mslCooldown = 0; gunAcc = 0;
   }
@@ -3585,6 +3666,7 @@ export function createCombat(THREE, env) {
   function update(dt, now, opts) {
     const playerActive = opts.playerActive;
     updateAlly(dt);
+    updateGates(dt, now);
     updateSafe(playerActive);
     C.hitFlash = Math.max(0, C.hitFlash - dt);
     C.missileWarning = Math.max(0, C.missileWarning - dt);
@@ -3606,7 +3688,7 @@ export function createCombat(THREE, env) {
     cloudClear = Math.max(0, cloudClear - dt);
 
     if (ready) {
-      if (C.mode !== 'FURBALL' && !aceFlightDone && C.phase !== 3 && waveAlive() <= WAVE_SIZE * 0.5) spawnAceFlight();
+      if (C.mode !== 'FURBALL' && C.missionPhase === 3 && !aceFlightDone && C.phase !== 3 && waveAlive() <= WAVE_SIZE * 0.5) spawnAceFlight();
       for (const e of enemies) {
         if (e.alive) { if (e.crippled) updateCrippled(e, dt); else updateEnemy(e, dt, playerActive); }
         else if (e.wreck) updateWreck(e, dt);
@@ -3691,6 +3773,7 @@ export function createCombat(THREE, env) {
       return false;
     });
     director.tick(dt);
+    updateMissionPhase();
     updateWingmen(dt);
     updateMissiles(dt, playerActive);
     updateBombs(dt); updateRings(dt); updateChaff(dt); updateFlares(dt);
@@ -3708,6 +3791,13 @@ export function createCombat(THREE, env) {
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     setSPW,
     setMode(id) { C.mode = id === 'FURBALL' ? 'FURBALL' : 'MISSION'; C.furballKills = 0; furT = 0; return C.mode; },
+    setMissionPhase(p) { setMissionPhase(p); return C.missionPhase; },
+    primaryTargets,
+    onCarrierTrap() {
+      if (C.mode === 'FURBALL' || C.missionPhase !== 4) return;
+      C.missionPhase = 5; C.obj = { done: 1, total: 1 }; C.mpT = performance.now();
+      if (env.onMissionComplete) env.onMissionComplete();
+    },
     get difficulty() { return C.difficulty; },
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
     repairEngines() { resetEngines(); return C.engState; },
@@ -3754,10 +3844,10 @@ export function createCombat(THREE, env) {
       e.speed = 170; orient(e); writeFleet();
     },
     // Debug: bogey i launches a soft- or full-lock missile at the player now.
-    banditShot(i, soft, aim) {
+    banditShot(i, soft, aim, guidance) {
       const e = enemies[i]; if (!e || !e.alive) return;
       if (aim) { e.fwd.copy(S.position).sub(e.pos).normalize(); e.vel.copy(e.fwd).multiplyScalar(e.speed); orient(e); }   // nose on the player first
-      launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true, soft ? BANDIT_SOFT : BANDIT_FULL);
+      launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, { pos: S.position, vel: S.velocity, alive: true, isPlayer: true }, true, soft ? BANDIT_SOFT : BANDIT_FULL, null, guidance || 'IR');
       e.mslCD = 99;
     },
     // Debug: put bogey i at azimuth az (deg, + right) / elevation el (deg, + up) off the nose at `dist` m, flying our heading.
@@ -3816,6 +3906,8 @@ export function createCombat(THREE, env) {
       return { difficulty: C.difficulty,
         carrier: env.getCarrierStats ? env.getCarrierStats() : null,
         tele: env.getTeleStats ? env.getTeleStats() : null,
+        mission: { phase: C.missionPhase, label: MP[C.missionPhase] ? MP[C.missionPhase].label : 'COMPLETE',
+          done: C.obj.done, total: C.obj.total, primary: primaryTargets().length },
         furball: { mode: C.mode, alive: waveAlive() + enemies.filter(e => e.alive && e.aceFlight).length,
           kills: C.furballKills || 0, nextAce: FURBALL_ACE_EVERY - (C.furballKills || 0) % FURBALL_ACE_EVERY },
         loadout: { spw: C.spw, wpn: C.weapon, qaam: C.qaam, livery: env.getLivery ? env.getLivery() : null },

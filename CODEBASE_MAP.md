@@ -11,6 +11,9 @@ angel-zero/src/hud.js:1361 -> TAB-again banner
 angel-zero/index.html:896 -> MFD_PAGES / mfdPage / slowActive(); :1637 -> [ / ] keys; :2801 -> ?mfdpage screenshot hook
 angel-zero/src/cockpit3d.js:898 -> paintTacRadar(); :941 -> paintStores(); :976 -> paintThreatScope(); :832 -> mfdSignature(); :1237 -> setMfdPage()
 angel-zero/src/audio.js:654 -> mfdClick(); angel-zero/src/hud.js:1363 -> MFD banner
+angel-zero/src/combat.js:26 -> MP phase labels; :1909 -> primaryTargets(); :1932 -> updateMissionPhase(); :3010 -> instanced approach gates; :3796 -> onCarrierTrap()
+angel-zero/index.html:1585 -> F1 cheat key; :1841 -> trap → mission complete; :3025 -> ?mphaseat debug; :2827 -> HUD getPrimary
+angel-zero/src/hud.js:1576 -> objective card + chevron; :1630 -> prompt pill; :1669 -> F1 sheet
 angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
 angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform
