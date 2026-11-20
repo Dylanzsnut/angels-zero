@@ -736,7 +736,7 @@ export function createVFX(THREE, env) {
           stepL *= GROW;
         }
         float alpha = 1.0 - T;
-        if (alpha < 0.004) discard;
+        if (alpha < 0.04) discard;
         col = col / alpha * uGain;
         float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
         if (lum > uCap) col *= uCap / lum;                               // tops never reach the bloom threshold
@@ -761,6 +761,7 @@ export function createVFX(THREE, env) {
   deckMat.uniforms.uNoise.value = noiseTex;
   const deck = new THREE.Mesh(new THREE.SphereGeometry(38000, 48, 24), deckMat);
   deck.frustumCulled = false; deck.renderOrder = 1;
+  deck.castShadow = false; deck.receiveShadow = false;
   scene.add(deck);
 
   // --- (2) cumulus banks -------------------------------------------------
@@ -939,7 +940,7 @@ export function createVFX(THREE, env) {
       void main() {
         #include <logdepthbuf_fragment>
         float a = texture2D(uAtlas, vUv).a;
-        if (a < 0.004) discard;
+        if (a < 0.04) discard;
         float d = length(vView);
         float near = smoothstep(uNear.x, uNear.y, d);                    // 180 -> 40 m: fade into the vapour
         if (near < 0.002) discard;
@@ -970,6 +971,7 @@ export function createVFX(THREE, env) {
   cloudMat.uniforms.uAtlas.value = atlasTex;
   const clouds = new THREE.Mesh(cloudGeo, cloudMat);
   clouds.frustumCulled = false; clouds.renderOrder = 2;
+  clouds.castShadow = false; clouds.receiveShadow = false;
   scene.add(clouds);
   const order = new Uint32Array(NP).map((_, i) => i), dist = new Float32Array(NP);
   let sortTimer = 0;

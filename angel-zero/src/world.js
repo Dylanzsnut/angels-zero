@@ -972,6 +972,7 @@ export function createWorld(THREE, env) {
     });
     im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true;
     im.frustumCulled = false; im.matrixAutoUpdate = false; im.updateMatrix();
+    im.castShadow = false; im.receiveShadow = false;
     im.name = 'forest';
     scene.add(im);
     return { mesh: im, count: list.length, groves, groveTrees, lineTrees: list.length - groveTrees, tris: tg.attributes.position.count / 3, reject };

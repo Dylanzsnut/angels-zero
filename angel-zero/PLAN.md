@@ -1141,6 +1141,22 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   - Verified headless: zero JS/WebGL errors, cone visible only outside Mach
     0.98–1.05, boom counter and banner fire on the crossing, no shader-count
     change. All `?v=` tags bumped to s52a.
+- [x] **Render performance pass** *(build `s53a`, `index.html`, `src/nvg.js`,
+  `src/vfx.js`, `src/blastfx.js`, `src/world.js`)*
+  - Pixel ratio capped at 1.25; composer HDR target `HalfFloatType`, `samples: 0`;
+    bloom chain at 0.35 res on init and in `setSize` (strength 0.48, radius
+    0.32, threshold 0.92 unchanged).
+  - Alpha discard raised 0.004 → 0.04 in `vfx` cloud/deck shaders and all
+    `blastfx` alpha shaders; shadows disabled on clouds, deck, forest and every
+    blast pool mesh; hanging-smoke pool 240 → 110 (stats matches).
+  - `renderer.info.autoReset = false`; one preallocated `window.__perfDebug`
+    object receives `calls`, `triangles`, `frameMs` each frame around
+    `nvg.render` (no per-frame object allocation).
+  - Verified headless during active SEC-04 combat (`?nointro&debug&phase=2&
+    at=fleet`, 90 frames): `frameMs` max 4.2, avg 2.48, 0 frames over 16.6,
+    232 calls / 1,034,131 triangles, 6 bandits and 27 enemy tracers live.
+    Headless Edge log: 0 JS/WebGL errors. Passes 1–5, `gpuWarm` and blast
+    shake maths untouched; all `?v=` tags bumped to s53a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

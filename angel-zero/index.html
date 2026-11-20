@@ -433,26 +433,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s52a';
-import { createBlastFX } from './src/blastfx.js?v=s52a';
-import { createHUD } from './src/hud.js?v=s52a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s52a';
-import { createCombat } from './src/combat.js?v=s52a';
-import { createEjection } from './src/eject.js?v=s52a';
-import { createAudio } from './src/audio.js?v=s52a';
-import { createRadio } from './src/radio.js?v=s52a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s52a';
-import { createLivery } from './src/livery.js?v=s52a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s52a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s52a';
-import { createCanopyFX } from './src/canopy.js?v=s52a';
-import { createNVG } from './src/nvg.js?v=s52a';
-import { createWorld, WORLD } from './src/world.js?v=s52a';
-import { createSurfaces } from './src/surfaces.js?v=s52a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s52a';
-import { createFreeLook } from './src/freelook.js?v=s52a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s52a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s52a';
+import { createVFX } from './src/vfx.js?v=s53a';
+import { createBlastFX } from './src/blastfx.js?v=s53a';
+import { createHUD } from './src/hud.js?v=s53a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s53a';
+import { createCombat } from './src/combat.js?v=s53a';
+import { createEjection } from './src/eject.js?v=s53a';
+import { createAudio } from './src/audio.js?v=s53a';
+import { createRadio } from './src/radio.js?v=s53a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s53a';
+import { createLivery } from './src/livery.js?v=s53a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s53a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s53a';
+import { createCanopyFX } from './src/canopy.js?v=s53a';
+import { createNVG } from './src/nvg.js?v=s53a';
+import { createWorld, WORLD } from './src/world.js?v=s53a';
+import { createSurfaces } from './src/surfaces.js?v=s53a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s53a';
+import { createFreeLook } from './src/freelook.js?v=s53a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s53a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s53a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -468,11 +468,14 @@ const renderer = new THREE.WebGLRenderer({
   canvas: glCanvas, antialias: true, powerPreference: 'high-performance',
   logarithmicDepthBuffer: true, preserveDrawingBuffer: DEBUG
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // cap: no 4x fragment load on high-DPI laptops
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));  // cap: no 4x fragment load on high-DPI laptops
 renderer.setSize(innerWidth, innerHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
+renderer.info.autoReset = false;
+const PERF_DEBUG = { calls: 0, triangles: 0, frameMs: 0 };
+window.__perfDebug = PERF_DEBUG;
 
 const scene = new THREE.Scene();
 const FOG_DENSITY = 0.000105;                       // scene.fog is created by src/atmosphere.js (horizon-synced)
@@ -2537,7 +2540,12 @@ function animate() {
   if (appMode !== 'PAUSED') updateCameraAndVisuals(dt, simTime);
   if (appMode === 'PLAY') updateAudio();
   oceanUniforms.uTime.value = simTime;
+  const t0 = performance.now();
+  renderer.info.reset();
   nvg.render(scene, camera, simTime, firstPerson);
+  PERF_DEBUG.calls = renderer.info.render.calls;
+  PERF_DEBUG.triangles = renderer.info.render.triangles;
+  PERF_DEBUG.frameMs = +(performance.now() - t0).toFixed(2);
   canopyFx.update(dt, appMode === 'PLAY' && flightMode === 'FLY' ? combat.playerCloud || 0 : 0, state.speed, firstPerson, appMode !== 'MENU',
     appMode === 'PLAY' && flightMode === 'FLY' ? weather.rainHere : 0);
   hud.draw();

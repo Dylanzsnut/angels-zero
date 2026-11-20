@@ -18,7 +18,7 @@
 // Impact signatures: WATER (geyser column 50-85 m + flat foam ring at y = 0.4, no
 // black puff), GROUND / SHIP (ground-hugging flash, upward soot plume lingering 12 s,
 // spark spray reflected about the surface normal).
-// Fixed circular pools (oldest recycled): 240 hanging smoke, 512 trail puffs, 160 spray,
+// Fixed circular pools (oldest recycled): 110 hanging smoke, 512 trail puffs, 160 spray,
 // 80 fireball, 48 flash / ring, 200 sparks, 40 debris, 8 foam rings. One instanced draw
 // per pool, hidden while empty; no allocation per detonation or per frame.
 
@@ -98,7 +98,7 @@ export function createBlastFX(THREE, env) {
     void main() {
       #include <logdepthbuf_fragment>
       float a = texture2D(uTex, vUv).a * vC.a * smoothstep(uNear.x, uNear.y, vDepth);
-      if (a < 0.004) discard;
+      if (a < 0.04) discard;
       float r2 = min(dot(vQ, vQ), 1.0);
       vec3 n = normalize(vec3(vQ * 0.9, sqrt(1.0 - r2) + 0.3));
       float wrap = clamp((dot(n, uSunV) + 0.35) / 1.35, 0.0, 1.0);
@@ -124,7 +124,7 @@ export function createBlastFX(THREE, env) {
       #include <logdepthbuf_fragment>
       float t = texture2D(uTex, vUv).a;
       float a = pow(t, 1.25) * vC.a * smoothstep(4.0, 16.0, vDepth);
-      if (a < 0.004) discard;
+      if (a < 0.04) discard;
       // Dense billow cores glow hotter, thin edges cool toward soot (no flat discs).
       vec3 col = mix(vec3(0.018, 0.018, 0.02), vC.rgb * 1.35, smoothstep(0.12, 0.8, t));
       gl_FragColor = vec4(col, a);
@@ -157,6 +157,7 @@ export function createBlastFX(THREE, env) {
         transparent: true, depthWrite: false, blending, fog, toneMapped: blending !== THREE.AdditiveBlending });
       this.mesh = new THREE.Mesh(g, this.mat);
       this.mesh.frustumCulled = false; this.mesh.renderOrder = order; this.mesh.visible = false;
+      this.mesh.castShadow = false; this.mesh.receiveShadow = false;
       scene.add(this.mesh);
     }
     take() { const o = this.it[this.next]; this.next = (this.next + 1) % this.max; o.on = true; o.t = 0; o.delay = 0; o.drag = 0; o.grav = 0; o.rise = 0; o.spin = 0; o.vx = o.vy = o.vz = 0; return o; }
@@ -165,7 +166,7 @@ export function createBlastFX(THREE, env) {
   const NEAR_SMOKE = new THREE.Vector2(12, 45);
   const smokeU = (cap, rim, lift, near = NEAR_SMOKE, desat = 0) => ({ uTex: U.uTex, uSunV: U.uSunV, uSunCol: U.uSunCol, uAmb: U.uAmb, uNear: { value: near },
     uCap: { value: cap }, uRim: { value: rim }, uLift: { value: lift }, uDesat: { value: desat } });
-  const hang = new Pool(240, SMOKE_F, { order: 7, uniforms: smokeU(0.42, C(0x8a8378), 2.4, NEAR_SMOKE, 0.45) });
+  const hang = new Pool(110, SMOKE_F, { order: 7, uniforms: smokeU(0.42, C(0x8a8378), 2.4, NEAR_SMOKE, 0.45) });
   const trail = new Pool(512, SMOKE_F, { order: 7, uniforms: smokeU(0.45, C(0x7a746c), 2.0, new THREE.Vector2(3, 12), 0.45) });
   const spray = new Pool(160, SMOKE_F, { order: 7, uniforms: smokeU(0.86, C(0xffffff), 2.3, new THREE.Vector2(8, 30), 0.6) });
   const fireP = new Pool(80, FIRE_F, { order: 8, uniforms: { uTex: U.uTex } });
@@ -234,7 +235,7 @@ export function createBlastFX(THREE, env) {
           float inner = (1.0 - smoothstep(0.0, 0.75, r)) * 0.35;
           float brk = 0.6 + 0.4 * sin(ang * 23.0 + r * 31.0) * sin(ang * 7.0 - r * 13.0);
           float a = (ring * brk + inner) * vAl;
-          if (a < 0.004) discard;
+          if (a < 0.04) discard;
           gl_FragColor = vec4(vec3(0.82, 0.87, 0.9) * (uAmb + uSunCol * 0.75), a);
           #include <fog_fragment>
         }`,
@@ -574,7 +575,7 @@ export function createBlastFX(THREE, env) {
     get stats() {
       return { ...stats, byKind: { ...stats.byKind }, live: { smoke: hang.live, trail: trail.live, spray: spray.live, fire: fireP.live, flash: add.live,
         sparks: sparks.live, debris: debris.live, foam: foam.live },
-        pools: { smoke: 240, trail: 512, spray: 160, fire: 80, flash: 48, sparks: SPARK_N, debris: DEB_N, foam: FOAM_N } };
+        pools: { smoke: 110, trail: 512, spray: 160, fire: 80, flash: 48, sparks: SPARK_N, debris: DEB_N, foam: FOAM_N } };
     },
     // Peak HDR luminance currently emitted by the blast layers (bloom check).
     get glow() {

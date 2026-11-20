@@ -17,19 +17,19 @@ export function createNVG(THREE, renderer, post) {
   renderer.getDrawingBufferSize(size);
 
   // Normal (non-NVG) frames: selective HDR bloom pipeline (Visual Pass 1).
-  //   RenderPass -> half-float MSAA target (linear HDR, no tone mapping in the
-  //   materials), UnrealBloomPass at half resolution (threshold 0.92, strength
+  //   RenderPass -> half-float target, no MSAA (linear HDR, no tone mapping in the
+  //   materials), UnrealBloomPass at 0.35 resolution (threshold 0.92, strength
   //   0.48, radius 0.32: only HDR emissives > 1 -- tracers, muzzle flash,
   //   afterburner cores, the sun -- cross it), OutputPass applies ACES Filmic +
   //   sRGB exactly once. The 2D HUD canvas sits above WebGL, so it never blurs.
   let composer = null, renderPass = null, bloom = null;
   if (post) {
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: renderer.capabilities.isWebGL2 ? 4 : 0 });
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
     composer = new post.EffectComposer(renderer, rt);
     renderPass = new post.RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
-    bloom = new post.UnrealBloomPass(new THREE.Vector2(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5)), 0.48, 0.32, 0.92);
+    bloom = new post.UnrealBloomPass(new THREE.Vector2(Math.floor(size.x * 0.35), Math.floor(size.y * 0.35)), 0.48, 0.32, 0.92);
     composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(new post.OutputPass());
-    bloom.setSize(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5));      // composer.addPass set it full-res
+    bloom.setSize(Math.floor(size.x * 0.35), Math.floor(size.y * 0.35));    // composer.addPass set it full-res
   }
   const mk = (w, h) => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: true, samples: 4 });
   const sceneRT = mk(size.x, size.y);
@@ -127,7 +127,7 @@ export function createNVG(THREE, renderer, post) {
     compMat.uniforms.uAspect.value = size.x / size.y;
     if (composer) {
       composer.setSize(size.x, size.y);                                       // target pixel ratio is 1: drawing-buffer px
-      bloom.setSize(Math.floor(size.x * 0.5), Math.floor(size.y * 0.5));      // half-res bloom chain
+      bloom.setSize(Math.floor(size.x * 0.35), Math.floor(size.y * 0.35));    // 0.35-res bloom chain
     }
   }
   // Renders the frame: through the HDR bloom composer in normal vision, through the tubes with NVG.
