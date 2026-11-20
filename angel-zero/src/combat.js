@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s65a';
-import { SPW } from './loadout.js?v=s65a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s66a';
+import { SPW } from './loadout.js?v=s66a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -1913,7 +1913,7 @@ export function createCombat(THREE, env) {
           C.wingWarnT = performance.now(); env.onWing('Clear your six, Lead!', 'WARDEN');
         }
         if (!kind) continue;
-        list.push({ b: relBearing(e.pos), kind, d, id: e.id, g: d > 2500 ? 'RADAR' : 'IR' });
+        list.push({ b: relBearing(e.pos), kind, d, id: e.id, g: d > 2500 ? 'RADAR' : 'IR', ace: !!(e.aceFlight || e.ace) });
         level = Math.max(level, kind === 'lock' ? 2 : 1);
       }
       for (const m of missiles) {

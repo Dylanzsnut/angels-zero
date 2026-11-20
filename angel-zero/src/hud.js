@@ -6,7 +6,7 @@
 // clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
 // list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
 // open-corner target brackets, edge pointers, minimal top-left telemetry.
-import { SPW } from './loadout.js?v=s65a';
+import { SPW } from './loadout.js?v=s66a';
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -1360,6 +1360,10 @@ export function createHUD(THREE, A) {
       drawBanner(ctx, cx, lowerY - 40, 'JAMMING // DESCEND BELOW 500 FT', AMBER, 340, 0.55 + 0.45 * pulseAlpha(300));
     if (C.endConfirmT && now - C.endConfirmT < 2000)
       drawBanner(ctx, cx, lowerY - 80, '[ TAB AGAIN // END SORTIE & DEBRIEF ]', AMBER, 380, pulseAlpha(250));
+    if (A.isFirstPerson() && C.mfdT && now - C.mfdT < 1200) {
+      const age = now - C.mfdT;
+      drawBanner(ctx, cx, lowerY + 34, '[ MFD // ' + C.mfdLabel + ' ]', G, 300, 1 - age / 1200);
+    }
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));

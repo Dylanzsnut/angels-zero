@@ -19,6 +19,14 @@ export function createCockpit3D(THREE, env) {
   const FONT = "'Share Tech Mono', 'Consolas', monospace";
   const STENCIL = "'Arial Narrow', 'Arial', sans-serif";
   const PITCH_BASE = -15 * D2R;                      // eye line over the nose; frames the main panel and the HOTAS grips
+  const MFD_PAGES = ['TACTICAL RADAR', 'STORES & DMG', 'RWR THREAT SCOPE'];
+  const MFD_PLANFORM = [
+    [0, -1], [0.05, -0.86], [0.09, -0.62], [0.11, -0.42], [0.20, -0.30], [0.21, -0.08],
+    [0.93, 0.30], [0.93, 0.40], [0.30, 0.42], [0.27, 0.56], [0.60, 0.78], [0.60, 0.90],
+    [0.20, 0.88], [0.17, 1.0], [0.04, 1.0]
+  ];                                                  // mirrored from src/hud.js PLANFORM
+  let mfdPage = 0, mfdDirty = false, mfdSig = '', mfdFlash = -1;
+  let _mrx = 0, _mry = 0;                             // projection scratch (numbers only)
 
   const rig = new THREE.Group();
   rig.visible = false;
@@ -820,7 +828,15 @@ export function createCockpit3D(THREE, env) {
   let gMaxSeen = 1, gaugeRR = 0;
   const MAX_DIALS = 2;
   const gaugeSig = new Float64Array(16).fill(NaN);
-  const gaugeStats = { painted: 0, uploads: 0 };
+  const gaugeStats = { painted: 0, uploads: 0, mfd: { page: 0, paints: 0 } };
+  function mfdSignature() {
+    const spw = C.spw || '4AAM';
+    const ammo = spw === '4AAM' ? C.aam4 : spw === 'UGB' ? C.bombs : C.qaam;
+    const rld = spw === '4AAM' ? C.aam4Reload : spw === 'UGB' ? C.bombReload : C.qaamReload;
+    const code = st => st === 'HEALTHY' ? 1 : st === 'ON_FIRE' ? 2 : st === 'EXTINGUISHED' ? 3 : st === 'SEIZED' ? 4 : st === 'RELIGHTING' ? 5 : 0;
+    return [C.missiles || 0, ammo || 0, Math.round((rld || 0) * 10), C.flares || 0,
+      C.chaff === undefined ? -1 : C.chaff, Math.round(100 - (C.health ?? 100)), code(C.engL), code(C.engR)].join('');
+  }
   function gaugeSignature(k, kts, altFt, vs, ffL, ffR, fuel, hydP) {
     switch (k) {
       case 'asi': return Math.round(kts * 0.5) * 1000 + Math.round(S.mach * 100);
@@ -878,45 +894,145 @@ export function createCockpit3D(THREE, env) {
     }
   }
 
+  // ---- VSD sub-pages: all three paint into the same 512-unit dCell canvas ----
+  function paintTacRadar(x, hRad, now) {
+    const cx = 256, cy = 300, R = 190, scale = R / (10 * 1852);
+    x.strokeStyle = 'rgba(0,255,102,0.32)'; x.lineWidth = 1.5;
+    for (const nm of [2.5, 5, 10]) { x.beginPath(); x.arc(cx, cy, R * nm / 10, 0, Math.PI * 2); x.stroke(); }
+    for (let a = 0; a < 360; a += 30) {
+      const r = a * D2R;
+      x.beginPath(); x.moveTo(cx + Math.sin(r) * R * 0.94, cy - Math.cos(r) * R * 0.94);
+      x.lineTo(cx + Math.sin(r) * R, cy - Math.cos(r) * R); x.stroke();
+    }
+    const a = now * Math.PI;                              // one revolution every 2 s
+    x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, R, a - 20 * D2R, a); x.closePath();
+    x.fillStyle = 'rgba(0,255,102,0.18)'; x.fill();
+    x.strokeStyle = '#00ff66'; x.lineWidth = 2;
+    x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + Math.sin(a) * R, cy - Math.cos(a) * R); x.stroke();
+    const cs = Math.cos(hRad), sn = Math.sin(hRad);
+    const project = p => {
+      const rx = p.x - S.position.x, rz = p.z - S.position.z;
+      _mrx = rx * cs + rz * sn; _mry = -rx * sn + rz * cs;
+      return _mrx * _mrx + _mry * _mry < R * R;
+    };
+    const ws = env.getWingmen ? env.getWingmen() : null;
+    if (ws) for (let i = 1; i < ws.length; i++) {
+      const w = ws[i]; if (!w || w.alive === false || !project(w.pos)) continue;
+      const px = cx + _mrx * scale, py = cy + _mry * scale;
+      x.fillStyle = '#5fe8ff'; x.beginPath(); x.moveTo(px, py - 8); x.lineTo(px + 7, py + 6); x.lineTo(px - 7, py + 6); x.closePath(); x.fill();
+      x.font = `11px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText('W' + (i + 1), px + 9, py);
+    }
+    for (const e of env.getEnemies ? env.getEnemies() : []) {
+      if (!e.alive || !project(e.pos)) continue;
+      const px = cx + _mrx * scale, py = cy + _mry * scale, ace = e.aceFlight || e.ace;
+      x.strokeStyle = x.fillStyle = ace ? '#ffd45a' : '#ff4d3d'; x.lineWidth = 2;
+      x.beginPath(); x.rect(px - 6, py - 6, 12, 12); ace ? x.fill() : x.stroke();
+      if (ace) { x.font = `11px ${FONT}`; x.textAlign = 'left'; x.fillText('ACE', px + 9, py); }
+    }
+    for (const t of env.getStrikeTargets ? env.getStrikeTargets() : []) {
+      if (!t.alive || !project(t.pos)) continue;
+      const px = cx + _mrx * scale, py = cy + _mry * scale;
+      x.strokeStyle = '#ffbf3f'; x.lineWidth = 2; x.beginPath();
+      x.moveTo(px, py - 7); x.lineTo(px + 7, py); x.lineTo(px, py + 7); x.lineTo(px - 7, py); x.closePath(); x.stroke();
+    }
+    x.fillStyle = '#00ff66'; x.beginPath(); x.moveTo(cx, cy - 13); x.lineTo(cx + 9, cy + 9); x.lineTo(cx - 9, cy + 9); x.closePath(); x.fill();
+    x.font = `13px ${FONT}`; x.textAlign = 'right'; x.textBaseline = 'top'; x.fillText('10 NM', 500, 484);
+  }
+  function paintStores(x, now) {
+    const sc = 512 * 0.6 / 2, cx = 256, cy = 232;
+    x.strokeStyle = '#00ff66'; x.lineWidth = 2;
+    for (const side of [-1, 1]) {
+      x.beginPath();
+      for (let i = 0; i < MFD_PLANFORM.length; i++) {
+        const p = MFD_PLANFORM[i], px = cx + side * p[0] * sc, py = cy + p[1] * sc;
+        if (i) x.lineTo(px, py); else x.moveTo(px, py);
+      }
+      x.closePath(); x.stroke();
+    }
+    const flash = Math.floor(now * 2) % 2 === 0;
+    const engCol = st => st === 'HEALTHY' ? '#00ff66' : st === 'ON_FIRE' ? (flash ? '#ff2e43' : '#551015')
+      : st === 'RELIGHTING' ? '#ffbf3f' : '#5a6a60';
+    x.font = `15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = engCol(C.engL); x.fillRect(170, 400, 76, 28);
+    x.fillStyle = engCol(C.engR); x.fillRect(266, 400, 76, 28);
+    x.fillStyle = '#010a05'; x.font = `12px ${FONT}`;
+    x.fillText('L ENG', 208, 414); x.fillText('R ENG', 304, 414);
+    x.fillStyle = '#8fffbd'; x.font = `11px ${FONT}`;
+    x.fillText(String(C.engL || '-'), 208, 436); x.fillText(String(C.engR || '-'), 304, 436);
+    const dmg = Math.round(100 - (C.health ?? 100));
+    x.fillStyle = '#00ff66'; x.textAlign = 'left'; x.font = `16px ${FONT}`; x.fillText('DMG ' + dmg + '%', 16, 460);
+    x.fillStyle = dmg >= 55 ? '#ff2e43' : dmg >= 25 ? '#ffbf3f' : '#00ff66';
+    x.fillRect(16, 476, 480 * Math.min(1, dmg / 100), 10);
+    x.strokeStyle = 'rgba(0,255,102,0.4)'; x.lineWidth = 1; x.strokeRect(16, 476, 480, 10);
+    const spw = C.spw || '4AAM';
+    const ammo = spw === '4AAM' ? C.aam4 : spw === 'UGB' ? C.bombs : C.qaam;
+    const rld = spw === '4AAM' ? C.aam4Reload : spw === 'UGB' ? C.bombReload : C.qaamReload;
+    x.fillStyle = '#00ff66'; x.font = `16px ${FONT}`; x.fillText('MSL ' + (C.missiles || 0), 16, 36);
+    x.fillText(spw + ' ' + (ammo || 0), 16, 58);
+    if (rld > 0) x.fillText('RLD ' + rld.toFixed(1), 150, 58);
+    x.fillText('FLR ' + (C.flares ?? 0), 320, 36);
+    x.fillText('CHF ' + (C.chaff === undefined ? '--' : C.chaff), 320, 58);
+  }
+  function paintThreatScope(x, now) {
+    const cx = 256, cy = 270, R = 215;
+    x.strokeStyle = 'rgba(0,255,102,0.38)'; x.lineWidth = 1.5;
+    for (const f of [0.25, 0.5, 0.75, 1]) { x.beginPath(); x.arc(cx, cy, R * f, 0, Math.PI * 2); x.stroke(); }
+    for (let a = 0; a < 360; a += 30) {
+      const r = a * D2R; x.beginPath(); x.moveTo(cx + Math.sin(r) * R * 0.9, cy - Math.cos(r) * R * 0.9);
+      x.lineTo(cx + Math.sin(r) * R, cy - Math.cos(r) * R); x.stroke();
+    }
+    x.fillStyle = '#00ff66'; x.beginPath(); x.moveTo(cx, cy - 11); x.lineTo(cx + 8, cy + 9); x.lineTo(cx - 8, cy + 9); x.closePath(); x.fill();
+    let msl = 0, locks = 0;
+    x.font = `15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const r of C.rwr || []) {
+      const sx = Math.sin(r.b), sy = -Math.cos(r.b);
+      if (r.kind === 'msl') {
+        msl++;
+        const on = Math.floor(now * 4) % 2 === 0; if (!on) continue;
+        x.strokeStyle = x.fillStyle = r.g === 'RADAR' ? '#ffbf3f' : '#ff4d3d'; x.lineWidth = 3;
+        x.beginPath(); x.moveTo(cx + sx * 16, cy + sy * 16); x.lineTo(cx + sx * R, cy + sy * R); x.stroke();
+        x.fillText(r.g === 'RADAR' ? 'RDR' : 'IR', cx + sx * (R - 24), cy + sy * (R - 24));
+      } else if (typeof r.id === 'string') {
+        x.fillStyle = '#ffbf3f'; x.fillText('SHP', cx + sx * R * 0.82, cy + sy * R * 0.82);
+      } else {
+        if (r.kind === 'lock') locks++;
+        const rr = r.kind === 'lock' ? R * 0.55 : R * 0.82;
+        x.strokeStyle = x.fillStyle = r.ace ? '#ffd45a' : '#ffbf3f'; x.lineWidth = 3;
+        const px = cx + sx * rr, py = cy + sy * rr;
+        x.beginPath(); x.moveTo(px - sx * 10 - sy * 6, py - sy * 10 + sx * 6);
+        x.lineTo(px + sx * 10, py + sy * 10);
+        x.lineTo(px - sx * 10 + sy * 6, py - sy * 10 - sx * 6); x.stroke();
+        if (r.ace) x.fillText('ACE', px + sx * 24, py + sy * 24);
+      }
+    }
+    x.fillStyle = '#00ff66'; x.textAlign = 'center'; x.font = `14px ${FONT}`;
+    x.fillText(`MSL ${msl} // LOCKS ${locks}`, cx, 500);
+  }
+
   // CRT displays: VSD radar (0,0), round TEWS (1,0), HSI (1,1) of a 2 x 2 atlas of
   // 384 px cells. One display is repainted per frame (each ~20 Hz at 60 fps) in a
   // 512-unit drawing space scaled to the 384 px cell, then copied into its cell.
   function paintDisplays(frame, now) {
-    const which = frame % 3, x = dCell.x, hRad = S.heading * D2R;
+    const which = mfdDirty ? 0 : frame % 3, x = dCell.x, hRad = S.heading * D2R;
     x.setTransform(DCELL / 512, 0, 0, DCELL / 512, 0, 0);
     paintDisplay(which, x, hRad, now);
     x.setTransform(1, 0, 0, 1, 0, 0);
     uploadCell(dCell, dispAtlas, which === 0 ? 0 : 1, which === 2 ? 1 : 0, DCELL);
     gaugeStats.uploads++;
+    if (which === 0) { mfdDirty = false; gaugeStats.mfd.paints++; }
   }
   function paintDisplay(which, x, hRad, now) {
-    const rel = p => { const rx = p.x - S.position.x, rz = p.z - S.position.z; return { sx: rx * Math.cos(hRad) + rz * Math.sin(hRad), sy: -rx * Math.sin(hRad) + rz * Math.cos(hRad) }; };
-    // --- VSD: azimuth (-60..60 deg) x range (0..20 NM) B-scope with a sweeping beam
+    // --- VSD: three selectable pages on the same canvas and CanvasTexture
     if (which === 0) {
-    x.save(); x.beginPath(); x.rect(0, 0, 512, 512); x.clip();
-    x.fillStyle = '#020a05'; x.fillRect(0, 0, 512, 512);
-    x.strokeStyle = 'rgba(70,255,140,0.28)'; x.lineWidth = 1.5;
-    for (let i = 1; i < 4; i++) { x.beginPath(); x.moveTo(40, 40 + i * 108); x.lineTo(472, 40 + i * 108); x.stroke(); x.beginPath(); x.moveTo(40 + i * 108, 40); x.lineTo(40 + i * 108, 472); x.stroke(); }
-    x.strokeRect(40, 40, 432, 432);
-    const sweep = Math.sin(now * 2.1);                                           // beam: +/-60 deg
-    const bx = 256 + sweep * 216;
-    const gr = x.createLinearGradient(bx - 40, 0, bx, 0); gr.addColorStop(0, 'rgba(70,255,140,0)'); gr.addColorStop(1, 'rgba(70,255,140,0.22)');
-    x.fillStyle = gr; x.fillRect(bx - 40, 40, 40, 432);
-    x.strokeStyle = '#46ff8c'; x.lineWidth = 2; x.beginPath(); x.moveTo(bx, 40); x.lineTo(bx, 472); x.stroke();
-    x.fillStyle = '#46ff8c'; x.font = `22px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'top';
-    x.fillText('RWS  20', 46, 8); x.textAlign = 'right'; x.fillText(C.weapon === 'BOMB' ? 'A/G' : C.weapon === 'AAM4' ? 'TWS' : 'A/A', 466, 8);
-    x.textAlign = 'center'; x.fillText(String(Math.round(S.heading)).padStart(3, '0'), 256, 480);
-    for (const e of env.getEnemies()) {
-      if (!e.alive) continue;
-      const { sx, sy } = rel(e.pos), d = Math.hypot(sx, sy), az = Math.atan2(sx, -sy) / D2R;
-      if (Math.abs(az) > 60 || d > 20 * 1852) continue;
-      const px = 256 + az / 60 * 216, py = 472 - d / (20 * 1852) * 432;
-      const locked = C.lockTarget === e || (C.multi && C.multi.includes(e) && C.multiState[C.multi.indexOf(e)] === 'LOCK');
-      x.fillStyle = locked ? '#ffd23a' : '#46ff8c'; x.fillRect(px - 7, py - 5, 14, 10);
-      if (C.designated === e) { x.strokeStyle = '#46ff8c'; x.lineWidth = 2; x.strokeRect(px - 13, py - 11, 26, 22); }
-    }
-    x.restore();
-    return;
+      x.save(); x.beginPath(); x.rect(0, 0, 512, 512); x.clip();
+      x.fillStyle = '#010a05'; x.fillRect(0, 0, 512, 512);
+      x.fillStyle = '#00ff66'; x.font = `16px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'top';
+      x.fillText(`MFD ${mfdPage + 1}/3 // ${MFD_PAGES[mfdPage]}`, 10, 8);
+      if (mfdPage === 0) paintTacRadar(x, hRad, now);
+      else if (mfdPage === 1) paintStores(x, now);
+      else paintThreatScope(x, now);
+      x.restore();
+      return;
     }
     // --- TEWS round scope: threat bearings from the RWR picture
     if (which === 1) {
@@ -1103,12 +1219,22 @@ export function createCockpit3D(THREE, env) {
 
     updateEngines(dt);
     updateHOTAS(dt);
+    {
+      const sig = mfdSignature();
+      if (sig !== mfdSig) { mfdSig = sig; mfdDirty = true; }
+      const fl = Math.floor(now * 2) % 2;
+      if (fl !== mfdFlash) {
+        if (C.engL === 'ON_FIRE' || C.engR === 'ON_FIRE') mfdDirty = true;
+        mfdFlash = fl;
+      }
+    }
     paintUFC(now); paintGauges(frame); paintDisplays(frame, now); paintCaution(now); updateLamps(now);
   }
 
   const _w = new THREE.Vector3();
   return {
     rig, setActive, update, missionClock, setNVG, setFreeLook,
+    setMfdPage(p) { mfdPage = ((p % 3) + 3) % 3; mfdDirty = true; gaugeStats.mfd.page = mfdPage; },
     get active() { return active; },
     get gaugeStats() { return gaugeStats; },          // dials repainted / cell uploads since start
     get hotas() {

@@ -1419,6 +1419,23 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     MISSION-mode regression still shows Phase 1 with six bandits; zero
     JS/WebGL errors across three Edge CLI URLs. Debug `?mode=FURBALL`.
     Every `?v=` tag bumped to s65a.
+- [x] **VSD MFD sub-pages** *(build `s66a`, `src/cockpit3d.js`, `src/audio.js`,
+  `src/combat.js`, `src/hud.js`, `index.html`)*
+  - `[` / `]` cycle the existing 3D cockpit VSD CRT through TACTICAL RADAR,
+    STORES & DMG and RWR THREAT SCOPE, in first person only and never during
+    hit-stop slow-mo. Same canvas, `CanvasTexture`, material and partial upload
+    path; the round-robin CRT cadence is unchanged, with an immediate repaint on
+    page change. Each page has a `MFD n/3` header and a short HUD confirmation
+    banner plus a procedural click chirp.
+  - Radar plots wingmen, bandits, aces and live strike bunkers heading-up over
+    a 10 NM / 2 s sweep. Stores shows the mirrored F-15 wireframe, engine state
+    (including 2 Hz fire flash), damage bar, missiles, SPW ammo and countermeasures.
+    Threat scope draws RWR missiles / locks / paints with an ACE flag and SHP tags.
+  - Verified headless: `?nointro&debug&cockpit&warp=3` + `]` → page 1 with label
+    `STORES & DMG`; `[` from page 0 wraps to page 2; chase view ignores the keys;
+    `renderer.info.programs` (99) and `__perfDebug.calls` (29) unchanged across
+    page switches; zero JS/WebGL errors across three Edge CLI URLs.
+    Debug `?mfdpage=0..2`. Every `?v=` tag bumped to s66a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

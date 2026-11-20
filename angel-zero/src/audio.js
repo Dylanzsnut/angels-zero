@@ -650,6 +650,20 @@ export function createAudio() {
     }
   }
 
+  // Cockpit MFD page click: a 3 ms noise tick plus a short 1.65 kHz beep.
+  function mfdClick() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+    const bp = filt('bandpass', 3200, 2), g = gain(0);
+    g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    s.connect(bp).connect(g).connect(cockpitLP); s.start(t, Math.random() * 2, 0.003); s.stop(t + 0.026);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 1650;
+    const og = gain(0);
+    og.gain.setValueAtTime(0.12, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+    o.connect(og).connect(cockpitLP); o.start(t); o.stop(t + 0.021);
+  }
+
   // Arrestor cable: band-passed tearing noise + falling square whine + hull thump.
   function cableScreech() {
     if (!ready) return;
@@ -1254,7 +1268,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, mfdClick, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.

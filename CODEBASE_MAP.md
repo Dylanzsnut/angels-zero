@@ -8,6 +8,9 @@ angel-zero/src/loadout.js:5 -> MODE_KEY / MODES; :31 -> loadMode / saveMode
 angel-zero/src/combat.js:26 -> FURBALL constants; :682 -> furballTick(dt); :3710 -> setMode(id); :3819 -> stats().furball
 angel-zero/index.html:2768 -> mode chip / button + syncModeUI(); :1214 -> FURBALL hot start in startSortie(); :1603 -> double-Tab end-sortie; :1275 -> furball rank; :1419 -> furball debrief cells
 angel-zero/src/hud.js:1361 -> TAB-again banner
+angel-zero/index.html:896 -> MFD_PAGES / mfdPage / slowActive(); :1637 -> [ / ] keys; :2801 -> ?mfdpage screenshot hook
+angel-zero/src/cockpit3d.js:898 -> paintTacRadar(); :941 -> paintStores(); :976 -> paintThreatScope(); :832 -> mfdSignature(); :1237 -> setMfdPage()
+angel-zero/src/audio.js:654 -> mfdClick(); angel-zero/src/hud.js:1363 -> MFD banner
 angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
 angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform

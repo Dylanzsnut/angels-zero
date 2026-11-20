@@ -405,6 +405,7 @@
             <div class="bind"><span class="k"><kbd>ALT</kbd> <kbd>MMB</kbd></span><span class="a">Free Look (hold + mouse)</span></div>
             <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject bailout</span></div>
             <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Tactical menu</span></div>
+            <div class="bind"><span class="k"><kbd>[</kbd> <kbd>]</kbd></span><span class="a">Cockpit MFD page</span></div>
             <div class="bind"><span class="k"><kbd>TAB</kbd> <kbd>TAB</kbd></span><span class="a">End sortie / debrief</span></div>
             <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
           </div>
@@ -491,29 +492,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s65a';
-import { createBlastFX } from './src/blastfx.js?v=s65a';
-import { createHUD } from './src/hud.js?v=s65a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s65a';
-import { createCombat } from './src/combat.js?v=s65a';
-import { createEjection } from './src/eject.js?v=s65a';
-import { createAudio } from './src/audio.js?v=s65a';
-import { createRadio } from './src/radio.js?v=s65a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s65a';
-import { createLivery } from './src/livery.js?v=s65a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s65a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s65a';
-import { createCanopyFX } from './src/canopy.js?v=s65a';
-import { createNVG } from './src/nvg.js?v=s65a';
-import { createWorld, WORLD } from './src/world.js?v=s65a';
-import { createSurfaces } from './src/surfaces.js?v=s65a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s65a';
-import { createFreeLook } from './src/freelook.js?v=s65a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s65a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s65a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s65a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s65a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s65a';
+import { createVFX } from './src/vfx.js?v=s66a';
+import { createBlastFX } from './src/blastfx.js?v=s66a';
+import { createHUD } from './src/hud.js?v=s66a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s66a';
+import { createCombat } from './src/combat.js?v=s66a';
+import { createEjection } from './src/eject.js?v=s66a';
+import { createAudio } from './src/audio.js?v=s66a';
+import { createRadio } from './src/radio.js?v=s66a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s66a';
+import { createLivery } from './src/livery.js?v=s66a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s66a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s66a';
+import { createCanopyFX } from './src/canopy.js?v=s66a';
+import { createNVG } from './src/nvg.js?v=s66a';
+import { createWorld, WORLD } from './src/world.js?v=s66a';
+import { createSurfaces } from './src/surfaces.js?v=s66a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s66a';
+import { createFreeLook } from './src/freelook.js?v=s66a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s66a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s66a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s66a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s66a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s66a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -891,6 +892,10 @@ if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mo
 const camVelocity = new THREE.Vector3();
 let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
 const D2R = Math.PI / 180;
+let mfdPage = 0;
+const MFD_PAGES = ['TACTICAL RADAR', 'STORES & DMG', 'RWR THREAT SCOPE'];
+const slowActive = () => (typeof timeScale !== 'undefined' && timeScale < 1) ||
+  (typeof trailerDirector !== 'undefined' && trailerDirector && trailerDirector.active);
 // Time scale / slow-mo: real dt always drives UI, input, HUD and audio.
 let timeScale = 1.0;
 const slowMo = { t: 9, HOLD: 0.24, REC: 0.15, MIN: 0.32 };
@@ -1629,6 +1634,12 @@ addEventListener('keydown', e => {
   if (k === 'x' && !e.repeat) combatSys.dispenseFlares();
   if (k === 'l' && !e.repeat) toggleGear();
   if (k === 'g' && !e.repeat) combatSys.setWingOrder();
+  if ((k === '[' || k === ']') && !e.repeat && firstPerson && flightMode === 'FLY' && !slowActive()) {
+    mfdPage = (mfdPage + (k === ']' ? 1 : 2)) % 3;
+    cockpit.setMfdPage(mfdPage);
+    onSfx('mfd');
+    combat.mfdT = performance.now(); combat.mfdLabel = MFD_PAGES[mfdPage];
+  }
   // B: dorsal speedbrake / wheel brakes. Tap (< 0.35 s) toggles the latch; hold = momentary.
   if (k === 'b' && !e.repeat) { keys.b = true; state.brakeHeld = true; brakeTap = { t: performance.now(), was: state.brakeLatch }; state.brakeLatch = !state.brakeLatch; }
   if (k === 'c' && !e.repeat) combatSys.designateInSight();
@@ -2563,6 +2574,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'overheat') audio.overheat();
   else if (type === 'flameout') audio.flameout();
   else if (type === 'caution') audio.masterCaution();
+  else if (type === 'mfd') audio.mfdClick();
   else if (type === 'aceWarn') audio.aceWarning();
   else if (type === 'trap') audio.cableScreech();
   else if (type === 'catapult') audio.catapult();
@@ -2783,8 +2795,14 @@ modeBtn.addEventListener('click', e => {
 syncModeUI();
 
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
-  missiles, STALL_AOA, getEnemies: () => combatSys.enemies });
+  missiles, STALL_AOA, getEnemies: () => combatSys.enemies,
+  getWingmen: () => wingmen, getStrikeTargets: () => combatSys.strikeTargets });
 cockpit.setFreeLook(freeLook.view);
+if (DEBUG && Q.has('mfdpage')) {
+  const p = ((Number(Q.get('mfdpage')) || 0) % 3 + 3) % 3;
+  mfdPage = p; cockpit.setMfdPage(p);
+  combat.mfdT = performance.now(); combat.mfdLabel = MFD_PAGES[p];
+}
 const canopyGlass = createCanopyGlass(THREE, { parent: cockpit.rig, sunDir: SUN_DIR, fogColor: scene.fog.color });
 if (DEBUG && Q.has('noglass')) canopyGlass.glass.visible = false;     // A/B check of the 3D canopy glass
 const hud = createHUD(THREE, {

@@ -3,6 +3,12 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.0.8', title: 'COCKPIT MFD SUB-PAGES', bullets: [
+    'Cycle the VSD radar through TACTICAL RADAR, STORES & DMG and RWR THREAT SCOPE with the [ and ] keys.',
+    'The tactical page plots wingmen, bandits, aces and strike bunkers heading-up over a 10 NM sweep.',
+    'Stores shows the airframe wireframe, engine health, damage, ammunition and countermeasures on the same CRT.',
+    'A page-click chirp and a brief HUD tag confirm each switch.'
+  ] },
   { version: 'v1.0.7', title: 'FURBALL INSTANT-ACTION MODE', bullets: [
     'Switch to FURBALL in the briefing for an airborne 6,000 ft hot start above the cloud sea — no runway, no mission phases.',
     'Bandits recycle endlessly from the existing pool, with a CRIMSON ace pair arriving every five kills.',
