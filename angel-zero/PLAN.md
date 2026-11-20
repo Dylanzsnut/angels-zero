@@ -1177,6 +1177,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     `nearMissT`, pulse inset shadow `rgba(255,220,170,0.176)`, audio counter 1,
     `__perfDebug.frameMs` 3 ms, zero JS/WebGL errors (in-app browser and Edge).
     All 21 `?v=` tags bumped to s54a.
+- [x] **Chaff, radar notch + Z/J key remap** *(build `s55a`, `src/difficulty.js`,
+  `src/combat.js`, `src/hud.js`, `index.html`)*
+  - Missile pool objects carry `guidance:'IR'`, `notchT:0`, `chaffSalvo:-1`;
+    `launch()` takes an 8th `guidance` argument (`RADAR` for SAMs, bandits beyond
+    2,500 m). Flares decoy only IR seekers; the nearby bandit lock break is
+    limited to 2,500 m and the old foil bloom becomes 28 orange sparks.
+  - `Z` dispenses chaff (per-preset 10/8/6, 0.5 s cooldown, +1/10 s, 4.5 s cloud
+    drifting at 0.35·jetVel, 90 pooled silver sparks). RADAR missiles inside
+    900 m roll once per cloud against the preset decoy chance (0.9/0.82/0.72);
+    a chaff hit detonates harmlessly. `J` now runs the ALQ-135 ECM jammer;
+    briefing keybinds updated to match (Free Look still ALT/MMB).
+  - Notch: folded aspect >= 75 deg below 1,200 ft AGL for 1.4 s breaks a
+    RADAR seeker (+300), via pure velocity dot products (zero allocation).
+    HUD adds `[ NOTCHED // RADAR LOCK BROKEN ]`, RWR `RDR`/`IR` glyphs, and a
+    CHF stores row.
+  - Verified headless: zero JS/WebGL errors; `combatSys.dispenseChaff()`
+    consumes a cartridge and spawns a cloud with 90 pooled sparks; notch break
+    and chaff decoy paths exercised via the debug API; program count unchanged.
+    All 21 `?v=` tags bumped to s55a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

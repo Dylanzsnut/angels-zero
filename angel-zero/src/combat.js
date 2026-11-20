@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s54a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s55a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -42,6 +42,7 @@ export function createCombat(THREE, env) {
     const p = DIFFICULTY_PRESETS[id] || DIFFICULTY_PRESETS.NORMAL;
     Object.assign(DIFF, p, { seekerHalf: p.seekerHalfDeg * D2R, aam4Half: p.aam4HalfDeg * D2R });
     director.max = p.maxEnemyMissiles; director.stagger = p.launchStagger;
+    C.chaffMax = p.chaffMax; C.chaff = p.chaffMax;
     C.difficulty = p.id;
   }
 
@@ -49,7 +50,7 @@ export function createCombat(THREE, env) {
   Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, missileReloadMax: MSL_RELOAD, bombReloadMax: BOMB_RELOAD,
     bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], events: [], wave: 0, gunFiring: false, hitMarker: 0 });
   // Stores: weapon select (>MSL / >BOMB), bombs, CCIP solution, flares.
-  Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX });
+  Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX, chaff: 0, chaffMax: 0, notchT: 0 });
 
   const say = (text, secs = 2.5, color = '#4dff91') => {
     C.comms = C.comms.filter(c => c.text !== text);
@@ -293,7 +294,8 @@ export function createCombat(THREE, env) {
     const plume = new THREE.Mesh(plumeGeo, plumeMat); g.add(plume);
     g.visible = false; scene.add(g);
     missiles.push({ mesh: g, parts, visual: null, plume, active: false, enemy: false, target: null, vel: new THREE.Vector3(), age: 0, life: 12, motor: false, losPrev: new THREE.Vector3(), smokeAcc: 0,
-      flybyTriggered: false, flyMinD: Infinity });
+      flybyTriggered: false, flyMinD: Infinity,
+      guidance: 'IR', notchT: 0, chaffSalvo: -1 });
   }
   const MSL_NOSE = new THREE.Vector3(0, 0, -1);
   const RAILS = [new THREE.Vector3(-2.7, -0.95, 0.9), new THREE.Vector3(2.7, -0.95, 0.9)];
@@ -324,7 +326,7 @@ export function createCombat(THREE, env) {
 
   // `visual` (optional): a store node from the F-15 GLB. Its exact mesh is cloned
   // into the missile body in place of the procedural AIM-9 parts.
-  function launch(fromPos, fromQuat, fromVel, target, enemy, quality, visual) {
+  function launch(fromPos, fromQuat, fromVel, target, enemy, quality, visual, guidance) {
     const hostileAtPlayer = enemy && target && target.isPlayer;
     if (hostileAtPlayer && !director.canLaunch()) { director.denied++; return null; }
     const m = missiles.find(x => !x.active); if (!m) return null;
@@ -332,6 +334,7 @@ export function createCombat(THREE, env) {
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
     m.aam = false; m.minD = Infinity; m.closeCall = false; m.hitPlayer = false;
     m.flybyTriggered = false; m.flyMinD = Infinity;
+    m.guidance = guidance || (quality === SAM_Q ? 'RADAR' : 'IR'); m.notchT = 0; m.chaffSalvo = -1;
     m.cloudLost = false; m.cloudT = 0; m.cloud = 0; m.reacquired = false;
     m.terrainLost = false; m.maskT = 0; m.sam = false; m.friendly = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
@@ -1099,13 +1102,13 @@ export function createCombat(THREE, env) {
       const target = { pos: S.position, vel: S.velocity, alive: true, isPlayer: true };
       if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
         // Full lock: aggressive, accurate shot.
-        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_FULL)) {
+        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_FULL, undefined, dist > 2500 ? 'RADAR' : 'IR')) {
           e.mslCD = e.ace ? 8 + rand() * 4 : 14 + rand() * 8;
           say(e.ace ? `${e.label} — FOX TWO! BREAK! BREAK!` : 'MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d');
         }
       } else if (e.bLock >= B_SOFT && e.bLock < 1 && e.mslCD <= 0 && dist > 900 && rand() < 0.12 * dt) {
         // Impatient bandit fires early on a soft lock: weak, easily defeated shot.
-        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_SOFT)) {
+        if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_SOFT, undefined, dist > 2500 ? 'RADAR' : 'IR')) {
           e.mslCD = 12 + rand() * 6; say('MISSILE LAUNCH — LOW-QUALITY TRACK', 1.8, '#ffbf3f');
         }
       }
@@ -1757,12 +1760,12 @@ export function createCombat(THREE, env) {
         const d = e.pos.distanceTo(S.position);
         const kind = e.bLock >= 1 ? 'lock' : e.bLock > 0.05 ? 'acq' : e.tac === 'ENGAGE' && d < B_LOCK_RANGE * 1.5 ? 'paint' : null;
         if (!kind) continue;
-        list.push({ b: relBearing(e.pos), kind, d, id: e.id });
+        list.push({ b: relBearing(e.pos), kind, d, id: e.id, g: d > 2500 ? 'RADAR' : 'IR' });
         level = Math.max(level, kind === 'lock' ? 2 : 1);
       }
       for (const m of missiles) {
         if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
-        list.push({ b: relBearing(m.mesh.position), kind: 'msl', d: m.mesh.position.distanceTo(S.position) });
+        list.push({ b: relBearing(m.mesh.position), kind: 'msl', g: m.guidance || 'IR', d: m.mesh.position.distanceTo(S.position) });
         level = 3;
       }
       // Task-force search radars painting us (line of sight, 9 km).
@@ -1853,6 +1856,19 @@ export function createCombat(THREE, env) {
             if (Math.acos(clamp(fwd.dot(l2), -1, 1)) < q.fov * 0.5) { m.lostTrack = false; m.cloudLost = false; m.cloudT = 0; m.losPrev.copy(l2); m.reacquired = true; }
           }
         }
+        // Notch: a beam-on aspect (>= 75 deg folded) below 1200 ft AGL breaks a
+        // RADAR seeker after 1.4 s. No allocations: pure vector dot products.
+        if (m.enemy && m.guidance === 'RADAR' && tgt && tgt.isPlayer && !m.lostTrack && playerActive) {
+          const denom = S.velocity.length() * m.vel.length();
+          const ang = denom > 1 ? Math.acos(clamp(Math.abs(S.velocity.dot(m.vel)) / denom, -1, 1)) : 0;
+          const inNotch = ang >= 75 * D2R && S.radalt < 1200 * FT;
+          m.notchT = inNotch ? m.notchT + dt : 0;
+          if (m.notchT > 1.4) {
+            m.lostTrack = true; C.notchT = performance.now(); C.score += 300;
+            pushEvent('NOTCHED', 'NOTCHED // RADAR LOCK BROKEN', 300, '#00ff66');
+            say('NOTCHED — RADAR LOCK BROKEN', 2.0, '#00ff66');
+          }
+        }
         const tAlive = tgt && !m.lostTrack && (tgt.isPlayer ? playerActive : tgt.alive);
         if (tAlive) {
           const los = tgt.pos.clone().sub(pos), range = los.length(); los.divideScalar(range);
@@ -1888,10 +1904,11 @@ export function createCombat(THREE, env) {
                 // Critical hit on two healthy engines: 35 % chance one of them catches fire.
                 if (!C.engSide && C.fireArmed && !C.dead && rand() < DIFF.missileIgniteP) igniteEngine('MISSILE HIT');
               }
+              else if (tgt.isChaff) { explosion(pos, 0.5); }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
               else if (tgt.fleet) { explosion(pos, 1.3, { kind: 'ship' }); damageSurface(tgt, 90); }          // ship: multi-hit
               else { explosion(pos, 0.8, { vel: tgt.vel }); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
-              logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
+              logShot(m, tgt.isChaff ? 'CHAFF' : tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
             // Near-miss: closest approach already passed and the missile is receding.
@@ -2202,6 +2219,9 @@ export function createCombat(THREE, env) {
   const DISPENSERS = [new THREE.Vector3(-0.9, -0.55, 6.4), new THREE.Vector3(0.9, -0.55, 6.4)];
   const flareLights = Array.from({ length: 2 }, () => { const l = new THREE.PointLight(0xffe0a0, 0, 260, 1.8); scene.add(l); return l; });
   let flareCD = 0, flareRecharge = 0, flareSalvo = 0, playerActiveNow = false;
+  const chaff = [];
+  let chaffCD = 0, chaffRecharge = 0, chaffSalvo = 0;
+  const CHAFF_CD = 0.5, CHAFF_RECHARGE = 10, CHAFF_LIFE = 4.5, CHAFF_DECOY_RANGE = 900;
   function dispenseFlares() {
     if (!env.isReady() || C.dead || C.flares <= 0 || flareCD > 0) return false;
     C.flares--; flareCD = 0.45; flareSalvo++;
@@ -2215,16 +2235,58 @@ export function createCombat(THREE, env) {
       const vel = S.velocity.clone().multiplyScalar(0.92).add(kick);
       flares.push({ pos, vel, kick, side: i % 2, age: -i * 0.07, life: 3.4 + rand() * 0.8, alive: true, isFlare: true, salvo: flareSalvo, emit: 0 });
     }
-    for (let i = 0; i < 70; i++) {                      // chaff bloom: glittering foil
+    for (let i = 0; i < 28; i++) {                      // hot orange flare sparks
       const p = DISPENSERS[i % 2].clone().applyQuaternion(S.quaternion).add(S.position);
       const v = S.velocity.clone().multiplyScalar(0.85).add(new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(40));
-      const w = 0.75 + rand() * 0.25;
-      fire.spawn({ x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z, life: 0.5 + rand() * 0.9, s0: 0.9, s1: 0.5, r: w, g: w, b: w * 1.05, a: 0.9, drag: 2.6 });
+      fire.spawn({ x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z, life: 0.35 + rand() * 0.45, s0: 0.9, s1: 0.5, r: 0.95, g: 0.5, b: 0.12, a: 0.8, drag: 2.6 });
     }
-    for (const e of enemies) e.bLock = 0;               // seekers break lock
+    for (const e of enemies) if (e.alive && e.pos.distanceTo(S.position) < 2500) e.bLock = 0;   // nearby seekers break lock
     say('FLARES — ' + C.flares + ' LEFT', 1.0, '#ffe0a0');
     if (env.onSfx) env.onSfx('flare', S.position, 1);
     return true;
+  }
+  // Z: chaff cartridge. One cartridge -> a slow foil cloud that decoys RADAR
+  // seekers inside 900 m (one roll per cloud per missile).
+  function dispenseChaff() {
+    if (!env.isReady() || C.dead || C.chaff <= 0 || chaffCD > 0) return false;
+    C.chaff--; chaffCD = CHAFF_CD;
+    if (C.chaff < C.chaffMax && chaffRecharge <= 0) chaffRecharge = CHAFF_RECHARGE;
+    const p = DISPENSERS[0].clone().applyQuaternion(S.quaternion).add(S.position);
+    p.add(DISPENSERS[1].clone().applyQuaternion(S.quaternion).add(S.position)).multiplyScalar(0.5);
+    const cloud = { pos: p, vel: S.velocity.clone().multiplyScalar(0.35), life: CHAFF_LIFE,
+      isChaff: true, id: ++chaffSalvo };
+    chaff.push(cloud);
+    for (let i = 0; i < 90; i++) {
+      fire.spawn({ x: p.x + (rand() - 0.5) * 6, y: p.y + (rand() - 0.5) * 4, z: p.z + (rand() - 0.5) * 6,
+        vx: cloud.vel.x + (rand() - 0.5) * 14, vy: cloud.vel.y + (rand() - 0.5) * 8, vz: cloud.vel.z + (rand() - 0.5) * 14,
+        life: 0.45 + rand() * 0.75, s0: 0.7, s1: 0.25, r: 0.7, g: 0.7, b: 0.7, a: 0.7, drag: 3 });
+    }
+    say('CHAFF — ' + C.chaff + ' LEFT', 1.0, '#d8e4ee');
+    if (env.onSfx) env.onSfx('flare', S.position, 1);
+    return true;
+  }
+  function updateChaff(dt) {
+    chaffCD = Math.max(0, chaffCD - dt);
+    if (C.chaff < C.chaffMax) {
+      chaffRecharge -= dt;
+      if (chaffRecharge <= 0) { C.chaff++; chaffRecharge = C.chaff < C.chaffMax ? CHAFF_RECHARGE : 0; }
+    }
+    for (let i = chaff.length - 1; i >= 0; i--) {
+      const c = chaff[i];
+      c.pos.addScaledVector(c.vel, dt); c.life -= dt;
+      if (c.life <= 0) { chaff.splice(i, 1); continue; }
+      for (const m of missiles) {
+        if (!m.active || m.guidance !== 'RADAR' || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
+        if (m.chaffSalvo === c.id || m.mesh.position.distanceTo(c.pos) > CHAFF_DECOY_RANGE) continue;
+        m.chaffSalvo = c.id;
+        if (rand() < DIFF.chaffDecoyP) {
+          m.target = c; m.lostTrack = false; m.losPrev.copy(c.pos).sub(m.mesh.position).normalize();
+          C.decoyed = (C.decoyed || 0) + 1; C.score += 250;
+          pushEvent('EVADED', 'CHAFF // RADAR DECOYED', 250, '#d8e4ee');
+          say('CHAFF // RADAR DECOYED', 1.6, '#d8e4ee');
+        }
+      }
+    }
   }
   function updateFlares(dt) {
     flareCD = Math.max(0, flareCD - dt);
@@ -2264,7 +2326,7 @@ export function createCombat(THREE, env) {
     });
     // Decoy roll for bandit missiles near any burning flare (once per missile per salvo).
     for (const m of missiles) {
-      if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack) continue;
+      if (!m.active || !m.enemy || !m.target || !m.target.isPlayer || m.lostTrack || m.guidance !== 'IR') continue;
       const near = flares.find(f => f.alive && !f.owner && f.age >= 0 && f.salvo !== m.flareSalvo && f.pos.distanceTo(m.mesh.position) < FLR_DECOY_RANGE);
       if (!near) continue;
       m.flareSalvo = near.salvo;
@@ -2682,7 +2744,7 @@ export function createCombat(THREE, env) {
     if (samsInAir() >= 2) return false;
     _dv.copy(S.position).sub(from).normalize().lerp(UP, 0.45).normalize();
     _q.setFromUnitVectors(MSL_NOSE, _dv);
-    const m = launch(_da.copy(from), _q, _db.copy(_dv).multiplyScalar(70), PLAYER_TGT, true, SAM_Q);
+    const m = launch(_da.copy(from), _q, _db.copy(_dv).multiplyScalar(70), PLAYER_TGT, true, SAM_Q, undefined, 'RADAR');
     if (!m) return false;
     m.sam = true;
     say(`SAM LAUNCH — ${label}! BREAK!`, 2.0, '#ff4d3d');
@@ -3114,6 +3176,7 @@ export function createCombat(THREE, env) {
     rearm('msl'); rearm('bomb');
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; flareRecharge = 0;
+    chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
       reload: 0, missileReload: 0, gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, health: 100, hitFlash: 0 });
     resetEngines();                                         // both F100s back to HEALTHY
@@ -3129,6 +3192,7 @@ export function createCombat(THREE, env) {
     resetEngines();
     director.reset();
     flareRecharge = 0;
+    chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
     for (const e of enemies) e.bLock = 0;
@@ -3277,7 +3341,7 @@ export function createCombat(THREE, env) {
     });
     director.tick(dt);
     updateMissiles(dt, playerActive);
-    updateBombs(dt); updateRings(dt); updateFlares(dt);
+    updateBombs(dt); updateRings(dt); updateChaff(dt); updateFlares(dt);
     updateRipple(dt); updateECM(dt); updateRWR(playerActive && !C.playerSafe);   // safe: RWR scope clears
     if (playerActive) updateCCIP(); else C.ccip = null;
     updateStyle(dt, playerActive);
@@ -3291,7 +3355,7 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     get difficulty() { return C.difficulty; },
-    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, fireAAM4, activateECM,
+    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
     // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
@@ -3408,7 +3472,9 @@ export function createCombat(THREE, env) {
         ecm: { st: C.ecmState, t: +C.ecmT.toFixed(1), breaks: C.ecmBreaks },
         gun: { heat: +C.gunHeat.toFixed(2), over: C.gunOverheat, overheats: C.overheats || 0, ammo: C.ammo },
         style: { mult: C.comboMult, timer: +C.comboTimer.toFixed(1), bonus: C.comboBonus, danger: C.dangerClose, counts: C.styleCounts,
-          feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares },
+          feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares,
+          chf: C.chaff, chfMax: C.chaffMax, chaffClouds: chaff.length,
+          notch: C.notchT > 0 ? +(performance.now() - C.notchT).toFixed(0) : null },
         phase: { phase: C.phase, wave: C.wave, ace: C.ace, aceDowns: C.aceDowns,
           aceE: (() => { const a = enemies.find(x => x.ace); return a ? { tac: a.tac, hp: Math.round(a.hp), wingL: a.wingL, wingR: a.wingR, kt: Math.round(a.speed / KT), g: +a.gNow.toFixed(1), flr: a.flaresLeft, alive: a.alive } : null; })() },
         ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,

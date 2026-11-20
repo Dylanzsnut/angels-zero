@@ -286,7 +286,7 @@
           </div>
           <div class="loadout-card">
             <div class="loadout-title">F-15C EAGLE // AIR-TO-AIR &amp; STRIKE</div>
-            <div class="loadout-sub">M61A1 VULCAN &bull; AIM-9M &bull; 4AAM &bull; MK-82 UGB &bull; FLARES &bull; ALQ-135 ECM</div>
+            <div class="loadout-sub">M61A1 VULCAN &bull; AIM-9M &bull; 4AAM &bull; MK-82 UGB &bull; FLARES + CHAFF &bull; ALQ-135 ECM</div>
             <div class="stations">
               <div class="station"><span>M61A1 20MM</span><span>940 RDS</span></div>
               <div class="station"><span>AIM-9M IR</span><span>4 RAILS</span></div>
@@ -309,7 +309,8 @@
             <div class="bind"><span class="k"><kbd>A</kbd> <kbd>D</kbd></span><span class="a">Rudder yaw</span></div>
             <div class="bind"><span class="k"><kbd>AUTO</kbd></span><span class="a">Auto-Radar Designate</span></div>
             <div class="bind"><span class="k"><kbd>C</kbd></span><span class="a">Lock Missile Seeker / Cycle Target</span></div>
-            <div class="bind"><span class="k"><kbd>Z</kbd></span><span class="a">ALQ-135 ECM Jammer</span></div>
+            <div class="bind"><span class="k"><kbd>Z</kbd></span><span class="a">Dispense chaff (RADAR decoy)</span></div>
+            <div class="bind"><span class="k"><kbd>J</kbd></span><span class="a">ALQ-135 ECM Jammer</span></div>
             <div class="bind"><span class="k"><kbd>N</kbd></span><span class="a">Toggle Night Vision (NVG)</span></div>
             <div class="bind"><span class="k"><kbd>K</kbd></span><span class="a">Combat music on / off</span></div>
             <div class="bind"><span class="k"><kbd>Q</kbd></span><span class="a">Barrel roll</span></div>
@@ -435,26 +436,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s54a';
-import { createBlastFX } from './src/blastfx.js?v=s54a';
-import { createHUD } from './src/hud.js?v=s54a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s54a';
-import { createCombat } from './src/combat.js?v=s54a';
-import { createEjection } from './src/eject.js?v=s54a';
-import { createAudio } from './src/audio.js?v=s54a';
-import { createRadio } from './src/radio.js?v=s54a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s54a';
-import { createLivery } from './src/livery.js?v=s54a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s54a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s54a';
-import { createCanopyFX } from './src/canopy.js?v=s54a';
-import { createNVG } from './src/nvg.js?v=s54a';
-import { createWorld, WORLD } from './src/world.js?v=s54a';
-import { createSurfaces } from './src/surfaces.js?v=s54a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s54a';
-import { createFreeLook } from './src/freelook.js?v=s54a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s54a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s54a';
+import { createVFX } from './src/vfx.js?v=s55a';
+import { createBlastFX } from './src/blastfx.js?v=s55a';
+import { createHUD } from './src/hud.js?v=s55a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s55a';
+import { createCombat } from './src/combat.js?v=s55a';
+import { createEjection } from './src/eject.js?v=s55a';
+import { createAudio } from './src/audio.js?v=s55a';
+import { createRadio } from './src/radio.js?v=s55a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s55a';
+import { createLivery } from './src/livery.js?v=s55a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s55a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s55a';
+import { createCanopyFX } from './src/canopy.js?v=s55a';
+import { createNVG } from './src/nvg.js?v=s55a';
+import { createWorld, WORLD } from './src/world.js?v=s55a';
+import { createSurfaces } from './src/surfaces.js?v=s55a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s55a';
+import { createFreeLook } from './src/freelook.js?v=s55a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s55a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s55a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1320,7 +1321,8 @@ addEventListener('keydown', e => {
   if (k === '1' && !e.repeat) combatSys.setWeapon('MSL');
   if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
   if (k === '3' && !e.repeat) combatSys.setWeapon('AAM4');
-  if (k === 'z' && !e.repeat) combatSys.activateECM();
+  if (k === 'z' && !e.repeat) combatSys.dispenseChaff();
+  if (k === 'j' && !e.repeat) combatSys.activateECM();
   if (k === 'x' && !e.repeat) combatSys.dispenseFlares();
   if (k === 'g' && !e.repeat) toggleGear();
   // B: dorsal speedbrake / wheel brakes. Tap (< 0.35 s) toggles the latch; hold = momentary.
@@ -2458,7 +2460,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('fireoff') && Number(Q.get('fireoff')) >= t0 && Number(Q.get('fireoff')) < t1) { DEBUG_FIRE = false; console.log('[ANGELS_ZERO] trigger released @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
       if (Q.has('fireon') && Number(Q.get('fireon')) >= t0 && Number(Q.get('fireon')) < t1) { DEBUG_FIRE = true; console.log('[ANGELS_ZERO] trigger @', t1.toFixed(2), JSON.stringify(combatSys.stats().gun)); }
       if (Q.has('mouseoff') && Number(Q.get('mouseoff')) >= t0 && Number(Q.get('mouseoff')) < t1) { mouse.nx = 0; mouse.ny = 0; console.log('[ANGELS_ZERO] stick released @', t1.toFixed(2)); }
-      if (Q.has('ecmat') && Number(Q.get('ecmat')) >= t0 && Number(Q.get('ecmat')) < t1) { console.log('[ANGELS_ZERO] Z @', t1.toFixed(2), combatSys.activateECM()); }
+      if (Q.has('ecmat') && Number(Q.get('ecmat')) >= t0 && Number(Q.get('ecmat')) < t1) { console.log('[ANGELS_ZERO] J @', t1.toFixed(2), combatSys.activateECM()); }
       // ?sinkat=s[,i]: at s seconds, sink task-force ship i (0 = carrier) -> secondaries + listing.
       if (Q.has('sinkat')) { const [st, si] = Q.get('sinkat').split(',').map(Number); if (st >= t0 && st < t1) { combatSys.hitShip(si || 0, 9999); console.log('[ANGELS_ZERO] sink @', t1.toFixed(2), JSON.stringify(combatSys.fleetStats())); } }
       // Engine fire procedure: ?engfire=s[,L|R] ignite, ?extat=s press F (Halon),

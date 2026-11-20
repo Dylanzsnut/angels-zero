@@ -1061,11 +1061,12 @@ export function createHUD(THREE, A) {
       for (const r of C.rwr || []) {
         const sx = Math.sin(r.b), sy = -Math.cos(r.b), px = cx + sx * rr, py = cy + sy * rr;
         if (r.kind === 'msl') {
-          const on = mslFlash();
-          glow(ctx, WARN, on ? 8 : 2); ctx.globalAlpha = on ? 1 : 0.5; ctx.lineWidth = 1.5;
+          const on = mslFlash(), radar = r.g === 'RADAR';
+          const col = radar ? '#ffbf3f' : '#ff4d3d';
+          glow(ctx, col, on ? 8 : 2); ctx.globalAlpha = on ? 1 : 0.5; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.moveTo(cx + sx * 9, cy + sy * 9); ctx.lineTo(px + sx * 6, py + sy * 6); ctx.stroke();
-          ctx.font = f(14, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('M', px + sx * 14, py + sy * 14);
+          ctx.font = f(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(radar ? 'RDR' : 'IR', px + sx * 15, py + sy * 15);
           ctx.globalAlpha = 1;
         } else {
           const col = r.kind === 'lock' ? WARN : AMBER;
@@ -1151,6 +1152,7 @@ export function createHUD(THREE, A) {
     if (C.bombMax) rows.push([(C.weapon === 'BOMB' ? '> ' : '  ') + 'UGB', reloadBomb ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs), C.weapon === 'BOMB' ? GB : G]);
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
+    if (C.chaff !== undefined) rows.push(['  CHF', String(C.chaff), C.chaff > 0 ? G : AMBER]);
     rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
     if (S.gear > 0 || S.gearDown) rows.push(['  GEAR', S.gear >= 1 ? (S.onGround ? 'WOW' : 'DOWN') : 'TRANSIT', S.gear >= 1 ? G : AMBER]);
     if (S.ctl && S.ctl.airbrake > 0.05) rows.push(['  S/BRK', `${Math.round(48 * S.ctl.airbrake)}°`, S.brakeLatch ? GB : G]);
@@ -1279,11 +1281,15 @@ export function createHUD(THREE, A) {
       const age = now - C.nearMissT;
       drawBanner(ctx, cx, upperY, '[ NEAR MISS // EVADED ]', '#00ff66', 300, 1 - age / 1400);
     }
+    if (C.notchT && now - C.notchT < 1600) {
+      const age = now - C.notchT;
+      drawBanner(ctx, cx, upperY + (alertOn() ? 36 : 0), '[ NOTCHED // RADAR LOCK BROKEN ]', '#00ff66', 360, 1 - age / 1600);
+    }
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));
     } else {
-      const latest = (C.events || []).slice().reverse().find(ev => now - ev.born < 1500);
+      const latest = (C.events || []).slice().reverse().find(ev => now - ev.born < 1500 && ev.kind !== 'NOTCHED');
       if (latest) {
         const label = latest.kind === 'DESTROYED' ? `DESTROYED  +${latest.points}` : latest.text;
         drawBanner(ctx, cx, upperY, label, latest.color || G, 230, 1);

@@ -13,6 +13,7 @@ export const DIFFICULTY_PRESETS = {
     aam4HalfDeg: 30, aam4Lock: 1.3,                   // 4AAM multi-lock (was 25 deg / 1.6 s)
     gunHitRadius: 14, gunZoneScale: 1.3,              // player gun vs bandits (was 11 m / 1.0)
     flareDecoyP: 0.95,                                // was 0.85
+    chaffMax: 10, chaffDecoyP: 0.9,                   // Z chaff cartridges / RADAR decoy chance
     ciwsDmg: 1.0, ciwsSpread: 0.12,                   // per CIWS round on the player (was 2.5 / 0.08)
     flakDmg: 2, flakRadius: 24,                       // per flak burst (was 4 within 30 m)
     engineFireDmg: 65, engineFireRearm: 60,           // DMG % ignition / re-arm (was 45 / 40)
@@ -25,6 +26,7 @@ export const DIFFICULTY_PRESETS = {
     aam4HalfDeg: 27, aam4Lock: 1.45,
     gunHitRadius: 12.5, gunZoneScale: 1.15,
     flareDecoyP: 0.9,
+    chaffMax: 8, chaffDecoyP: 0.82,
     ciwsDmg: 1.6, ciwsSpread: 0.1,
     flakDmg: 3, flakRadius: 27,
     engineFireDmg: 55, engineFireRearm: 50,
@@ -37,6 +39,7 @@ export const DIFFICULTY_PRESETS = {
     aam4HalfDeg: 25, aam4Lock: 1.6,
     gunHitRadius: 11, gunZoneScale: 1.0,
     flareDecoyP: 0.85,
+    chaffMax: 6, chaffDecoyP: 0.72,
     ciwsDmg: 2.2, ciwsSpread: 0.08,
     flakDmg: 4, flakRadius: 30,
     engineFireDmg: 45, engineFireRearm: 40,
