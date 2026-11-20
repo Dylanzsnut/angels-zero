@@ -80,7 +80,7 @@ export function createProfile(storage = (() => { try { return window.localStorag
     if (debriefed) {
       data.sortiesFlown++;
       if (cleared) data.sortiesCleared++;
-      res.rank = rankFor(num(s.score), cleared);
+      res.rank = RANKS.includes(s.rankOverride) ? s.rankOverride : rankFor(num(s.score), cleared);
       if (num(s.score) > data.bestScore) { data.bestScore = num(s.score); res.newBest = true; }
       if (!data.bestRank || RANKS.indexOf(res.rank) > RANKS.indexOf(data.bestRank)) { data.bestRank = res.rank; res.newBestRank = true; }
       // Unlocks. MIDNIGHT STEALTH counts skill feats even on a failed / ejected run.

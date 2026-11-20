@@ -1381,6 +1381,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     ESC handling was moved ahead of the MENU branch so it always dismisses.
     Desktop briefing CSS was tightened and widened so the whole screen fits at
     1280x720 and 1920x1080 without clipping; zero JS/WebGL errors at both sizes.
+- [x] **Telemetry trace debrief + composite rank** *(build `s64a`, new
+  `src/telemetry.js`, `index.html`, `src/combat.js`, `src/hud.js`,
+  `src/profile.js`)*
+  - One fixed `Float32Array` pair records 600 position/alt/time samples at
+    1.5 s intervals and 64 combat events; flight-time cost is index writes only.
+    Kill / ace-kill / strike-kill / carrier-trap / near-miss events are fed from
+    combat hooks, and `stats().tele` reports `{n, ne}`.
+  - Debrief adds a 360 px DOM 2D map: topo sheet underlay, AFB / bridge / canyon
+    / carrier landmarks, an animated 4 s trace with altitude-brightness and
+    vector event icons that pop over 0.2 s. R or `[ R ] REPLAY TRACE` restarts
+    the animation; its single RAF is cancelled on replay / return to briefing.
+  - Rank combines time (30), damage (25), gun+missile accuracy (25) and
+    objectives (20), capped at B for failed sorties; `rankOverride` is transient
+    and leaves the stored profile schema untouched.
+  - Verified headless: `?nointro&debug&warp=40&killat=10&nearat=15&debriefat=40`
+    → debrief with `tele.n=26`, 15 breakdown cells, rendered topo + trace;
+    different damage yields B vs C; the same 75-point total yields A when
+    cleared and B when failed; zero JS/WebGL errors. Debug `?debriefat=s`,
+    `?nearat=s`. Every `?v=` tag bumped to s64a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

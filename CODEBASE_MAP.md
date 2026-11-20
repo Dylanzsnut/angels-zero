@@ -1,5 +1,9 @@
 angel-zero/src/patchnotes.js:5 -> PATCH_NOTES (newest-first releases); :88 -> renderPatchNotes(container)
 angel-zero/index.html:428 -> patchnotes.js import; :274 -> buildChip; :282 -> #patchOverlay modal CSS; :292 -> #patchBody scroll CSS; :432 -> briefing PATCH NOTES button; :1399 -> ESC dismiss; :1484 -> BUILD_VERSION / setPatchOpen / wheel+touchmove guards
+angel-zero/src/telemetry.js:4 -> TELE_MAX / EV constants; :8 -> fixed Float32Array buffers, tick()/event()/reset()
+angel-zero/index.html:2552 -> tele = createTelemetry(); :2560 -> onTele / getTeleStats env hooks; :3100 -> tele.tick() in stepSim
+angel-zero/index.html:1254 -> computeRank(); :1272 -> dbMap canvas; :1312 -> drawDebriefMap(); :1353 -> startDebriefMap() / RAF cleanup; :458 -> #dbTrace button
+angel-zero/src/hud.js:1999 -> topoCanvas getter; angel-zero/src/profile.js:83 -> rankOverride
 angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
 angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform

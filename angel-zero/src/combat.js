@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s62a';
-import { SPW } from './loadout.js?v=s62a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s64a';
+import { SPW } from './loadout.js?v=s64a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -55,7 +55,7 @@ export function createCombat(THREE, env) {
     bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], events: [], wave: 0, gunFiring: false, hitMarker: 0 });
   // Stores: weapon select (>MSL / >BOMB), bombs, CCIP solution, flares.
   Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX, chaff: 0, chaffMax: 0, notchT: 0,
-    wingOrder: 'FORM', wingOrderT: 0 });
+    wingOrder: 'FORM', wingOrderT: 0, gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0 });
 
   const say = (text, secs = 2.5, color = '#4dff91') => {
     C.comms = C.comms.filter(c => c.text !== text);
@@ -431,7 +431,7 @@ export function createCombat(THREE, env) {
     const bore = S.position.clone().addScaledVector(fwd, CONVERGE_M).sub(port).normalize();
     let n = 0;
     while (gunAcc >= 1 && C.ammo > 0) {
-      gunAcc -= 1; C.ammo--; n++;
+      gunAcc -= 1; C.ammo--; n++; C.gunRounds++;
       const r = DISPERSION * 0.5 * Math.sqrt(rand()), th = rand() * Math.PI * 2;  // uniform in the 8 mrad cone
       const dir = bore.clone().addScaledVector(right, Math.cos(th) * r).addScaledVector(up, Math.sin(th) * r).normalize();
       const v = dir.clone().multiplyScalar(BULLET_SPEED).add(S.velocity);       // muzzle velocity + aircraft velocity
@@ -1251,6 +1251,7 @@ export function createCombat(THREE, env) {
       say(`${src} — SPLASH ${e.label}!`, 2.0, '#5fe8ff');
       return;
     }
+    if (env.onTele) env.onTele(e.aceFlight || e.ace ? 'ACE_KILL' : 'KILL', e.pos);
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
     if (e.aceFlight) {
       C.score += ACE_FLIGHT_BONUS;
@@ -1442,6 +1443,7 @@ export function createCombat(THREE, env) {
   }
   function hitEnemy(e, zone, p, v) {
     hitSparks(p, v);
+    C.gunHitsP++;
     C.hitFlash = 0.12; ai.hits = (ai.hits || 0) + 1;
     if (zone === 'L' || zone === 'R') {
       ai.wingHits = (ai.wingHits || 0) + 1;
@@ -2092,6 +2094,7 @@ export function createCombat(THREE, env) {
                 const k = Math.max(0.15, 1 - m.flyMinD / 140);
                 const side = Math.sign(_flyRel.copy(pos).sub(S.position).dot(_flyRight.set(1, 0, 0).applyQuaternion(S.quaternion))) || 1;
                 if (env.onFlyby) env.onFlyby({ dist: m.flyMinD, k, side });
+                if (m.flyMinD < 75 && env.onTele) env.onTele('NEAR_MISS', S.position);
               }
             }
           }
@@ -2123,6 +2126,7 @@ export function createCombat(THREE, env) {
   // Missile outcome log (debug stats + tuning): tag = FULL / SOFT / B-FULL / B-SOFT.
   C.mslLog = [];
   function logShot(m, result) {
+    if (!m.enemy) { C.mslFiredP++; if (result === 'HIT') C.mslHitsP++; }
     C.mslLog.push({ tag: (m.q || MSL_FULL).tag, result, t: +m.age.toFixed(1) });
     if (C.mslLog.length > 16) C.mslLog.shift();
   }
@@ -2137,6 +2141,7 @@ export function createCombat(THREE, env) {
   function damagePlayer(n) {
     if (C.dead) return;
     C.health = Math.max(0, C.health - n);
+    C.maxDmg = Math.max(C.maxDmg || 0, 100 - C.health);
     C.hitFlash = 0.3;
     if (C.health <= 0) env.onPlayerDown('damage');
   }
@@ -2706,6 +2711,7 @@ export function createCombat(THREE, env) {
       if (env.onRadio) env.onRadio(fleetAlive() ? 'SHIP_SUNK' : 'FLEET_SUNK', { kind: t.kind });
     }
     if (t.strike) {
+      if (env.onTele) env.onTele('STRIKE_KILL', t.pos);
       pushEvent('DESTROYED', 'JAMMER DOWN // ' + t.label, STRIKE_PTS, '#ffbf3f');
       if (env.onSlowMo) env.onSlowMo();
       if (!strikeAlive()) { C.strikeDoneT = performance.now(); say('[ STRIKE COMPLETE // JAMMERS DOWN ]', 3, '#ffd45a'); }
@@ -3478,7 +3484,8 @@ export function createCombat(THREE, env) {
     flareRecharge = 0;
     chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
-      lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [] });
+      lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [],
+      gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0 });
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
     for (const m of missiles) if (!m.enemy || m.target?.isPlayer) { m.active = false; m.mesh.visible = false; }
@@ -3627,7 +3634,7 @@ export function createCombat(THREE, env) {
     };
     playerTracers.step(dt, b => {
       for (const t of surface) {
-        if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.strike ? 3 : t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
+        if (t.alive && segHit(b, t.pos, t.r * 0.6)) { C.gunHitsP++; damageSurface(t, t.strike ? 3 : t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
       }
       for (const e of enemies) {
         if (e.alive && segHit(b, e.pos, DIFF.gunHitRadius) && segT < 0.999) {        // not yet abeam: it passes through next frame
@@ -3769,6 +3776,7 @@ export function createCombat(THREE, env) {
     stats() {
       return { difficulty: C.difficulty,
         carrier: env.getCarrierStats ? env.getCarrierStats() : null,
+        tele: env.getTeleStats ? env.getTeleStats() : null,
         loadout: { spw: C.spw, wpn: C.weapon, qaam: C.qaam, livery: env.getLivery ? env.getLivery() : null },
         strike: { alive: strikeAlive() ? strikeTargets.filter(t => t.alive).length : 0,
           labels: strikeTargets.filter(t => t.alive).map(t => t.label).join(','),

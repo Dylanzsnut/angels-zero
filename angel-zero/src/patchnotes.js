@@ -3,6 +3,12 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.0.6', title: 'TACTICAL TRACE DEBRIEF & COMPOSITE RANK', bullets: [
+    'Every sortie records a fixed-size flight trace and combat events, then replays them as an animated tactical map in the debrief.',
+    'Kill, ace, strike, carrier-trap and near-miss icons pop along the trace with island, bridge and canyon landmarks underneath.',
+    'Rank now combines clear time, damage taken, gun / missile accuracy and objectives into an S/A/B/C breakdown; failed sorties cap at B.',
+    'R or the replay button restarts the trace animation without restarting the sortie.'
+  ] },
   { version: 'v1.0.5', title: 'PATCH NOTES MODAL FIX', bullets: [
     'Patch Notes history backfilled and rebuilt as a structured, newest-first release log.',
     'Panel scroll and close behaviour fixed; the modal no longer traps input or focus.',

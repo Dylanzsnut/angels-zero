@@ -6,7 +6,7 @@
 // clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
 // list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
 // open-corner target brackets, edge pointers, minimal top-left telemetry.
-import { SPW } from './loadout.js?v=s62a';
+import { SPW } from './loadout.js?v=s64a';
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -1996,6 +1996,7 @@ export function createHUD(THREE, A) {
     resize,
     resetMaxG() { maxG = 1; },
     get maxG() { return maxG; },
+    get topoCanvas() { return topo; },
     get inertia() { return { x: inertia.x, y: inertia.y }; },
     get stallWarn() { return stallOn(); },
     get hudAlertState() { return alertState; },
