@@ -1155,6 +1155,7 @@ export function createHUD(THREE, A) {
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
     if (C.chaff !== undefined) rows.push(['  CHF', String(C.chaff), C.chaff > 0 ? G : AMBER]);
+    if (C.jamming > 0) rows.push(['  JAM', 'ON', AMBER]);
     rows.push(['  DMG', Math.round(100 - C.health) + '%', C.health < 45 ? WARN : C.health < 75 ? AMBER : G]);
     if (S.gear > 0 || S.gearDown) rows.push(['  GEAR', S.gear >= 1 ? (S.onGround ? 'WOW' : 'DOWN') : 'TRANSIT', S.gear >= 1 ? G : AMBER]);
     if (S.ctl && S.ctl.airbrake > 0.05) rows.push(['  S/BRK', `${Math.round(48 * S.ctl.airbrake)}°`, S.brakeLatch ? GB : G]);
@@ -1269,6 +1270,57 @@ export function createHUD(THREE, A) {
       drawBanner(ctx, cx, y + (st === 'ON_FIRE' ? 46 : 0), ok ? '[ ENGINE RELIT! ]' : '[ RELIGHT FAILED — SINGLE ENGINE OPS ]', ok ? G : WARN, ok ? 220 : 380, ok ? 1 : pulseAlpha(220));
     }
   }
+  // EW corruption: thin green scanlines over the whole HUD, brighter over the radar
+  // frame. Cheap 2D fillRect only; no shadowBlur, no per-frame THREE allocation.
+  const _st = new THREE.Vector3();
+  function drawJam(ctx) {
+    const k = C.jamming || 0;
+    if (k <= 0) return;
+    noGlow(ctx);
+    const n = Math.round(70 * k);
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = `rgba(0, 255, 102, ${(0.10 + Math.random() * 0.12).toFixed(3)})`;
+      ctx.fillRect(Math.random() * HW, Math.random() * HH, 24 + Math.random() * 170, 1);
+    }
+    const rs = Math.round(Math.min(216, HH * 0.30, HW * 0.22)), rx = 20, ry = HH - rs - 20;
+    for (let i = 0; i < 12; i++) {
+      ctx.fillStyle = `rgba(120, 255, 170, ${(0.26 + Math.random() * 0.22).toFixed(3)})`;
+      ctx.fillRect(rx + Math.random() * rs, ry + Math.random() * rs, 18 + Math.random() * 90, 1);
+    }
+  }
+  // Amber ground diamonds for the four jammer bunkers (chase + first person).
+  function drawStrikeTargets(ctx) {
+    if (A.getMode && A.getMode() === 'EJECT') return;
+    const list = A.getStrikeTargets ? A.getStrikeTargets() : null;
+    if (!list || !list.length) return;
+    let best = null, bd = Infinity;
+    ctx.save();
+    for (const t of list) {
+      if (!t.alive) continue;
+      _st.copy(t.pos); _st.y += 6;
+      const p = toScreen(_st), d = Math.hypot(t.pos.x - S.position.x, t.pos.z - S.position.z);
+      if (d < bd) { bd = d; best = { x: p.x, y: p.y, ok: p.ok && p.x > 16 && p.x < HW - 16 && p.y > 16 && p.y < HH - 16 }; }
+      if (!p.ok || p.x < 16 || p.x > HW - 16 || p.y < 16 || p.y > HH - 16) continue;
+      glow(ctx, '#ffbf3f', 4); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x + 8, p.y); ctx.lineTo(p.x, p.y + 8); ctx.lineTo(p.x - 8, p.y); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x - 3, p.y); ctx.lineTo(p.x + 3, p.y); ctx.moveTo(p.x, p.y - 3); ctx.lineTo(p.x, p.y + 3); ctx.stroke();
+      let label = '[ TGT // ' + t.label + ' ]';
+      if (d > 1852) label += '  ' + (d / 1852).toFixed(1) + ' NM';
+      if (t.hp < t.hpMax) label += '  ' + Math.round(100 * t.hp / t.hpMax) + '%';
+      ctx.font = f(11, true); ctx.textAlign = 'center';
+      labelText(ctx, label, p.x, p.y - 13, '#ffbf3f', 4);
+    }
+    if (best && !best.ok) {                                    // amber edge chevron toward the nearest live jammer
+      const cx = HW / 2, cy = HH / 2, dx = best.x - cx, dy = best.y - cy;
+      const m = Math.max(Math.abs(dx) / (HW / 2 - 34), Math.abs(dy) / (HH / 2 - 34), 1e-3);
+      ctx.save(); ctx.translate(cx + dx / m, cy + dy / m); ctx.rotate(Math.atan2(dy, dx));
+      glow(ctx, '#ffbf3f', 6); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-6, -5); ctx.lineTo(-6, 5); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   function drawCenterBanners(ctx, g) {
     const now = performance.now();
     const cx = g ? g.cx : HW / 2;
@@ -1302,6 +1354,8 @@ export function createHUD(THREE, A) {
       drawBanner(ctx, cx, lowerY, '[ CATAPULT ARMED // FULL THROTTLE TO LAUNCH ]', AMBER, 420, pulseAlpha(400));
     if (C.mcamAbortT && now - C.mcamAbortT < 1400)
       drawBanner(ctx, cx, upperY + 36, '[ CAM ABORT // INCOMING MISSILE ]', WARN, 360, pulseAlpha(160));
+    if (C.jamming > 0)
+      drawBanner(ctx, cx, lowerY - 40, 'JAMMING // DESCEND BELOW 500 FT', AMBER, 340, 0.55 + 0.45 * pulseAlpha(300));
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));
@@ -1552,10 +1606,18 @@ export function createHUD(THREE, A) {
     }
 
     if (!C.dead) { drawTargets(hctx); drawWingmen(hctx); }
+    drawStrikeTargets(hctx);
     drawRadio(hctx);
     drawTopLeft(hctx);
     if (!C.dead) drawKillFlash(hctx, g);
-    drawSquareRadar(hctx);
+    if (C.jamming > 0) {
+      // EW jitter: radar is painted directly on this canvas, so translate the
+      // draw by +/-2 px instead of a drawImage source-offset.
+      hctx.save();
+      hctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+      drawSquareRadar(hctx);
+      hctx.restore();
+    } else drawSquareRadar(hctx);
     drawSectorBadge(hctx);
     drawBottomRight(hctx);
     drawCenterBanners(hctx, fp ? g : null);
@@ -1566,6 +1628,7 @@ export function createHUD(THREE, A) {
     if (!A.isModal()) drawStickCue(hctx);
     drawFreeLookTag(hctx);
     drawGLoc(hctx);
+    drawJam(hctx);
     const mc = !C.dead && A.getMissileCam ? A.getMissileCam() : null;
     if (mc) {
       hctx.save();

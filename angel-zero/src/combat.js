@@ -8,9 +8,11 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s59a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s60a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
+// Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
+const STRIKE_N = 4, STRIKE_HP_K = 2.2, STRIKE_SPLASH = 35, STRIKE_PTS = 1200, JAM_ALT = 500 * FT, JAM_R = 2800;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
 const LOG_F = '#include <logdepthbuf_pars_fragment>\n';
 
@@ -1741,7 +1743,7 @@ export function createCombat(THREE, env) {
     C.targetObscured = obscured; C.seekerOff = off; C.targetRange = d;
     if (!C.seekerArmed) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
     // Progressive IR seeker: build while inside the 14 deg circle and 3.5 NM, decay when it leaves.
-    const inSeeker = d < LOCK_RANGE && off < DIFF.seekerHalf && C.missiles > 0 && C.missileReload <= 0;
+    const inSeeker = C.jamming <= 0.5 && d < LOCK_RANGE && off < DIFF.seekerHalf && C.missiles > 0 && C.missileReload <= 0;
     C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / DIFF.lockTime : -LOCK_DECAY * dt), 0, 1);
     const prev = C.lockState;
     if (obscured && !wasObscured) {
@@ -1837,7 +1839,8 @@ export function createCombat(THREE, env) {
   // paint = engaging fighter's radar on us, acq = its seeker building, lock =
   // full lock, msl = missile actively tracking us.
   const ECM_ON = 6, ECM_RECHARGE = 14, ECM_SLOW = 2.5, ECM_BREAK = 0.35;
-  Object.assign(C, { rwr: [], rwrLevel: 0, ecmState: 'READY', ecmT: 0, ecmBreaks: 0 });
+  Object.assign(C, { rwr: [], rwrLevel: 0, ecmState: 'READY', ecmT: 0, ecmBreaks: 0, jamming: 0, sectorLow: false });
+  const jamBearings = []; let jamGhostT = 0, sectorLowPrev = false, sectorLowT = -1e9;
   function relBearing(p) {
     const a = Math.atan2(p.x - S.position.x, -(p.z - S.position.z)) - S.heading * D2R;
     return Math.atan2(Math.sin(a), Math.cos(a));
@@ -1871,7 +1874,20 @@ export function createCombat(THREE, env) {
         level = Math.max(level, 1);
       }
     }
-    C.rwr = list; C.rwrLevel = level;
+    // Under friendly jamming the scope is corrupted: real tracks flicker 50 %,
+    // three bogus 'paint' bearings are refreshed every 300 ms.
+    if (C.jamming > 0.5) {
+      const out = [];
+      for (const r of list) if (Math.random() < 0.5) out.push(r);
+      const nowMs = performance.now();
+      if (nowMs - jamGhostT > 300) {
+        jamGhostT = nowMs; jamBearings.length = 0;
+        for (let i = 0; i < 3; i++) jamBearings.push((rand() * 2 - 1) * Math.PI);
+      }
+      for (const b of jamBearings) { out.push({ b, kind: 'paint', d: 800 + rand() * 4000, id: 'JAM' }); level = Math.max(level, 1); }
+      C.rwr = out;
+    } else C.rwr = list;
+    C.rwrLevel = level;
   }
   // Z: ALQ-135 internal jammer, 6 s on then a 14 s capacitor recharge.
   function activateECM() {
@@ -2292,6 +2308,7 @@ export function createCombat(THREE, env) {
     for (const t of surface) {                                   // Mk-82: lethal at the target, graded out to the blast radius
       if (!t.alive) continue;
       const d = Math.hypot(t.pos.x - pos.x, t.pos.z - pos.z);
+      if (t.strike && d < STRIKE_SPLASH) { damageSurface(t, t.hpMax * 0.75); continue; }
       if (d < BOMB_RADIUS + t.r * 0.5) damageSurface(t, 160 * (1 - d / (BOMB_RADIUS + t.r * 0.5)) + 20);
     }
     if (playerActiveNow && S.position.distanceTo(pos) < BOMB_RADIUS * 0.8) damagePlayer(30);
@@ -2531,6 +2548,33 @@ export function createCombat(THREE, env) {
     box(5, 1.6, 7, 0, 4.9, -30, darkM);                                                                // VLS cells
     return { g, spin, mats, r: 46, kind: 'DESTROYER', hp: 100, ship: true };
   }
+  // Jammer bunker geometry is built ONCE and shared by all four sites. Materials are
+  // per-site (destroySurface darkens t.mats on death), so one kill cannot black out the rest.
+  const STRIKE_GEO = {
+    bunker: new THREE.BoxGeometry(14, 5, 10), roof: new THREE.BoxGeometry(15, 1.2, 11),
+    mast: new THREE.CylinderGeometry(0.4, 0.6, 18, 6), cross: new THREE.BoxGeometry(6, 0.3, 0.3),
+    barge: new THREE.BoxGeometry(30, 8, 30)
+  };
+  const strikeTargets = [];
+  function buildStrikeTgt(i) {
+    const g = new THREE.Group();
+    const conc = surfMat(0x5a5e57, 0.92, 0.08), steel = surfMat(0x8d918f, 0.7, 0.3);
+    const bunker = new THREE.Mesh(STRIKE_GEO.bunker, conc); bunker.position.y = 2.5; g.add(bunker);
+    const roof = new THREE.Mesh(STRIKE_GEO.roof, conc); roof.position.y = 5.4; roof.rotation.x = -0.14; g.add(roof);
+    const mast = new THREE.Mesh(STRIKE_GEO.mast, steel); mast.position.set(0, 14, 0); g.add(mast);
+    const cross = new THREE.Mesh(STRIKE_GEO.cross, steel); cross.position.set(0, 20.5, 0); g.add(cross);
+    const hp = Math.round(STRIKE_HP_K * 50);                 // SAM SITE hp (buildSAM)
+    const t = { g, mats: [conc, steel], matHex: [0x5a5e57, 0x8d918f], r: 12, kind: 'STRIKE_TGT',
+      label: 'JAMMER-0' + (i + 1), hp, hpMax: hp, strike: true };
+    strikeTargets.push(t);
+    return t;
+  }
+  function strikeAlive() { for (let i = 0; i < strikeTargets.length; i++) if (strikeTargets[i].alive) return true; return false; }
+  const JAM_C = (() => {
+    const cc = env.canyonCenter || { x: -5600, z: -8200 }, b = env.bridges && env.bridges[0];
+    const mid = b ? b.a.clone().lerp(b.b, 0.5) : { x: 0, z: 0 };
+    return [{ x: cc.x, z: cc.z }, { x: mid.x, z: mid.z }];
+  })();
   function siteSpots() {
     const r = (() => { let a = 90731; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
     const cx = env.terrainCenter.x, cz = env.terrainCenter.z, land = [];
@@ -2556,7 +2600,7 @@ export function createCombat(THREE, env) {
   // Land targets (SAM sites + SEC-02 coastal flak nests); the naval task force is
   // managed separately (spawnFleet) and kept in the same `surface` list.
   function spawnSurface() {
-    for (let i = surface.length - 1; i >= 0; i--) if (!surface[i].fleet) { scene.remove(surface[i].g); surface.splice(i, 1); }
+    for (let i = surface.length - 1; i >= 0; i--) if (!surface[i].fleet && !surface[i].strike) { scene.remove(surface[i].g); surface.splice(i, 1); }
     const { land } = siteSpots();
     land.forEach((p, i) => {
       const t = buildSAM();
@@ -2576,6 +2620,44 @@ export function createCombat(THREE, env) {
         scene.add(t.g); surface.push(t);
       }
     }
+    // Strike jammers spawn once per sortie: never re-created by the 40 s surface respawn.
+    if (!surface.some(t => t.strike)) {
+      for (let i = 0; i < STRIKE_N; i++) {
+        const t = buildStrikeTgt(i);
+        let x, y, z;
+        if (i < 2) {                                          // canyon floor: flat bank inside 260 m of the gorge centreline
+          z = i === 0 ? -6400 : -7600;
+          const cx = env.canyonX ? env.canyonX(z) : -5600;
+          let found = false;
+          for (let d = 0; d <= 260 && !found; d += 10) {
+            const sides = d === 0 ? [1] : [1, -1];
+            for (const s of sides) {
+              const px = cx + s * d, h = terrainHeight(px, z);
+              if (h < 1 || h > 25) continue;
+              const slope = Math.hypot(terrainHeight(px + 12, z) - terrainHeight(px - 12, z),
+                terrainHeight(px, z + 12) - terrainHeight(px, z - 12)) / 24;
+              if (slope >= 0.35) continue;
+              x = px; y = h; found = true; break;
+            }
+          }
+          if (!found) {                                       // gorge water: pooled 30x8x30 grey barge
+            x = cx; y = 8;
+            const barge = new THREE.Mesh(STRIKE_GEO.barge, surfMat(0x808080, 0.85, 0.1));
+            barge.position.y = -4; t.g.add(barge); t.mats.push(barge.material); t.matHex.push(0x808080);
+          }
+        } else {                                              // Bridge Strait main span: pier footings, 30 m inboard
+          const b = env.bridges && env.bridges[0], tw = b && b.towers[i - 2];
+          if (tw) {
+            const mid = b.a.clone().lerp(b.b, 0.5), dx = mid.x - tw.x, dz = mid.z - tw.z, l = Math.hypot(dx, dz) || 1;
+            x = tw.x + dx / l * 30; z = tw.z + dz / l * 30;
+          } else { x = -2700; z = -3900; }
+          y = 6;                                              // pier top
+        }
+        t.g.position.set(x, y, z);
+        Object.assign(t, { pos: new THREE.Vector3(x, y + 2, z), alive: true, burn: 0, id: 'J' + (i + 1) });
+        scene.add(t.g); surface.push(t);
+      }
+    }
     if (C.groundTgt && !surface.includes(C.groundTgt)) C.groundTgt = null;
   }
   function destroySurface(t) {
@@ -2583,7 +2665,7 @@ export function createCombat(THREE, env) {
     t.alive = false; t.burn = t.fleet ? 70 : 45;
     for (const m of t.mats) m.color.multiplyScalar(0.28);
     explosion(t.pos, t.ship ? 3.2 : 2.4, { kind: t.ship ? 'ship' : 'ground' });
-    const pts = t.kind === 'CARRIER' ? 6000 : t.ship ? 2500 : t.kind === 'FLAK' ? 800 : 1200;
+    const pts = t.strike ? STRIKE_PTS : t.kind === 'CARRIER' ? 6000 : t.ship ? 2500 : t.kind === 'FLAK' ? 800 : 1200;
     C.score += pts; C.kills++;
     pushEvent('DESTROYED', `${t.kind} ${t.label} ${t.ship ? 'SUNK' : 'DESTROYED'}`, pts, '#52ff9c');
     say(t.kind === 'CARRIER' ? 'CARRIER IS GOING DOWN — MASSIVE SECONDARIES!' : t.ship ? 'SHACK! DESTROYER IS GOING DOWN'
@@ -2592,6 +2674,11 @@ export function createCombat(THREE, env) {
       t.secondaries = t.kind === 'CARRIER' ? [0.5, 1.1, 1.8, 2.6, 3.5, 4.6, 6.0, 7.6] : [0.6, 1.4, 2.5, 3.9];
       if (C.designated === t) designate(null);
       if (env.onRadio) env.onRadio(fleetAlive() ? 'SHIP_SUNK' : 'FLEET_SUNK', { kind: t.kind });
+    }
+    if (t.strike) {
+      pushEvent('DESTROYED', 'JAMMER DOWN // ' + t.label, STRIKE_PTS, '#ffbf3f');
+      if (env.onSlowMo) env.onSlowMo();
+      if (!strikeAlive()) { C.strikeDoneT = performance.now(); say('[ STRIKE COMPLETE // JAMMERS DOWN ]', 3, '#ffd45a'); }
     }
     if (C.groundTgt === t) { C.groundTgt = null; C.ccrpArmed = false; }
     awardStyle('KILL');
@@ -2625,7 +2712,7 @@ export function createCombat(THREE, env) {
           if (t.wake) t.wake.position.y = 0.6 + t.sink;                       // wake stays on the surface
         }
       }
-      if (t.alive) anyAlive = true;
+      if (t.alive && !t.strike) anyAlive = true;                // jammers don't gate the 40 s SAM / AAA respawn
       else if (t.burn > 0) {
         t.burn -= dt;
         if (rand() < dt * 14) fire.spawn({ x: t.pos.x + (rand() - 0.5) * t.r, y: t.pos.y + 3, z: t.pos.z + (rand() - 0.5) * t.r, vx: 0, vy: 6, vz: 0,
@@ -2649,7 +2736,7 @@ export function createCombat(THREE, env) {
       const dx = t.pos.x - S.position.x, dz = t.pos.z - S.position.z, d = Math.hypot(dx, dz);
       const ang = Math.acos(clamp((dx * vh.x + dz * vh.y) / Math.max(d, 1), -1, 1));
       return { t, d, ang };
-    }).filter(c => c.d < 25000 && c.ang < 45 * D2R).sort((a, b) => a.d - b.d);
+    }).filter(c => c.d < 25000 && c.ang < 45 * D2R).sort((a, b) => (b.t.strike ? 1 : 0) - (a.t.strike ? 1 : 0) || a.d - b.d);
   }
   function autoGroundTarget() {
     const g = C.groundTgt;
@@ -3365,6 +3452,12 @@ export function createCombat(THREE, env) {
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
     for (const m of missiles) if (!m.enemy || m.target?.isPlayer) { m.active = false; m.mesh.visible = false; }
+    for (const t of strikeTargets) {                    // one sortie = one fresh set of jammers
+      t.alive = true; t.hp = t.hpMax; t.burn = 0; t.g.visible = true;
+      for (let i = 0; i < t.mats.length; i++) t.mats[i].color.setHex(t.matHex[i]);
+    }
+    Object.assign(C, { jamming: 0, sectorLow: false, strikeDoneT: 0 });
+    sectorLowPrev = false; sectorLowT = -1e9;
     mslCooldown = 0; gunAcc = 0;
   }
 
@@ -3471,6 +3564,20 @@ export function createCombat(THREE, env) {
     C.rwrTrack = C.banditLock >= B_SOFT && C.banditLock < 1;
     C.incoming = playerActive && !C.playerSafe ? missiles.filter(m => m.active && m.enemy && m.target?.isPlayer && !m.lostTrack).length : 0;
     if ((C.banditLock >= 1 && cloudClear <= 0) || C.incoming) C.missileWarning = Math.max(C.missileWarning, 0.4);
+    // Friendly jamming field: live jammers + inside a sector + above 500 ft AGL.
+    let inSector = false;
+    for (let i = 0; i < JAM_C.length; i++) {
+      const c = JAM_C[i];
+      if (Math.hypot(S.position.x - c.x, S.position.z - c.z) < JAM_R) { inSector = true; break; }
+    }
+    C.jamming = strikeAlive() && inSector && S.radalt > JAM_ALT ? Math.min(1, (S.radalt - JAM_ALT) / 60) : 0;
+    C.sectorLow = !!inSector && S.radalt <= JAM_ALT;
+    if (C.sectorLow && !sectorLowPrev && nowMs - sectorLowT > 20000) {
+      sectorLowT = nowMs;
+      say('WARDEN-2: "Watch your altitude, Lead—threading the canyon!"', 3, '#00ff66');
+      if (env.onWing) env.onWing('Watch your altitude, Lead—threading the canyon!', 'WARDEN-2');
+    }
+    sectorLowPrev = C.sectorLow;
     if (playerActive) {
       updateLock(dt);
       if (opts.firing) fireGun(dt); else gunIdle();
@@ -3490,7 +3597,7 @@ export function createCombat(THREE, env) {
     };
     playerTracers.step(dt, b => {
       for (const t of surface) {
-        if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
+        if (t.alive && segHit(b, t.pos, t.r * 0.6)) { damageSurface(t, t.strike ? 3 : t.ship ? 0.8 : 2); hitSparks(b.p, b.v); return true; }
       }
       for (const e of enemies) {
         if (e.alive && segHit(b, e.pos, DIFF.gunHitRadius) && segT < 0.999) {        // not yet abeam: it passes through next frame
@@ -3528,6 +3635,8 @@ export function createCombat(THREE, env) {
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
     repairEngines() { resetEngines(); return C.engState; },
     get surface() { return surface; }, awardStyle,
+    get strikeTargets() { return strikeTargets; },
+    killStrikes() { for (const t of strikeTargets) if (t.alive) destroySurface(t); return strikeTargets.filter(t => t.alive).length; },
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
     // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
     // pool on screen so their shader programs are built before flight.
@@ -3629,6 +3738,9 @@ export function createCombat(THREE, env) {
     stats() {
       return { difficulty: C.difficulty,
         carrier: env.getCarrierStats ? env.getCarrierStats() : null,
+        strike: { alive: strikeAlive() ? strikeTargets.filter(t => t.alive).length : 0,
+          labels: strikeTargets.filter(t => t.alive).map(t => t.label).join(','),
+          jamming: +(C.jamming || 0).toFixed(2), sectorLow: !!C.sectorLow },
         aceFlight: { done: aceFlightDone, alive: enemies.filter(e => e.aceFlight && e.alive).length,
           labels: enemies.filter(e => e.aceFlight && e.alive).map(e => e.label).join(',') },
         director: { max: director.max, stagger: director.stagger, inFlight: director.inFlight, peak: director.peak,

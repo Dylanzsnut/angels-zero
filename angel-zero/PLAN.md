@@ -1258,12 +1258,58 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     JS/WebGL errors (in-app + Edge); `&catat=1&thr=1` launches airborne with
     phase cleared; 120-frame sample max 13.6 ms / 0 frames over 16.6 ms.
     All 21 `?v=` tags bumped to s58a.
-- [x] **Time scale + slow-mo + missile cam** *(build `s59a`, `index.html`,\n  `src/combat.js`, `src/audio.js`, `src/hud.js`)*
-  - `advanceTimeScale(realDt)` drives `timeScale` through a 0.24 s hold at 0.32,\n    a 0.15 s smoothstep recovery, then 1.0. `animate()` passes real `dt` to\n    `hud.draw` / `canopyFx` / menus / audio and scaled `sdt` to `stepSim` +\n    `updateCameraAndVisuals`; UI and input never freeze. `triggerSlowMo()` calls\n    `audio.slowMo()` and is wired as `env.onSlowMo`.
-  - `destroyEnemy()` fires one pulse on a close (<450 m) gun kill or any ace\n    (incl. CRIMSON-), excluding BASE kills; `launch()` records `C.lastPlayerMsl`\n    exposed as `combatSys.lastPlayerMissile`.
-  - Audio master chain is now `master -> slowLP -> slowShelf -> duck`; `slowMo()`\n    drops to 650 Hz / +7 dB @ 90 Hz for the hold, sweeps open over recovery and\n    adds a 55 -> 32 Hz sub thump. `N.lastSlowMo` feeds `__audioDebug().slowMo`.
-  - Hold M / RMB >0.28 s on a live player missile (chase, FLY, no carrier phase)\n    engages the missile cam: preallocated `_mc` / `_mt` scratch, 0.25 s eased\n    blend from the preserved chase spring, look along missile velocity, instant\n    snap-back. Incoming tracking missile <380 m aborts to a fresh press with a\n    `[ CAM ABORT // INCOMING MISSILE ]` banner; HUD shows a telemetry-link tag\n    and target range. Debug `?mcamat=s,dur`, `?slowmoat=s`; logs report\n    `mcam {active,k}` / `slowmo {timeScale}`.
-  - Verified headless: `?nointro&debug&msl&mcamat=0.3,2&warp=2&logat=0.5,1.5`\n    → `mcam.active=true, k=1` at 0.5 s; `?nointro&debug&slowmoat=1&warp=1.1`\n    → `timeScale=0.32` and `__audioDebug().slowMo.count=1`; threat injected\n    next to the jet aborts the cam and requires a fresh press; zero JS/WebGL\n    errors (in-app + Edge `BAD_LINES=0`); 120-frame steady sample avg 5.65 ms /\n    max 12.9 ms / 0 frames over 16.6 ms. All 21 `?v=` tags bumped to s59a.
+- [x] **Time scale + slow-mo + missile cam** *(build `s59a`, `index.html`,
+  `src/combat.js`, `src/audio.js`, `src/hud.js`)*
+  - `advanceTimeScale(realDt)` drives `timeScale` through a 0.24 s hold at 0.32,
+    a 0.15 s smoothstep recovery, then 1.0. `animate()` passes real `dt` to
+    `hud.draw` / `canopyFx` / menus / audio and scaled `sdt` to `stepSim` +
+    `updateCameraAndVisuals`; UI and input never freeze. `triggerSlowMo()` calls
+    `audio.slowMo()` and is wired as `env.onSlowMo`.
+  - `destroyEnemy()` fires one pulse on a close (<450 m) gun kill or any ace
+    (incl. CRIMSON-), excluding BASE kills; `launch()` records `C.lastPlayerMsl`
+    exposed as `combatSys.lastPlayerMissile`.
+  - Audio master chain is now `master -> slowLP -> slowShelf -> duck`; `slowMo()`
+    drops to 650 Hz / +7 dB @ 90 Hz for the hold, sweeps open over recovery and
+    adds a 55 -> 32 Hz sub thump. `N.lastSlowMo` feeds `__audioDebug().slowMo`.
+  - Hold M / RMB >0.28 s on a live player missile (chase, FLY, no carrier phase)
+    engages the missile cam: preallocated `_mc` / `_mt` scratch, 0.25 s eased
+    blend from the preserved chase spring, look along missile velocity, instant
+    snap-back. Incoming tracking missile <380 m aborts to a fresh press with a
+    `[ CAM ABORT // INCOMING MISSILE ]` banner; HUD shows a telemetry-link tag
+    and target range. Debug `?mcamat=s,dur`, `?slowmoat=s`; logs report
+    `mcam {active,k}` / `slowmo {timeScale}`.
+  - Verified headless: `?nointro&debug&msl&mcamat=0.3,2&warp=2&logat=0.5,1.5`
+    → `mcam.active=true, k=1` at 0.5 s; `?nointro&debug&slowmoat=1&warp=1.1`
+    → `timeScale=0.32` and `__audioDebug().slowMo.count=1`; threat injected
+    next to the jet aborts the cam and requires a fresh press; zero JS/WebGL
+    errors (in-app + Edge `BAD_LINES=0`); 120-frame steady sample avg 5.65 ms /
+    max 12.9 ms / 0 frames over 16.6 ms. All 21 `?v=` tags bumped to s59a.
+- [x] **Strike campaign: jammer bunkers + EW field** *(build `s60a`,
+  `src/combat.js`, `src/hud.js`, `index.html`)*
+  - Four `JAMMER-01..04` bunkers (110 HP each = 2.2 x SAM hp) share one pooled
+    geometry set (bunker / slanted roof / mast / crossbar; grey barge fallback
+    for the gorge). #1-2 sit on the first flat canyon bank at z = -6400 /
+    -7600 within 260 m of `canyonX`; #3-4 sit 30 m inboard of the Bridge Strait
+    pier footings at y = 6. One set per sortie: excluded from the 40 s SAM/AAA
+    respawn, restored alive by `resetPlayer()`.
+  - Bombs within 35 m deal 75 % max HP; gun rounds deal 3 (7.2 m radius). Each
+    kill scores 1200, raises `JAMMER DOWN` + slow-mo, and the fourth announces
+    `STRIKE COMPLETE`. Ground-map auto-designation prefers a live jammer.
+  - EW field: `C.jamming` ramps in above 500 ft AGL inside the canyon or bridge
+    sectors (2.8 km). While >0.5, locks only decay, the RWR flickers real tracks
+    and shows three bogus paints per 300 ms. A low entry announces WARDEN-2 once
+    per entry (20 s cooldown). HUD: scanline corruption + radar jitter, amber
+    `JAMMING` banner / `JAM ON` stores row, and amber diamonds with range / HP
+    and an off-screen chevron.
+  - Debug: `?at=canyonlow`, `?strikekillat=s`; `stats().strike` reports
+    `{alive, labels, jamming, sectorLow}`. `?alt=` now correctly overrides the
+    named `?at=` spot altitude.
+  - Verified headless: `?nointro&debug&at=canyon&alt=600&warp=3&logat=2` →
+    `strike.jamming=1`, 4 alive; `?at=canyonlow&warp=3` → `jamming=0`,
+    `sectorLow=true` plus the WARDEN callout; `?strikekillat=1&warp=2` →
+    0 alive, score +4800, 4 slow-mo pulses; zero JS/WebGL errors (in-app + Edge
+    `BAD_LINES=0` on all three URLs); 90-frame jammed sample avg 4.05 ms /
+    max 15 ms / 0 frames over 16.6 ms. All 21 `?v=` tags bumped to s60a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
