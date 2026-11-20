@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s58a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s59a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -360,6 +360,7 @@ export function createCombat(THREE, env) {
       if (ax.lengthSq() > 0.5) m.vel.applyAxisAngle(ax, m.q.err * (0.7 + 0.5 * rand()));
     }
     if (target) m.losPrev.copy(target.pos).sub(fromPos).normalize();
+    if (!enemy) C.lastPlayerMsl = m;                    // missile cam tracks the most recent player shot
     if (hostileAtPlayer) director.noteLaunch();
     if (env.onSfx) env.onSfx('launch', fromPos, 1);
     return m;
@@ -1230,6 +1231,10 @@ export function createCombat(THREE, env) {
   function destroyEnemy(e, byMissile, how) {
     if (!e.alive) return;
     e.alive = false;
+    // One slow-mo pulse per kill: close gun kill or any ace. A new kill restarts it.
+    const close = !byMissile && !how && e.pos.distanceTo(S.position) < 450;
+    const aceK = e.aceFlight || /^CRIMSON-/.test(e.label || '') || e.ace;
+    if ((close || aceK) && how !== 'BASE' && env.onSlowMo) env.onSlowMo();
     explosion(e.pos, 1.7, { vel: e.vel, kind: 'air' });
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
     if (how === 'BASE' || how === 'WINGMAN') {                     // no player credit
@@ -3553,6 +3558,7 @@ export function createCombat(THREE, env) {
     emitFire: o => fire.spawn(o), emitSmoke: o => smoke.spawn(o),
     get enemies() { return enemies; }, missiles,
     get ready() { return ready; },
+    get lastPlayerMissile() { return C.lastPlayerMsl || null; },
     // Debug: put bogey i straight ahead of the player at `dist` metres, flying away.
     placeAhead(i, dist) {
       const e = enemies[i]; if (!e) return;

@@ -1300,6 +1300,8 @@ export function createHUD(THREE, A) {
       drawBanner(ctx, cx, upperY, '[ WIRE #' + C.trapWire + ' // CARRIER TRAP ]', G, 340, 1);
     if (C.carrierPhase === 'CAT')
       drawBanner(ctx, cx, lowerY, '[ CATAPULT ARMED // FULL THROTTLE TO LAUNCH ]', AMBER, 420, pulseAlpha(400));
+    if (C.mcamAbortT && now - C.mcamAbortT < 1400)
+      drawBanner(ctx, cx, upperY + 36, '[ CAM ABORT // INCOMING MISSILE ]', WARN, 360, pulseAlpha(160));
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));
@@ -1564,6 +1566,16 @@ export function createHUD(THREE, A) {
     if (!A.isModal()) drawStickCue(hctx);
     drawFreeLookTag(hctx);
     drawGLoc(hctx);
+    const mc = !C.dead && A.getMissileCam ? A.getMissileCam() : null;
+    if (mc) {
+      hctx.save();
+      hctx.textAlign = 'center';
+      hctx.font = f(14, true);
+      labelText(hctx, '[ MISSILE CAM // TELEMETRY LINK ]', HW / 2, 64, '#5fe8ff', 6);
+      hctx.font = f(12, true);
+      labelText(hctx, 'TGT ' + Math.round(mc.dist) + ' M', HW / 2, 82, '#5fe8ff', 4);
+      hctx.restore();
+    }
   }
 
   // Style feed in center-peripheral vision, just below the reticle / combiner

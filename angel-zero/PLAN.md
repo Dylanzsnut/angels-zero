@@ -1258,6 +1258,12 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     JS/WebGL errors (in-app + Edge); `&catat=1&thr=1` launches airborne with
     phase cleared; 120-frame sample max 13.6 ms / 0 frames over 16.6 ms.
     All 21 `?v=` tags bumped to s58a.
+- [x] **Time scale + slow-mo + missile cam** *(build `s59a`, `index.html`,\n  `src/combat.js`, `src/audio.js`, `src/hud.js`)*
+  - `advanceTimeScale(realDt)` drives `timeScale` through a 0.24 s hold at 0.32,\n    a 0.15 s smoothstep recovery, then 1.0. `animate()` passes real `dt` to\n    `hud.draw` / `canopyFx` / menus / audio and scaled `sdt` to `stepSim` +\n    `updateCameraAndVisuals`; UI and input never freeze. `triggerSlowMo()` calls\n    `audio.slowMo()` and is wired as `env.onSlowMo`.
+  - `destroyEnemy()` fires one pulse on a close (<450 m) gun kill or any ace\n    (incl. CRIMSON-), excluding BASE kills; `launch()` records `C.lastPlayerMsl`\n    exposed as `combatSys.lastPlayerMissile`.
+  - Audio master chain is now `master -> slowLP -> slowShelf -> duck`; `slowMo()`\n    drops to 650 Hz / +7 dB @ 90 Hz for the hold, sweeps open over recovery and\n    adds a 55 -> 32 Hz sub thump. `N.lastSlowMo` feeds `__audioDebug().slowMo`.
+  - Hold M / RMB >0.28 s on a live player missile (chase, FLY, no carrier phase)\n    engages the missile cam: preallocated `_mc` / `_mt` scratch, 0.25 s eased\n    blend from the preserved chase spring, look along missile velocity, instant\n    snap-back. Incoming tracking missile <380 m aborts to a fresh press with a\n    `[ CAM ABORT // INCOMING MISSILE ]` banner; HUD shows a telemetry-link tag\n    and target range. Debug `?mcamat=s,dur`, `?slowmoat=s`; logs report\n    `mcam {active,k}` / `slowmo {timeScale}`.
+  - Verified headless: `?nointro&debug&msl&mcamat=0.3,2&warp=2&logat=0.5,1.5`\n    → `mcam.active=true, k=1` at 0.5 s; `?nointro&debug&slowmoat=1&warp=1.1`\n    → `timeScale=0.32` and `__audioDebug().slowMo.count=1`; threat injected\n    next to the jet aborts the cam and requires a fresh press; zero JS/WebGL\n    errors (in-app + Edge `BAD_LINES=0`); 120-frame steady sample avg 5.65 ms /\n    max 12.9 ms / 0 frames over 16.6 ms. All 21 `?v=` tags bumped to s59a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

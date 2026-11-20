@@ -76,11 +76,14 @@ export function createAudio() {
     cockpitLP = filt('lowpass', 18000, 0.5);                // canopy muffles the outside world in first person
     // G-LOC hearing tunnel: master low-pass, 12 kHz open -> 550 Hz near blackout.
     N.tunnel = filt('lowpass', 12000, 0.6);
+    // Slow-mo bass drop: whole-world low-pass + 90 Hz shelf, swept open again on recovery.
+    N.slowLP = filt('lowpass', 20000, 0.7);
+    N.slowShelf = ctx.createBiquadFilter(); N.slowShelf.type = 'lowshelf'; N.slowShelf.frequency.value = 90; N.slowShelf.gain.value = 0;
     // master -> hearing tunnel -> compressor -> analyser -> speakers (one clean bus).
     N.analyser = ctx.createAnalyser(); N.analyser.fftSize = 2048; N.anaBuf = new Float32Array(N.analyser.fftSize);
     // N.duck: brief -7.5 dB dip of the whole world bus so confirmation pings cut through afterburner.
     N.duck = gain(1);
-    cockpitLP.connect(master); master.connect(N.duck); N.duck.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
+    cockpitLP.connect(master); master.connect(N.slowLP).connect(N.slowShelf).connect(N.duck); N.duck.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
     // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
     N.body = gain(muted ? 0 : volume); N.body.connect(comp);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
@@ -669,6 +672,22 @@ export function createAudio() {
     o.connect(og).connect(N.body); o.start(t); o.stop(t + 1.45);
   }
 
+  // Slow-mo bass drop: duck the world to 650 Hz / +7 dB sub shelf for the hold,
+  // then sweep open over the recovery, plus a one-shot 55 -> 32 Hz sub sine.
+  function slowMo() {
+    const t = ready && ctx ? ctx.currentTime : (typeof performance !== 'undefined' ? performance.now() / 1000 : 0);
+    N.lastSlowMo = { t: +t.toFixed(3), count: (N.lastSlowMo ? N.lastSlowMo.count : 0) + 1 };
+    if (!ready || !N.slowLP) return;
+    N.slowLP.frequency.setTargetAtTime(650, t, 0.02);
+    N.slowShelf.gain.setTargetAtTime(7, t, 0.02);
+    N.slowLP.frequency.setTargetAtTime(20000, t + 0.24, 0.06);
+    N.slowShelf.gain.setTargetAtTime(0, t + 0.24, 0.06);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(55, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.4);
+    const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.015); g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    o.connect(g).connect(N.body); o.start(t); o.stop(t + 0.42);
+  }
+
   // Priority ACE inbound: square 1320 -> 990 -> 1320 Hz, 120 ms each, 40 ms gaps.
   function aceWarning() {
     if (!ready) return;
@@ -1223,7 +1242,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, cableScreech, catapult, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.
@@ -1250,6 +1269,8 @@ export function createAudio() {
     get blast() { return N.lastBlast || null; },
     get boom() { return N.lastBoom || null; },
     get flyby() { return N.lastFlyby || null; },
+    // Last slow-mo pulse (time + count) for __audioDebug.
+    get slowMoDebug() { return N.lastSlowMo || null; },
     // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
     get canopyRain() {
       if (!N.canopyBus) return null;

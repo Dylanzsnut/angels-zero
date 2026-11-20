@@ -441,26 +441,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s58a';
-import { createBlastFX } from './src/blastfx.js?v=s58a';
-import { createHUD } from './src/hud.js?v=s58a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s58a';
-import { createCombat } from './src/combat.js?v=s58a';
-import { createEjection } from './src/eject.js?v=s58a';
-import { createAudio } from './src/audio.js?v=s58a';
-import { createRadio } from './src/radio.js?v=s58a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s58a';
-import { createLivery } from './src/livery.js?v=s58a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s58a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s58a';
-import { createCanopyFX } from './src/canopy.js?v=s58a';
-import { createNVG } from './src/nvg.js?v=s58a';
-import { createWorld, WORLD } from './src/world.js?v=s58a';
-import { createSurfaces } from './src/surfaces.js?v=s58a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s58a';
-import { createFreeLook } from './src/freelook.js?v=s58a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s58a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s58a';
+import { createVFX } from './src/vfx.js?v=s59a';
+import { createBlastFX } from './src/blastfx.js?v=s59a';
+import { createHUD } from './src/hud.js?v=s59a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s59a';
+import { createCombat } from './src/combat.js?v=s59a';
+import { createEjection } from './src/eject.js?v=s59a';
+import { createAudio } from './src/audio.js?v=s59a';
+import { createRadio } from './src/radio.js?v=s59a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s59a';
+import { createLivery } from './src/livery.js?v=s59a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s59a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s59a';
+import { createCanopyFX } from './src/canopy.js?v=s59a';
+import { createNVG } from './src/nvg.js?v=s59a';
+import { createWorld, WORLD } from './src/world.js?v=s59a';
+import { createSurfaces } from './src/surfaces.js?v=s59a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s59a';
+import { createFreeLook } from './src/freelook.js?v=s59a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s59a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s59a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -831,6 +831,20 @@ if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mo
 const camVelocity = new THREE.Vector3();
 let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
 const D2R = Math.PI / 180;
+// Time scale / slow-mo: real dt always drives UI, input, HUD and audio.
+let timeScale = 1.0;
+const slowMo = { t: 9, HOLD: 0.24, REC: 0.15, MIN: 0.32 };
+// Hold-to-track missile camera (M / RMB). Scratch vectors: zero per-frame allocations.
+const mcam = { held: false, heldT: 0, active: false, m: null, abortT: 0, k: 0 };
+const _mc = new THREE.Vector3(), _mt = new THREE.Vector3();
+// Advance the slow-mo envelope from REAL time; returns the sim time multiplier.
+function advanceTimeScale(realDt) {
+  slowMo.t += realDt;
+  const H = slowMo.HOLD, R = slowMo.REC, M = slowMo.MIN;
+  timeScale = slowMo.t < H ? M : slowMo.t < H + R ? M + (1 - M) * THREE.MathUtils.smoothstep((slowMo.t - H) / R, 0, 1) : 1;
+  return timeScale;
+}
+function triggerSlowMo() { slowMo.t = 0; timeScale = slowMo.MIN; audio.slowMo(); }
 // Allied carrier arrest / catapult constants (world-relative to CVN-ALLY).
 const TRAP_X = 14, TRAP_DY = 3.5, TRAP_KT = 175, TRAP_PITCH = -6 * D2R, ARREST_T = 1.6;
 const carrier = { phase: null, t: 0, v0: 0, wire: 0, cool: 0, pitDone: false };
@@ -957,6 +971,7 @@ function startRoll(dir) { if (flightMode === 'FLY' && roll.left <= 0) { roll.lef
 
 function setView(fp) {
   firstPerson = fp;
+  mcam.active = false; mcam.m = null; mcam.held = false; mcam.k = 0;   // cockpit rig cannot host the missile cam
   camera.fov = fp ? COCKPIT_FOV : CHASE_FOV;
   camera.updateProjectionMatrix();
   for (const m of cockpitHidden) m.visible = !fp;
@@ -1345,7 +1360,7 @@ addEventListener('keydown', e => {
     if (flightMode === 'FLY' && combatSys.engineEmergency()) { if (!e.repeat) { keys.fire = false; fKeyEngine = true; combatSys.fireKey(true); } }
     else keys.fire = true;
   }
-  if (k === 'm' && !e.repeat) combatSys.fireSelected();
+  if (k === 'm') { if (!e.repeat) { combatSys.fireSelected(); mcam.held = true; } }
   if (k === 'r' && !e.repeat) combatSys.toggleWeapon();
   if (k === '1' && !e.repeat) combatSys.setWeapon('MSL');
   if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
@@ -1373,7 +1388,7 @@ addEventListener('keyup', e => {
   if (k === 'd') keys.d = false;
   if (k === 'shift') keys.shift = false;
   if (k === 'f') { keys.fire = false; if (fKeyEngine) { fKeyEngine = false; combatSys.fireKey(false); } }
-  if (k === 'm') combatSys.pickleUp();
+  if (k === 'm') { combatSys.pickleUp(); mcam.held = false; }
   if (k === 'b') {
     keys.b = false; state.brakeHeld = false;
     if (brakeTap && performance.now() - brakeTap.t > 350) state.brakeLatch = brakeTap.was;   // it was a hold: restore
@@ -1385,15 +1400,16 @@ addEventListener('mousedown', e => {
   if (uiModal || appMode !== 'PLAY') return;
   if (freeLook.onMouseButton(e, true)) return;
   if (e.button === 0) keys.fire = true;
-  if (e.button === 2) combatSys.fireSelected();
+  if (e.button === 2) { combatSys.fireSelected(); mcam.held = true; }
 });
 addEventListener('mouseup', e => {
+  if (e.button === 2) mcam.held = false;
   if (freeLook.onMouseButton(e, false)) return;
   if (e.button === 0) keys.fire = false; if (e.button === 2) combatSys.pickleUp();
 });
 addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
 addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; freeLook.release(); });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mcam.held = false; freeLook.release(); });
 
 const patchButton = document.getElementById('patchButton');
 const patchPanel = document.getElementById('patchPanel');
@@ -1898,6 +1914,29 @@ function toggleGear() {
 const chaseBasePos = new THREE.Vector3();
 const _cv = { eye: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(), vel: new THREE.Vector3(), horiz: new THREE.Vector3(), des: new THREE.Vector3() };
 let chaseOrbited = false;
+// Missile-cam arming runs on REAL dt so slow-mo can never stall the input latch.
+function updateMissileCamState(realDt) {
+  mcam.heldT = mcam.held ? mcam.heldT + realDt : 0;
+  const m = combatSys.lastPlayerMissile;
+  const can = mcam.heldT > 0.28 && m && m.active && !m.enemy &&
+    !firstPerson && flightMode === 'FLY' && !(typeof carrier !== 'undefined' && carrier && carrier.phase);
+  if (can) {
+    mcam.active = true; mcam.m = m;
+    // Threat abort: incoming, live, tracking us and close. Plain loop (no closure / allocation).
+    const list = combatSys.missiles;
+    for (let i = 0; i < list.length; i++) {
+      const x = list[i];
+      if (x.active && x.enemy && x.target && x.target.isPlayer && !x.lostTrack &&
+          x.mesh.position.distanceTo(state.position) < 380) {
+        mcam.active = false; mcam.held = false; mcam.heldT = 0; mcam.m = null;
+        mcam.abortT = performance.now(); combat.mcamAbortT = mcam.abortT;
+        break;
+      }
+    }
+  } else if (mcam.active) {
+    mcam.active = false; mcam.m = null; mcam.k = 0;
+  }
+}
 function updateCameraAndVisuals(dt, now) {
   const q = state.quaternion;
   freeLook.update(dt);
@@ -1993,6 +2032,15 @@ function updateCameraAndVisuals(dt, now) {
       const g2 = groundLevel(camera.position.x, camera.position.z) + 2;
       if (camera.position.y < g2) camera.position.y = g2;
     }
+    if (mcam.active && mcam.m && mcam.m.active) {
+      chaseBasePos.copy(camera.position);              // preserve the chase spring state for instant snap-back
+      _mc.set(0, 2.2, 11).applyQuaternion(mcam.m.mesh.quaternion).add(mcam.m.mesh.position);
+      mcam.k = Math.min(1, mcam.k + dt / 0.25);
+      camera.position.lerpVectors(chaseBasePos, _mc, THREE.MathUtils.smoothstep(mcam.k, 0, 1));
+      camera.up.set(0, 1, 0);
+      camera.lookAt(_mt.copy(mcam.m.vel).normalize().multiplyScalar(60).add(mcam.m.mesh.position));
+      chaseOrbited = true;
+    } else mcam.k = 0;
     if (DEBUG_CAM) {                                   // test hook: fixed inspection camera in the jet's frame
       camera.position.copy(DEBUG_CAM).applyQuaternion(state.quaternion).add(state.position);
       camera.up.copy(AX_Y).applyQuaternion(state.quaternion);
@@ -2139,7 +2187,7 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
   canopyRain: audio.canopyRain, wind: audio.wind, blast: audio.blast, blastFx: blast ? blast.stats : null, shake: +blastShake.toFixed(3), ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
-  music: audio.music, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
+  music: audio.music, slowMo: audio.slowMoDebug, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 const _audioFwd = new THREE.Vector3();
@@ -2218,6 +2266,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'aceWarn') audio.aceWarning();
   else if (type === 'trap') audio.cableScreech();
   else if (type === 'catapult') audio.catapult();
+  else if (type === 'slowmo') audio.slowMo();
   else if (type === 'style') audio.styleChime(scale);
   else if (type === 'whoosh') audio.missileWhoosh();
   else if (type === 'steam') audio.steamHiss();
@@ -2251,7 +2300,7 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx, onFlyby, onWing,
-  getWingmen: () => wingmen, addBox: world.addBox,
+  onSlowMo: triggerSlowMo, getWingmen: () => wingmen, addBox: world.addBox,
   getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }) });
 const missiles = combatSys.missiles;
 radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
@@ -2424,6 +2473,7 @@ const hud = createHUD(THREE, {
   getWeather: () => ({ rain: weather.rainHere, label: weather.active.label, storm: weather.active.storm }),
   getMode: () => flightMode, isHidden: () => appMode === 'MENU' || appMode === 'DEBRIEF', isNVG: () => nvg.active,
   isReady: () => modelReady, getMist: () => vfx.mist, getFreeLook: () => freeLook,
+  getMissileCam: () => (mcam.active && mcam.m) ? { dist: mcam.m.target ? mcam.m.mesh.position.distanceTo(mcam.m.target.pos) : 0, k: mcam.k } : null,
   getCombinerOutline: () => (cockpit.active ? cockpit.glassOutlineWorld() : null),
   missionClock: () => cockpit.missionClock(simTime)
 });
@@ -2620,6 +2670,16 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     const trapAt = Q.has('trapat') ? Number(Q.get('trapat')) : -1, catAt = Q.has('catat') ? Number(Q.get('catat')) : -1;
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
       const t0 = i * h, t1 = t0 + h;
+      advanceTimeScale(h);                               // time scale runs on real warp time too
+      if (Q.has('mcamat')) {
+        const [mt0, mdur] = Q.get('mcamat').split(',').map(Number);
+        if (mt0 >= t0 && mt0 < t1) { mcam.held = true; mcam.heldT = 0.3; console.log('[ANGELS_ZERO] mcam HOLD @', t1.toFixed(2)); }
+        if (mt0 + (mdur || 2) >= t0 && mt0 + (mdur || 2) < t1) { mcam.held = false; console.log('[ANGELS_ZERO] mcam RELEASE @', t1.toFixed(2)); }
+      }
+      if (Q.has('slowmoat') && Number(Q.get('slowmoat')) >= t0 && Number(Q.get('slowmoat')) < t1) {
+        triggerSlowMo(); console.log('[ANGELS_ZERO] slowmo @', t1.toFixed(2), 'timeScale', timeScale);
+      }
+      updateMissileCamState(h);
       if (mslAt >= t0 && mslAt < t1) { console.log('[ANGELS_ZERO] fire @', t1.toFixed(2), combat.lockState, combat.lockProgress.toFixed(2)); combatSys.fireMissile(); }
       if (rollAt >= t0 && rollAt < t1) startRoll(1);
       if (aceWingAt >= t0 && aceWingAt < t1) { console.log('[ANGELS_ZERO] ace flight @', t1.toFixed(2), combatSys.spawnAceFlight()); }
@@ -2705,7 +2765,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       stepSim(h);
       updateCameraAndVisuals(h, simTime);
       canopyFx.update(h, combat.playerCloud || 0, state.speed, firstPerson, true, weather.rainHere);
-      for (const t of logAt) if (t >= t0 && t < t1) console.log('[ANGELS_ZERO] t', t1.toFixed(2), JSON.stringify(combatSys.stats()), 'alert', hud.hudAlertState, 'hp', combat.health, 'gs', state.gStrain.toFixed(2), 'G', state.gLoad.toFixed(1), 'kts', Math.round(state.speed * 1.94384), 'aoa', (state.alpha * 57.3).toFixed(1), 'beta', (state.beta * 57.3).toFixed(1), 'p', state.rollRate.toFixed(2), 'q', state.pitchRate.toFixed(2), 'alt', Math.round(state.position.y), 'pitch', Math.round(state.pitch * 57.3), 'bank', Math.round(state.bank * 57.3), 'M', state.mach.toFixed(2), 'stall', state.stalled ? 1 : 0, 'warn', hud.stallWarn ? 1 : 0);
+      for (const t of logAt) if (t >= t0 && t < t1) console.log('[ANGELS_ZERO] t', t1.toFixed(2), JSON.stringify(combatSys.stats()), 'alert', hud.hudAlertState, 'hp', combat.health, 'gs', state.gStrain.toFixed(2), 'G', state.gLoad.toFixed(1), 'kts', Math.round(state.speed * 1.94384), 'aoa', (state.alpha * 57.3).toFixed(1), 'beta', (state.beta * 57.3).toFixed(1), 'p', state.rollRate.toFixed(2), 'q', state.pitchRate.toFixed(2), 'alt', Math.round(state.position.y), 'pitch', Math.round(state.pitch * 57.3), 'bank', Math.round(state.bank * 57.3), 'M', state.mach.toFixed(2), 'stall', state.stalled ? 1 : 0, 'warn', hud.stallWarn ? 1 : 0,
+        'mcam', JSON.stringify({ active: mcam.active, k: +mcam.k.toFixed(2) }), 'slowmo', +timeScale.toFixed(2));
     }
     console.log('[ANGELS_ZERO] combat', JSON.stringify(combatSys.stats()), 'lock', combat.lockTarget ? combat.lockTarget.label : '-',
       'score', combat.score, 'kills', combat.kills, 'gun', combat.ammo, 'msl', combat.missiles, 'hp', combat.health, 'mode', flightMode,
@@ -2725,7 +2786,8 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         canopy: { wet: +canopyFx.wetness.toFixed(2), drops: canopyFx.dropCount, riv: canopyFx.rivuletCount } }),
       'nav', JSON.stringify({ level: +navLevel.toFixed(2), lights: navLights.length, strobe: +navStat.strobe.toFixed(2), beacon: +navStat.beacon.toFixed(2),
         lit: navLights.filter(n => n.sp.visible).length }), 'look', JSON.stringify(freeLook.stats), 'canopy', JSON.stringify({ glass: canopyGlass.stats, rainCulled: weather.rainCulled,
-        nearestRain: +weather.nearestVisible().toFixed(2), audio: audio.canopyRain }), 'fleet', JSON.stringify(combatSys.fleetStats()));
+        nearestRain: +weather.nearestVisible().toFixed(2), audio: audio.canopyRain }), 'fleet', JSON.stringify(combatSys.fleetStats()),
+        'mcam', JSON.stringify({ active: mcam.active, k: +mcam.k.toFixed(2) }), 'slowmo', +timeScale.toFixed(2));
   }
   if (DEBUG && Q.has('pause')) pauseSim();
   if (DEBUG && Q.has('fxhold')) fxHold = true;
@@ -2775,12 +2837,16 @@ function stepSim(dt) {
 function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
-  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  const dt = Math.min((now - lastTime) / 1000, 0.05);          // real time: UI / HUD / input / audio
+  const realDt = dt;
   lastTime = now;
+  advanceTimeScale(realDt);
+  const sdt = dt * timeScale;                                  // scaled time: sim + camera / vfx
+  updateMissileCamState(realDt);
   simTime += dt;
   if (appMode === 'MENU') menuOrbit(dt);
-  else if (appMode === 'PLAY' && modelReady && !FREEZE) stepSim(dt);
-  if (appMode !== 'PAUSED') updateCameraAndVisuals(dt, simTime);
+  else if (appMode === 'PLAY' && modelReady && !FREEZE) stepSim(sdt);
+  if (appMode !== 'PAUSED') updateCameraAndVisuals(sdt, simTime);
   if (appMode === 'PLAY') updateAudio();
   oceanUniforms.uTime.value = simTime;
   const t0 = performance.now();
@@ -2804,7 +2870,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, flyShake, onFlyby, onWing, wingmen, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, get firstPerson() { return firstPerson; },
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, flyShake, onFlyby, onWing, wingmen, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, mcam, slowMo, get timeScale() { return timeScale; }, triggerSlowMo, get firstPerson() { return firstPerson; },
     get appMode() { return appMode; },
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
