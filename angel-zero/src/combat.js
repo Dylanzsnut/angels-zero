@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s56a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s57a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -289,6 +289,7 @@ export function createCombat(THREE, env) {
   const missiles = [];
   const _flyRel = new THREE.Vector3(), _flyRight = new THREE.Vector3();   // flyby side test (no per-frame allocation)
   const _wmTarget = new THREE.Vector3(), _wmFwd = new THREE.Vector3(), _wmRel = new THREE.Vector3(), _wmInv = new THREE.Quaternion();
+  const _afF = new THREE.Vector3(), _afR = new THREE.Vector3(), _afTo = new THREE.Vector3();
   for (let i = 0; i < 16; i++) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(mslBody, mslMat), new THREE.Mesh(mslNose, mslDark), new THREE.Mesh(finGeo, mslDark), new THREE.Mesh(canardGeo, mslDark));
@@ -613,7 +614,8 @@ export function createCombat(THREE, env) {
     e.tac = e.mode = 'PATROL'; e.tacT = 0; e.reactT = null; e.threatTm = null; e.merge = 0; e.noBreak = false;
     e.flaresLeft = rand() < 0.5 ? 1 : 2; e.flareCD = 0; e.trailAcc = 0; e.rollPhase = 0; e.avoiding = false;
     Object.assign(e, { wingL: WING_HP, wingR: WING_HP, wingOffL: false, wingOffR: false, engHits: 0, engineFire: false, speedCap: 1,
-      crippled: null, crippleT: 0, rollVel: 0, dipV: 0, zoneLog: null });
+      crippled: null, crippleT: 0, rollVel: 0, dipV: 0, zoneLog: null,
+      aceFlight: false, decoys: 0, chaffN: 0, decoyCD: 0 });
   }
 
   /* ------------------------------------------------ mission phases + Ace */
@@ -629,6 +631,9 @@ export function createCombat(THREE, env) {
   // dogfight, soak two missile hits, and are drawn 1.35x the fighter airframe.
   const BOMBER = { type: 'SU-34', hp: 260, msl: 130, cruise: 250, ab: 300, alt: 2100, scale: 1.35 };
   const ACE_TINT = new THREE.Color(1.0, 0.22, 0.26), BASE_TINT = new THREE.Color(1, 1, 1);
+  const CRIMSON_TINT = new THREE.Color(0x9e1b2c);
+  const ACE_FLIGHT_HP = 1.6, ACE_FLIGHT_TURN = 1.25, ACE_DECOY_CD = 8, ACE_DECOY_N = 2, ACE_FLIGHT_BONUS = 2500;
+  let aceFlightDone = false;
   Object.assign(C, { phase: 0, ace: null, aceDowns: 0 });
   function makeAce(e) {
     e.ace = true; e.label = ACE.label; e.type = ACE.type;
@@ -650,8 +655,54 @@ export function createCombat(THREE, env) {
   }
   function tintFleet() {
     if (!fleet.length) return;
-    enemies.forEach((e, i) => { for (const f of fleet) f.inst.setColorAt(i, e.ace ? ACE_TINT : BASE_TINT); });
+    enemies.forEach((e, i) => {
+      const tint = e.aceFlight ? CRIMSON_TINT : e.ace ? ACE_TINT : BASE_TINT;
+      for (const f of fleet) f.inst.setColorAt(i, tint);
+    });
     for (const f of fleet) if (f.inst.instanceColor) f.inst.instanceColor.needsUpdate = true;
+  }
+  // CRIMSON flight: a single mid-sortie two-ship mini-encounter, distinct from
+  // the Phase-3 SOL-1 boss (which keeps the e.ace flag / ACE_KILL scoring).
+  function waveAlive() {
+    let n = 0;
+    for (const e of enemies) if (e.alive && !e.bomber && !e.ace && !e.aceFlight) n++;
+    return n;
+  }
+  function spawnAceFlight() {
+    if (aceFlightDone) return false;
+    const slots = enemies.filter(e => !e.alive && !e.ace && !e.bomber).slice(0, 2);
+    if (slots.length < 2) {
+      for (const e of enemies) {
+        if (slots.length >= 2) break;
+        if (!e.alive || e.ace || e.bomber || slots.includes(e)) continue;
+        e.alive = false; e.wreck = null;                       // retire a bandit to free the pool slot
+        slots.push(e);
+      }
+    }
+    if (slots.length < 2) return false;
+    _afF.set(0, 0, -1).applyQuaternion(S.quaternion);
+    _afR.set(1, 0, 0).applyQuaternion(S.quaternion);
+    const calls = ['CRIMSON-1', 'CRIMSON-2'], sides = [1, -1];               // 2 and 10 o'clock
+    slots.forEach((e, i) => {
+      resetAI(e);
+      e.pos.copy(S.position).addScaledVector(_afF, 9000).addScaledVector(_afR, sides[i] * 3200);
+      e.pos.y = S.position.y + 300;
+      e.alive = true; e.wreck = null;
+      e.fwd.copy(_afTo.copy(S.position).sub(e.pos).normalize());
+      e.speed = e.cruise; e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
+      e.tac = e.mode = 'ENGAGE'; e.mslCD = 4 + rand() * 3; e.bLock = 0;
+      e.aceFlight = true; e.label = calls[i]; e.type = 'ACE';
+      e.hpMax = e.hp = Math.round(100 * ACE_FLIGHT_HP);
+      e.decoys = ACE_DECOY_N; e.chaffN = ACE_DECOY_N; e.decoyCD = 0;
+      orient(e);
+    });
+    aceFlightDone = true;
+    C.aceFlightT = performance.now();
+    tintFleet(); writeFleet();
+    if (env.onSfx) env.onSfx('aceWarn');
+    say('CRIMSON-1: "You fly well for a ghost. Let\'s fix that."', 3.2, '#ff3b5c');
+    if (env.onWing) env.onWing('Crimson-1: You fly well for a ghost.', 'CRIMSON-1', '#ff3b5c');
+    return true;
   }
   // Missiles / bombs: one-shot kills on ordinary bandits; the Ace soaks 150 HP per hit.
   function heavyHit(e, how) {
@@ -826,6 +877,28 @@ export function createCombat(THREE, env) {
     const dist = toP.length();
     if (playerActive) ai.minSep = Math.min(ai.minSep, dist);
     e.flareCD = Math.max(0, e.flareCD - dt);
+    // CRIMSON countermeasures: one flare / chaff decision per 8 s against a player missile inside 1,500 m.
+    if (e.aceFlight) {
+      e.decoyCD -= dt;
+      if (e.decoyCD <= 0) {
+        let pm = null;
+        for (const m of missiles) {
+          if (m.active && !m.enemy && m.target === e && m.mesh.position.distanceTo(e.pos) < 1500) { pm = m; break; }
+        }
+        if (pm) {
+          if (!pm.aam && e.decoys > 0) { banditFlares(e); e.decoys--; e.decoyCD = ACE_DECOY_CD; }
+          else if (pm.aam && e.chaffN > 0) {
+            e.chaffN--; e.decoyCD = ACE_DECOY_CD;
+            if (rand() < 0.5) pm.lostTrack = true;
+            for (let i = 0; i < 60; i++) {
+              fire.spawn({ x: e.pos.x + (rand() - 0.5) * 8, y: e.pos.y + (rand() - 0.5) * 6, z: e.pos.z + (rand() - 0.5) * 8,
+                vx: (rand() - 0.5) * 12, vy: (rand() - 0.5) * 8, vz: (rand() - 0.5) * 12,
+                life: 0.6 + rand(), s0: 0.6, s1: 0.2, r: 0.75, g: 0.75, b: 0.75, a: 0.8, drag: 3 });
+            }
+          }
+        }
+      }
+    }
 
     // ---- threat picture: our IR lock on this bandit, or a missile tracking it inside 1,800 m
     const tm = threatMissile(e);
@@ -996,8 +1069,10 @@ export function createCombat(THREE, env) {
     // ---- airframe limits: G cap (dynamic-pressure limited below 240 kt) and roll rate
     const v = Math.max(e.speed, 80);
     const qK = clamp((v / SLOW_V) ** 2, 0.35, 1), rollK = clamp(v / SLOW_V, 0.5, 1);
-    maxG = Math.min(maxG, e.gMax * qK);
-    const rollMax = e.rollRate * rollK, rollAcc = (e.ace ? ACE_ROLL_ACC : ROLL_ACC) * rollK;
+    const aceTurn = e.aceFlight ? ACE_FLIGHT_TURN : 1;
+    maxG = Math.min(maxG, e.gMax * aceTurn * qK);
+    if (e.aceFlight && e.tac === 'EVADE_BREAK') maxG = Math.min(11, maxG * 1.25);  // hard break, still under 11 G
+    const rollMax = e.rollRate * aceTurn * rollK, rollAcc = (e.ace ? ACE_ROLL_ACC : ROLL_ACC) * aceTurn * rollK;
 
     // ---- bank-to-turn dynamics
     const cosA = clamp(e.fwd.dot(desired), -1, 1), ang = Math.acos(cosA);
@@ -1105,7 +1180,7 @@ export function createCombat(THREE, env) {
       if (e.bLock >= 1 && e.mslCD <= 0 && dist > 700) {
         // Full lock: aggressive, accurate shot.
         if (launch(e.pos.clone().addScaledVector(e.fwd, 6), e.quat, e.vel, target, true, BANDIT_FULL, undefined, dist > 2500 ? 'RADAR' : 'IR')) {
-          e.mslCD = e.ace ? 8 + rand() * 4 : 14 + rand() * 8;
+          e.mslCD = e.aceFlight ? 9 + rand() * 4 : e.ace ? 8 + rand() * 4 : 14 + rand() * 8;
           say(e.ace ? `${e.label} — FOX TWO! BREAK! BREAK!` : 'MISSILE LAUNCH — BREAK! BREAK!', 2.2, '#ff4d3d');
         }
       } else if (e.bLock >= B_SOFT && e.bLock < 1 && e.mslCD <= 0 && dist > 900 && rand() < 0.12 * dt) {
@@ -1168,6 +1243,13 @@ export function createCombat(THREE, env) {
       return;
     }
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
+    if (e.aceFlight) {
+      C.score += ACE_FLIGHT_BONUS;
+      pushEvent('DESTROYED', 'ACE DOWN // ' + e.label, 2500, '#ffd45a');
+      C.flares = FLR_MAX; if (C.chaff !== undefined) C.chaff = C.chaffMax;
+      say('[ ACE DOWN ] — FLARES' + (C.chaff !== undefined ? ' / CHAFF' : '') + ' REFILLED', 2.2, '#ffd45a');
+      e.aceFlight = false; tintFleet();
+    }
     if (env.onWing) env.onWing('Splash one, Lead!', 'WARDEN');
     pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
@@ -3231,6 +3313,7 @@ export function createCombat(THREE, env) {
     director.reset();
   }
   function resetPlayer() {
+    aceFlightDone = false;
     rearm('msl'); rearm('bomb');
     Object.assign(C, { comboMult: 1, comboTimer: 0, dangerClose: false, dangerMult: 1, styleFeed: [] });
     Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, ecmState: 'READY', ecmT: 0 });
@@ -3321,6 +3404,7 @@ export function createCombat(THREE, env) {
     cloudClear = Math.max(0, cloudClear - dt);
 
     if (ready) {
+      if (!aceFlightDone && C.phase !== 3 && waveAlive() <= WAVE_SIZE * 0.5) spawnAceFlight();
       for (const e of enemies) {
         if (e.alive) { if (e.crippled) updateCrippled(e, dt); else updateEnemy(e, dt, playerActive); }
         else if (e.wreck) updateWreck(e, dt);
@@ -3404,7 +3488,7 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     get difficulty() { return C.difficulty; },
-    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder,
+    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
     // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
@@ -3505,6 +3589,8 @@ export function createCombat(THREE, env) {
     },
     stats() {
       return { difficulty: C.difficulty,
+        aceFlight: { done: aceFlightDone, alive: enemies.filter(e => e.aceFlight && e.alive).length,
+          labels: enemies.filter(e => e.aceFlight && e.alive).map(e => e.label).join(',') },
         director: { max: director.max, stagger: director.stagger, inFlight: director.inFlight, peak: director.peak,
           launches: director.launches, denied: director.denied, cooldown: +director.cooldown.toFixed(2) },
         alive: enemies.filter(e => e.alive).length, wrecks: enemies.filter(e => e.wreck).length, modes: enemies.map(e => e.alive ? TAC_CODE[e.tac] || '?' : '-').join(''),
@@ -3524,7 +3610,9 @@ export function createCombat(THREE, env) {
           feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares,
           chf: C.chaff, chfMax: C.chaffMax, chaffClouds: chaff.length,
           notch: C.notchT > 0 ? +(performance.now() - C.notchT).toFixed(0) : null,
-          wingOrder: C.wingOrder, wingOrderAge: C.wingOrderT ? +(performance.now() - C.wingOrderT).toFixed(0) : null },
+          wingOrder: C.wingOrder, wingOrderAge: C.wingOrderT ? +(performance.now() - C.wingOrderT).toFixed(0) : null,
+          aceFlight: { done: aceFlightDone, alive: enemies.filter(e => e.aceFlight && e.alive).length,
+            labels: enemies.filter(e => e.aceFlight && e.alive).map(e => e.label).join(',') } },
         phase: { phase: C.phase, wave: C.wave, ace: C.ace, aceDowns: C.aceDowns,
           aceE: (() => { const a = enemies.find(x => x.ace); return a ? { tac: a.tac, hp: Math.round(a.hp), wingL: a.wingL, wingR: a.wingR, kt: Math.round(a.speed / KT), g: +a.gNow.toFixed(1), flr: a.flaresLeft, alive: a.alive } : null; })() },
         ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,

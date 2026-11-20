@@ -1215,6 +1215,27 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     ±55 m, `G` -> `ENGAGE`, CRT opens, `__perfDebug.frameMs` 3.2 ms, program
     count unchanged (106), zero JS/WebGL errors (in-app browser and Edge).
     All 21 `?v=` tags bumped to s56a.
+- [x] **CRIMSON ace flight mini-encounter** *(build `s57a`, `src/combat.js`,
+  `src/audio.js`, `src/hud.js`, `index.html`)*
+  - Once per sortie outside Phase 3, when waveAlive() <= 3, two pooled bandit
+    slots become `CRIMSON-1/2`: 9 km ahead at 2 / 10 o'clock, +300 ft, 160 HP
+    (100 x 1.6), 2 flares + 2 chaff, 25% harder turns (break max 11 G). The
+    Phase-3 SOL-1 boss keeps its exclusive `e.ace` flag and ACE_KILL scoring.
+  - Crimson look is an `InstancedMesh` per-slot colour (0x9e1b2c) via the
+    existing `tintFleet()`; no new geometry, materials or shader programs.
+  - Decoys: one 8 s decision against a player missile inside 1,500 m (flare
+    salvo for IR, 50% chaff break for 4AAM + 60 pooled silver sparks). Ace
+    missile cooldown 9-13 s; hostile director cap still applies.
+  - HUD: gold/crimson diamonds with `[ ACE // CRIMSON-n ]` + 44x4 HP bars;
+    3 s inbound banner; `audio.aceWarning()` triple square chime on `N.body`;
+    CRT taunt with crimson caption when `env.onWing` exists.
+  - Kill reward: +2500, flares/chaff refilled, `e.aceFlight` cleared; slot
+    reuse in `resetAI()` also clears it. `stats().aceFlight` reports
+    `{done, alive, labels}`; `?acewingat=s` spawns on demand.
+  - Verified headless (`?nointro&debug&acewingat=1&warp=6&logat=2,5`):
+    `aceFlight.alive = 2`, labels `CRIMSON-1,CRIMSON-2`, 0 JS/WebGL errors,
+    `__perfDebug.frameMs` 4.9 ms, no shader-count increase from the tint.
+    All 21 `?v=` tags bumped to s57a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

@@ -499,6 +499,7 @@ export function createHUD(THREE, A) {
         continue;
       }
 
+      if (e.aceFlight) { drawAceFlightMark(ctx, e, p); continue; }
       if (e.ace) drawAceMark(ctx, e, p, now);
       const info = trackInfo(e);
       if (!info) {
@@ -1291,6 +1292,10 @@ export function createHUD(THREE, A) {
       const label = C.wingOrder === 'ENGAGE' ? '[ WINGMEN // ENGAGE AT WILL ]' : '[ WINGMEN // REFORM ECHELON ]';
       drawBanner(ctx, cx, upperY + 72, label, '#5fe8ff', 340, 1 - age / 1600);
     }
+    if (C.aceFlightT && now - C.aceFlightT < 3000) {
+      const age = now - C.aceFlightT;
+      drawBanner(ctx, cx, upperY + 36, '[ WARNING // ACE SQUADRON INBOUND ]', WARN, 380, pulseAlpha(200) * (1 - age / 3000));
+    }
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));
@@ -1713,6 +1718,22 @@ export function createHUD(THREE, A) {
     const bw = 64, bx = p.x - bw / 2, by = p.y + s + 8;
     noGlow(ctx); ctx.fillStyle = 'rgba(30, 0, 6, 0.6)'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
     glow(ctx, BLAZE, 6); ctx.fillStyle = BLAZE; ctx.fillRect(bx, by, bw * frac, 4);
+    ctx.restore();
+  }
+
+  // CRIMSON flight: gold diamond + crimson outer stroke, always drawn while on screen.
+  function drawAceFlightMark(ctx, e, p) {
+    const frac = clamp(e.hp / (e.hpMax || 1), 0, 1);
+    ctx.save();
+    glow(ctx, '#ffd45a', 4); ctx.lineWidth = 1.6; ctx.strokeStyle = '#ffd45a';
+    diamond(ctx, p.x, p.y, 10, 0); ctx.stroke();
+    ctx.strokeStyle = '#ff3b5c'; diamond(ctx, p.x, p.y, 14, 0); ctx.stroke();
+    ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    labelText(ctx, `[ ACE // ${e.label} ]`, p.x, p.y - 14, '#ffd45a', 4);
+    const bw = 44, bx = p.x - bw / 2, by = p.y + 18;
+    noGlow(ctx); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(bx, by, bw, 4);
+    ctx.fillStyle = '#ff3b5c'; ctx.fillRect(bx, by, bw * frac, 4);
+    ctx.strokeStyle = '#ffd45a'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 4);
     ctx.restore();
   }
 

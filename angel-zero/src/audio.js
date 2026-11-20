@@ -639,6 +639,20 @@ export function createAudio() {
     }
   }
 
+  // Priority ACE inbound: square 1320 -> 990 -> 1320 Hz, 120 ms each, 40 ms gaps.
+  function aceWarning() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const notes = [1320, 990, 1320];
+    for (let i = 0; i < notes.length; i++) {
+      const at = t + i * 0.16, o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = notes[i];
+      const g = gain(0);
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.32, at + 0.004);
+      g.gain.setValueAtTime(0.32, at + 0.11); g.gain.linearRampToValueAtTime(0, at + 0.12);
+      o.connect(g).connect(N.body); o.start(at); o.stop(at + 0.125);
+    }
+  }
+
   // Style confirmation ping: crisp two-tone harmonic stab 1,320 -> 1,760 Hz
   // (sine + triangle + octave sparkle) on the headset bus, which bypasses the
   // cockpit low-pass and G-LOC tunnel; the world bus ducks ~-7.5 dB for 160 ms so
@@ -1179,7 +1193,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.
