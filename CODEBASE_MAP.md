@@ -1,3 +1,5 @@
+angel-zero/src/patchnotes.js:5 -> PATCH_NOTES (newest-first releases); :88 -> renderPatchNotes(container)
+angel-zero/index.html:428 -> patchnotes.js import; :274 -> buildChip; :1418 -> BUILD_VERSION / renderPatchNotes / button + chip labels
 angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
 angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform

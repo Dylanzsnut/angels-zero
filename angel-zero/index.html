@@ -271,6 +271,7 @@
           <span id="diffChip">THREAT: NORMAL</span>
           <button class="tod-btn" id="diffBtn" type="button">[ DIFFICULTY: NORMAL ]</button>
           <span id="loadoutChip">LOADOUT: MSL + 4AAM // GHOST</span>
+          <span id="buildChip">v1.0.5</span>
           <span>ROE: WEAPONS FREE</span>
         </div>
       </div>
@@ -387,55 +388,11 @@
     </div>
   </div>
   <button id="hBadge" type="button"><kbd>H</kbd>CONTROLS</button>
-  <button id="patchButton">PATCH NOTES</button>
+  <button id="patchButton">PATCH NOTES v1.0.5</button>
   <div id="patchPanel">
     <span class="close" id="patchClose">[X]</span>
     <h2>ANGELS ZERO // PATCH NOTES</h2>
-    <h3>v1.8.0 &mdash; AC7 TACTICAL OS BRIEFING &amp; PAUSE HUD</h3>
-    <ul>
-      <li>Chamfered AC7 Tactical OS briefing screen with status tags, F-15C loadout card, and live Orbit / Cockpit preview toggle.</li>
-      <li>Tactical Pause HUD with sortie telemetry (TIME, SCORE, KILLS, DMG %) and instant RESTART MISSION.</li>
-      <li>Crimson alert color shift for PULL UP and STALL WARNING alongside streamlined HUD tape typography.</li>
-    </ul>
-    <h3>v1.7.0 &mdash; ACE COMBAT 7 HUD OVERHAUL</h3>
-    <ul>
-      <li>Luminous mint-emerald (#52ff9c) phosphor HUD with Rajdhani avionics typography and crimson alert shift.</li>
-      <li>AC7 open-corner target brackets ([ ]), shrinking diamond lock-on snap, and 26% ring off-screen chevrons.</li>
-      <li>Four-corner tactical clusters in both views: kill feed, missile vector radar, and animated reload bars.</li>
-    </ul>
-    <h3>v1.6.0 &mdash; ORDNANCE, CCIP &amp; COUNTERMEASURES</h3>
-    <ul>
-      <li>Separated wing-pylon AIM-9s and 12 conformal-tank bombs on the F-15 airframe.</li>
-      <li>Switchable &gt;MSL / &gt;UGB modes (R / 1 / 2) with live CCIP bomb fall line and impact pipper.</li>
-      <li>Water geysers, ground fireballs, shockwave rings and falling-bomb whistle audio.</li>
-      <li>Magnesium flare + chaff salvos (X / G) that break RWR locks and decoy inbound missiles.</li>
-    </ul>
-    <h3>v1.5.0 &mdash; SORTIE &amp; SOUND</h3>
-    <ul>
-      <li>Briefing screen with full controls; flight starts only on LAUNCH SORTIE.</li>
-      <li>H / Esc pause with controls reference, master volume and mute.</li>
-      <li>Procedural Web Audio: F100 engines, afterburner, M61, AIM-9 tones, alerts, explosions.</li>
-    </ul>
-    <h3>v1.4.0 &mdash; DOGFIGHT</h3>
-    <ul>
-      <li>Six-ship bogey waves, M61 + AIM-9, lock-on HUD, ejection and rescue.</li>
-    </ul>
-    <h3>v1.2.0 — EAGLE UPDATE</h3>
-    <ul>
-      <li>Flyable F-15 Eagle asset with gear struts stripped and a sealed skin.</li>
-      <li>Cyan-to-orange mach-diamond afterburners and high-G wingtip vortices.</li>
-      <li>Hi-DPI HUD: pitch ladder, FPV, speed/altitude tapes, compass, weapons.</li>
-      <li>Cockpit view with canopy frame and live radar, ADI and status MFDs.</li>
-      <li>Ocean archipelago, clouds and rate-command 6-DOF flight model.</li>
-    </ul>
-    <h3>v1.1.0 — DOGFIGHT UPDATE</h3>
-    <ul>
-      <li>Cannon, homing missiles and three respawning bandits.</li>
-    </ul>
-    <h3>v1.0.0 — INITIAL FLIGHT MODEL</h3>
-    <ul>
-      <li>6-DOF physics with lift, drag, stall and a 9G limiter.</li>
-    </ul>
+    <div id="patchList"></div>
   </div>
 
 <script type="module">
@@ -468,6 +425,7 @@ import { createFreeLook } from './src/freelook.js?v=s62a';
 import { createCanopyGlass } from './src/canopyglass.js?v=s62a';
 import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s62a';
 import { SPW, SQUADRON, loadSPW, saveSPW, loadLivery, saveLivery } from './src/loadout.js?v=s62a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s63a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1457,6 +1415,10 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; mcam.hel
 
 const patchButton = document.getElementById('patchButton');
 const patchPanel = document.getElementById('patchPanel');
+const BUILD_VERSION = PATCH_NOTES[0].version;
+renderPatchNotes(document.getElementById('patchList'));
+patchButton.textContent = 'PATCH NOTES ' + BUILD_VERSION;
+document.getElementById('buildChip').textContent = BUILD_VERSION;
 function setPatchOpen(open) { patchPanel.classList.toggle('open', open); uiModal = open; if (open) keys.fire = false; }
 for (const el of [patchButton, patchPanel]) el.addEventListener('mousedown', e => e.stopPropagation());
 patchButton.addEventListener('click', e => { e.stopPropagation(); setPatchOpen(!patchPanel.classList.contains('open')); });

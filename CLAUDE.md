@@ -25,6 +25,12 @@ There is no lint and no unit-test suite. Verification means loading the game in 
   - Watch it with `gh run watch`.
   - Cloudflare can briefly serve a stale `index.html`, so add a cache-busting query when checking live.
 
+## Pre-push checklist
+
+- [ ] **Before every commit/push, bump the patch version and prepend a concise 2–4 bullet entry to PATCH_NOTES describing the user-facing changes.** `PATCH_NOTES` lives in `angel-zero/src/patchnotes.js`, newest first; `PATCH_NOTES[0].version` drives the briefing and PATCH NOTES button chips automatically.
+- [ ] Bump the `?v=` build tag on every changed `src/*.js` import in `index.html`.
+- [ ] Verify in a headless browser: zero JS/WebGL errors and a locked 60 FPS sample.
+
 ## Debug URL hooks
 
 Every hook requires `?debug`. They are parsed near the top of `index.html` (`const Q = new URLSearchParams(...)`) and act as the scenario "tests":

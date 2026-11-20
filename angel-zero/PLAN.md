@@ -1361,6 +1361,19 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     `BAD_LINES=0` on four URLs); 120-frame sample avg 4.28 ms / max 5.9 ms /
     0 frames over 16.6 ms. Debug `?contrailalt` spawns at 4,000 m.
     Every `?v=` tag bumped to s62a.
+- [x] **Structured in-game Patch Notes** *(build `s63a`, new `src/patchnotes.js`,
+  `index.html`, `CLAUDE.md`, `CODEBASE_MAP.md`)*
+  - `PATCH_NOTES` is a newest-first array of 16 releases (`v1.0.5` .. `v0.9.0`)
+    with 2-4 user-facing bullets each, covering Mach cone, 60 FPS, flyby,
+    chaff/notch, wingmen, Crimson aces, carrier ops, missile cam, strike,
+    hangar, contrails, debrief replay, furball, cockpit MFD and mission guidance.
+    `renderPatchNotes()` rebuilds the `[ PATCH NOTES ]` panel from the array.
+  - `PATCH_NOTES[0].version` drives the briefing `buildChip` and the
+    `[ PATCH NOTES v1.0.5 ]` button label automatically. Scroll, close and
+    reopen verified in headless browser; zero JS/WebGL errors (in-app + Edge
+    `BAD_LINES=0`).
+  - `CLAUDE.md` now has a mandatory Pre-push checklist step: bump the patch
+    version and prepend a 2-4 bullet PATCH_NOTES entry before every commit/push.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
