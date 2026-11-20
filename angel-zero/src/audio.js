@@ -165,6 +165,14 @@ export function createAudio() {
     N.cloudRush.connect(N.cloudLP).connect(N.cloudGain).connect(master);
     N.cloudHiss.connect(N.cloudBP).connect(N.cloudHissGain).connect(cockpitLP);
 
+    // Cockpit mist patter: bright band-passed hiss with a slow square-wave AM.
+    // All nodes are allocated once here; update() only ramps their params.
+    N.mist = loopNoise(N.whiteBuf); N.mistHP = filt('highpass', 5200, 0.7);
+    N.mistBP = filt('bandpass', 8200, 0.9); N.mistG = gain(0);
+    N.mist.connect(N.mistHP).connect(N.mistBP).connect(N.mistG).connect(cockpitLP);
+    N.mistLFO = osc('square', 17); N.mistAM = gain(0);
+    N.mistLFO.connect(N.mistAM).connect(N.mistG.gain);
+
     // Rain patter: band-passed pink noise (cockpit-muffled) + bright droplet ticks.
     N.rain = loopNoise(pink); N.rainBP = filt('bandpass', 2400, 0.55); N.rainGain = gain(0);
     N.rain.connect(N.rainBP).connect(N.rainGain).connect(cockpitLP);
@@ -1214,6 +1222,10 @@ export function createAudio() {
     set(N.cloudGain.gain, 0.32 * cl * (0.45 + 0.35 * spdK + 0.2 * Math.min(1, th + ab)), 0.25);
     set(N.cloudLP.frequency, 300 + 380 * cl + 520 * cl * spdK, 0.3);
     set(N.cloudHissGain.gain, (0.02 + 0.03 * spdK) * cl, 0.3);
+    const mk = p.cockpit ? sm(p.cloud || 0, 0.25, 0.8) : 0, spdK2 = sm(kts, 150, 550);
+    set(N.mistG.gain, 0.055 * mk * (0.55 + 0.45 * spdK2), 0.25);
+    set(N.mistAM.gain, 0.02 * mk, 0.25);
+    set(N.mistBP.frequency, 7000 + 3000 * spdK2, 0.3);
 
     // RWR: soft search chirps when painted, quicker bright triple pips on a full
     // lock, and the rapid high-pitched launch warble only while a missile is inbound.
@@ -1271,6 +1283,8 @@ export function createAudio() {
     get flyby() { return N.lastFlyby || null; },
     // Last slow-mo pulse (time + count) for __audioDebug.
     get slowMoDebug() { return N.lastSlowMo || null; },
+    // Cockpit mist patter level + band centre for __audioDebug.
+    get mist() { return N.mistG ? { gain: +N.mistG.gain.value.toFixed(4), hz: Math.round(N.mistBP.frequency.value) } : null; },
     // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
     get canopyRain() {
       if (!N.canopyBus) return null;

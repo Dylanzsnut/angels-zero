@@ -447,27 +447,27 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s61a';
-import { createBlastFX } from './src/blastfx.js?v=s61a';
-import { createHUD } from './src/hud.js?v=s61a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s61a';
-import { createCombat } from './src/combat.js?v=s61a';
-import { createEjection } from './src/eject.js?v=s61a';
-import { createAudio } from './src/audio.js?v=s61a';
-import { createRadio } from './src/radio.js?v=s61a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s61a';
-import { createLivery } from './src/livery.js?v=s61a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s61a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s61a';
-import { createCanopyFX } from './src/canopy.js?v=s61a';
-import { createNVG } from './src/nvg.js?v=s61a';
-import { createWorld, WORLD } from './src/world.js?v=s61a';
-import { createSurfaces } from './src/surfaces.js?v=s61a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s61a';
-import { createFreeLook } from './src/freelook.js?v=s61a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s61a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s61a';
-import { SPW, SQUADRON, loadSPW, saveSPW, loadLivery, saveLivery } from './src/loadout.js?v=s61a';
+import { createVFX } from './src/vfx.js?v=s62a';
+import { createBlastFX } from './src/blastfx.js?v=s62a';
+import { createHUD } from './src/hud.js?v=s62a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s62a';
+import { createCombat } from './src/combat.js?v=s62a';
+import { createEjection } from './src/eject.js?v=s62a';
+import { createAudio } from './src/audio.js?v=s62a';
+import { createRadio } from './src/radio.js?v=s62a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s62a';
+import { createLivery } from './src/livery.js?v=s62a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s62a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s62a';
+import { createCanopyFX } from './src/canopy.js?v=s62a';
+import { createNVG } from './src/nvg.js?v=s62a';
+import { createWorld, WORLD } from './src/world.js?v=s62a';
+import { createSurfaces } from './src/surfaces.js?v=s62a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s62a';
+import { createFreeLook } from './src/freelook.js?v=s62a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s62a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s62a';
+import { SPW, SQUADRON, loadSPW, saveSPW, loadLivery, saveLivery } from './src/loadout.js?v=s62a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -832,6 +832,9 @@ for (const w of wingmen) {
   w.alive = true; w.friendly = true; w.cd = 7 + 4 * Math.random();
 }
 const _ws = new THREE.Vector3();                   // wingman formation scratch
+// Reused contrail emitter descriptors (lead, WARDEN-2/3, CRIMSON-1/2): filled in place each frame.
+const contrailEm = Array.from({ length: 5 }, () => ({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), on: false }));
+let cloudWet = 0;
 
 const mouse = { nx: 0, ny: 0 };
 const keys = { w: false, s: false, a: false, d: false, shift: false, fire: false, b: false };
@@ -929,6 +932,7 @@ function resetAircraft() {
     }
   }
   if (DEBUG && Q.has('at') && Q.has('alt')) state.position.y = Number(Q.get('alt')) || SPAWN.y;   // ?alt= is an explicit override of the named spot's altitude
+  if (DEBUG && Q.has('contrailalt')) state.position.y = 4000;                                      // contrail test spawn above 12,500 ft
   combatSys.resetPlayer();
   roll.left = 0;
   vfx.clearTrails(); if (blast) blast.clear(); hud.resetMaxG();
@@ -2131,6 +2135,32 @@ function updateCameraAndVisuals(dt, now) {
   vfx.setEngineOut(flightMode === 'FLY' && combat.engineOut ? (combat.engineOut === 'L' ? 0 : 1) : -1);
   vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson,
     rain: weather.rainHere || 0, cloud: Math.max(combat.playerCloud || 0, vfx.mist) });
+  // Engine contrails: copy each emitter's world pose into the reused descriptor pool.
+  {
+    const c0 = contrailEm[0];
+    c0.pos.copy(state.position); c0.quat.copy(state.quaternion);
+    c0.on = flightMode === 'FLY' && jet.visible;
+    for (let i = 0; i < 2; i++) {
+      const w = wingmen[i], e = contrailEm[1 + i];
+      e.on = false;
+      if (w) { e.pos.copy(w.pos); e.quat.copy(w.quat); e.on = w.alive !== false && flightMode === 'FLY'; }
+    }
+    let aces = 0;
+    for (const en of combatSys.enemies) {
+      if (aces >= 2) break;
+      if (!en.alive || !en.aceFlight) continue;
+      const e = contrailEm[3 + aces++];
+      e.pos.copy(en.pos); e.quat.copy(en.quat); e.on = flightMode === 'FLY';
+    }
+    for (let i = 3 + aces; i < 5; i++) { contrailEm[i].pos.copy(state.position); contrailEm[i].quat.copy(state.quaternion); contrailEm[i].on = false; }
+    vfx.updateContrails(contrailEm, now);
+  }
+  // Cloud droplets on the canopy: ease in/out so a cloud pass streaks the glass, then clears.
+  {
+    const cd = flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0;
+    const tgt = firstPerson && cd > 0.25 ? 0.75 * THREE.MathUtils.smoothstep(cd, 0.25, 0.7) : 0;
+    cloudWet += (tgt - cloudWet) * (1 - Math.exp(-dt / (tgt > cloudWet ? 0.25 : 0.83)));
+  }
   // Weather: rain volume, lightning, gusts; overcast / haze / flash feed the atmosphere, clouds and sea.
   weather.update(dt, state.velocity, Math.min(1, navLevel), firstPerson && flightMode === 'FLY');
   atmosphere.setWeather({ overcast: weather.current.overcast, fogMul: weather.current.fogMul, flash: weather.flash });
@@ -2139,7 +2169,7 @@ function updateCameraAndVisuals(dt, now) {
   // Cloud fly-through: white-out fog + sky horizon around the camera (src/atmosphere.js).
   atmosphere.update(dt, vfx.mist, nvg.active);
   // 3D bubble canopy glass: glare / sheen lighting + water driven by rain, cloud and airspeed.
-  canopyGlass.update({ dt, time: simTime, rain: flightMode === 'FLY' ? weather.rainHere : 0,
+  canopyGlass.update({ dt, time: simTime, rain: flightMode === 'FLY' ? Math.max(weather.rainHere, cloudWet) : 0,
     cloud: flightMode === 'FLY' ? Math.max(combat.playerCloud || 0, vfx.mist) : 0, kts: state.speed * 1.94384, rollRate: state.rollRate,
     sunCol: sunLight.color, sunK: Math.min(1.3, sunLight.intensity / 3.4) * atmosphere.sunVisible, sky: atmosphere.sky.material.uniforms.uMid.value,
     gain: 0.15 + 0.85 * Math.min(1, hemiLight.intensity / 1.5), nvg: nvg.active, visible: firstPerson && flightMode === 'FLY' });
@@ -2227,7 +2257,7 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
   canopyRain: audio.canopyRain, wind: audio.wind, blast: audio.blast, blastFx: blast ? blast.stats : null, shake: +blastShake.toFixed(3), ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
-  music: audio.music, slowMo: audio.slowMoDebug, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
+  music: audio.music, slowMo: audio.slowMoDebug, mist: audio.mist, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 const _audioFwd = new THREE.Vector3();
@@ -2819,7 +2849,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       'score', combat.score, 'kills', combat.kills, 'gun', combat.ammo, 'msl', combat.missiles, 'hp', combat.health, 'mode', flightMode,
       'eject', JSON.stringify(eject.info));
     console.log('[ANGELS_ZERO] warp', Q.get('warp'), 's: speed', state.speed.toFixed(1), 'alt', state.position.y.toFixed(0),
-      'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2),
+      'G', state.gLoad.toFixed(2), 'hdg', state.heading.toFixed(0), 'mach', state.mach.toFixed(2), 'contrail pts', vfx.trailPoints, 'vapor', vfx.vaporLevel.toFixed(2), 'contrails', JSON.stringify(vfx.contrailStats),
       'cone', vfx.coneOpacity.toFixed(2), 'spray', vfx.sprayCount, 'mist', vfx.mist.toFixed(2), 'dead', combat.dead,
       'bank', (state.bank * 180 / Math.PI).toFixed(0), 'pitch', (state.pitch * 180 / Math.PI).toFixed(0), 'highG', !!state.highG,
       'maxG', hud.maxG !== undefined ? hud.maxG : '-', 'fov', camera.fov.toFixed(1), 'head', JSON.stringify(cockpit.head), 'hotas', JSON.stringify(cockpit.hotas),

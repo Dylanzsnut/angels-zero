@@ -183,11 +183,12 @@ export function createVFX(THREE, env) {
   const RIB_MAX = 96, RIB_STEP = 3.5, RIB_DT = 0.016, RIB_JUMP = 120;
   const RIB_V = LOG_V + `
     attribute float aAlpha;
+    uniform vec2 uFar;
     varying float vA; varying vec2 vUv;
     void main() {
       vA = aAlpha; vUv = uv;
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      vA *= 1.0 - smoothstep(1500.0, 4200.0, -mv.z);          // thin out into the haze, never pop
+      vA *= 1.0 - smoothstep(uFar.x, uFar.y, -mv.z);          // thin out into the haze, never pop
       gl_Position = projectionMatrix * mv;
       #include <logdepthbuf_vertex>
     }`;
@@ -206,8 +207,10 @@ export function createVFX(THREE, env) {
       gl_FragColor = vec4(min(uCol, vec3(0.85)), a);       // stays under the bloom threshold
     }`;
   class Ribbon {
-    constructor({ w0, w1, life, alpha, wisp = 0 }) {
+    constructor({ w0, w1, life, alpha, wisp = 0, step = RIB_STEP, minDt = RIB_DT, far = [1500, 4200] }) {
       this.w0 = w0; this.w1 = w1; this.life = life; this.alphaK = alpha;
+      this.step = step; this.minDt = minDt;
+      this.live = 0;
       this.px = new Float32Array(RIB_MAX * 3); this.born = new Float64Array(RIB_MAX); this.ba = new Float32Array(RIB_MAX);
       this.head = 0; this.count = 0; this.lastCommit = -1e9;
       const geo = new THREE.BufferGeometry();
@@ -221,7 +224,8 @@ export function createVFX(THREE, env) {
       geo.setDrawRange(0, 0);
       this.geo = geo;
       this.mat = new THREE.ShaderMaterial({
-        uniforms: { uCol: { value: new THREE.Color(0xe8eef4) }, uWisp: { value: wisp }, uTime: { value: 0 } },
+        uniforms: { uCol: { value: new THREE.Color(0xe8eef4) }, uWisp: { value: wisp }, uTime: { value: 0 },
+          uFar: { value: new THREE.Vector2(far[0], far[1]) } },
         vertexShader: RIB_V, fragmentShader: RIB_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: true
       });
       this.mesh = new THREE.Mesh(geo, this.mat);
@@ -242,7 +246,7 @@ export function createVFX(THREE, env) {
       // Distance from the last committed sample (slot 1) decides whether the live head is frozen.
       const k1 = this.slot(1) * 3;
       const ex = p.x - px[k1], ey = p.y - px[k1 + 1], ez = p.z - px[k1 + 2];
-      if (ex * ex + ey * ey + ez * ez >= RIB_STEP * RIB_STEP || now - this.lastCommit >= RIB_DT) { this.push(p, now, a); this.lastCommit = now; }
+      if (ex * ex + ey * ey + ez * ez >= this.step * this.step || now - this.lastCommit >= this.minDt) { this.push(p, now, a); this.lastCommit = now; }
       else this.setSample(this.head, p, now, a);          // live head rides the emitter
     }
     update(camPos, now) {
@@ -290,6 +294,36 @@ export function createVFX(THREE, env) {
   const lexPL = new THREE.Vector3(-2.05, 0.05, -0.9), lexPR = new THREE.Vector3(2.05, 0.05, -0.9);
   const RIB_DAY = new THREE.Color(0xe8eef4), RIB_OVC = new THREE.Color(0xbfc7cf), _ribCol = new THREE.Color();
   let vaporTarget = 0, lexTarget = 0;
+
+  // High-altitude engine contrails: 2 nozzles x (lead + WARDEN-2/3 + CRIMSON-1/2).
+  // 22 m / 0.09 s sampling => the 96-sample ring covers ~9 s of trail.
+  const CONTRAIL_N = 10;
+  const NOZ = [new THREE.Vector3(-0.62, -0.05, 9.0), new THREE.Vector3(0.62, -0.05, 9.0)];
+  const _noz = [NOZ[0], NOZ[1]];
+  const _cw = new THREE.Vector3();
+  const CONTRAIL_COL = new THREE.Color(0xeef2f6), _ctCol = new THREE.Color();
+  const contrails = Array.from({ length: CONTRAIL_N }, () => new Ribbon({ w0: 0.6, w1: 6.5, life: 9, alpha: 0.6,
+    step: 22, minDt: 0.09, far: [5000, 16000] }));
+  const contrailStats = { active: 0, live: 0 };
+  function updateContrails(emitters, now) {
+    if (plumes.length >= 2) { _noz[0] = plumes[0].g.position; _noz[1] = plumes[1].g.position; }
+    _ctCol.copy(CONTRAIL_COL).multiply(vaporTint);
+    let active = 0, live = 0;
+    const n = Math.min(5, emitters.length);
+    for (let j = 0; j < n; j++) {
+      const e = emitters[j], a = e.on ? smooth(e.pos.y, 3505, 3810) : 0;
+      if (a > 0) active++;
+      for (let k = 0; k < 2; k++) {
+        const r = contrails[j * 2 + k];
+        r.mat.uniforms.uCol.value.copy(_ctCol);
+        r.emit(_cw.copy(_noz[k]).applyQuaternion(e.quat).add(e.pos), a * 0.9, now);
+        r.update(camera.position, now);
+        live += r.live;
+      }
+    }
+    for (let j = n; j < 5; j++) for (let k = 0; k < 2; k++) contrails[j * 2 + k].clear();
+    contrailStats.active = active; contrailStats.live = live;
+  }
 
   /* ------------------------------------------------ over-wing vapor clouds */
   // High-AoA condensation: wispy sheets over the inner wing roots and the
@@ -1120,7 +1154,9 @@ export function createVFX(THREE, env) {
   return {
     attachPlume,
     setWingtips(l, r) { tipL.copy(l); tipR.copy(r); buildVapor(); },
-    clearTrails() { for (const r of ribbons) r.clear(); vaporTarget = lexTarget = 0; for (const q of sprayP) q.on = false; vaporLevel = 0; },
+    clearTrails() { for (const r of ribbons) r.clear(); for (const r of contrails) r.clear(); contrailStats.active = contrailStats.live = 0; vaporTarget = lexTarget = 0; for (const q of sprayP) q.on = false; vaporLevel = 0; },
+    updateContrails,
+    get contrailStats() { return contrailStats; },
     update,
     get mist() { return mist; },
     cloudDensity, placeDebugCloud,

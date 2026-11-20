@@ -1,5 +1,7 @@
-angel-zero/index.html:2884 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1958 -> updateMissileCamState(realDt); :1980 -> updateCameraAndVisuals(dt, now)
+angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
+angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform
+angel-zero/src/vfx.js:300 -> CONTRAIL_N / NOZ / contrails pool; :308 -> updateContrails(emitters, now); :1161 -> vfx.mist
 angel-zero/src/vfx.js:410 -> updateMachCone(dt, mach, isCockpit)
 angel-zero/index.html:2120 -> nvg (global composer wrapper)
 angel-zero/src/nvg.js:15 -> createNVG(THREE, renderer, post)
@@ -33,12 +35,13 @@ angel-zero/src/combat.js:2743 -> surfaceSAM(from, label)
 angel-zero/src/combat.js:2682 -> updateFleet(dt)
 
 angel-zero/index.html:832 -> blastShake / flyShake / wakeRoll (globals); :838 -> timeScale / slowMo / mcam (globals)
-angel-zero/index.html:1012 -> setView(fp)
-angel-zero/index.html:1390 -> Space -> setView(!firstPerson); :1403 / :1443 -> M / RMB -> mcam.held
-angel-zero/index.html:1980 -> updateCameraAndVisuals(dt, now); :816 -> wingmen (global pool)
+angel-zero/index.html:988 -> setView(fp)
+angel-zero/index.html:1394 -> Space -> setView(!firstPerson); :1407 / :1447 -> M / RMB -> mcam.held
+angel-zero/index.html:1984 -> updateCameraAndVisuals(dt, now); :816 -> wingmen (global pool)
+angel-zero/index.html:836 -> contrailEm (reused emitters); :837 -> cloudWet; :2156 -> vfx.updateContrails(); :2172 -> canopyGlass.update(rain = max(rainHere, cloudWet))
 angel-zero/index.html:871 -> prevPlanePos (global)
 angel-zero/index.html:1352 -> freeLook (global)
-angel-zero/index.html:945 -> ?at=canyonlow spot; :2725 -> ?strikekillat hook; :2527 -> getStrikeTargets HUD env
+angel-zero/index.html:945 -> ?at=canyonlow spot; :935 -> ?contrailalt hook; :2746 -> ?strikekillat hook; :2549 -> getStrikeTargets HUD env
 angel-zero/src/loadout.js:5 -> SPW_KEY / LIVERY_KEY; :7 -> SPW; :13 -> SQUADRON; :26..29 -> load / save helpers
 angel-zero/src/livery.js:12 -> createLivery(THREE, model, LIVERIES, wingMeshes); :128 -> paint(L); :157 -> applySquadron(id); :94 -> dice decal + mesh clones
 angel-zero/index.html:273 -> loadoutChip; :348 -> spwRow; :1271 -> syncLoadoutUI(); :1278 -> renderHangar(); :2623 -> createLivery(..., wingmen.map(w=>w.mesh))
@@ -48,8 +51,9 @@ angel-zero/src/audio.js:12 -> createAudio()
 angel-zero/src/audio.js:13 -> ctx / master / cockpitLP / N (globals)
 angel-zero/src/audio.js:266 -> explosion(intensity, delay)
 angel-zero/src/audio.js:309 -> flybyWhoosh(k, cockpit)
+angel-zero/src/audio.js:170 -> mist patter nodes (mist / mistHP / mistBP / mistG / mistLFO / mistAM); :1225 -> update(p) mist ramps; :1287 -> get mist()
 angel-zero/src/audio.js:586 -> masterCaution(); :643 -> cableScreech(); :660 -> catapult(); :673 -> aceWarning(); :677 -> slowMo()
-angel-zero/index.html:495 -> PERF_DEBUG / renderer.info.autoReset (globals); :842 -> onFlyby({ dist, k, side }); :1391 -> Z chaff / J ECM / L gear / G orders; :2201 -> onWing(text, caption, tint); :2279 -> onSfx(type, pos, scale); :2710 -> acewingat / mcamat / slowmoat hooks
+angel-zero/index.html:495 -> PERF_DEBUG / renderer.info.autoReset (globals); :842 -> onFlyby({ dist, k, side }); :1412 -> Z chaff / J ECM / L gear / G orders; :2231 -> onWing(text, caption, tint); :2309 -> onSfx(type, pos, scale); :2260 -> __audioDebug mist; :2852 -> warp contrailStats log
 angel-zero/src/hud.js:102 -> alertState / alertOverride (globals)
 angel-zero/src/hud.js:1222 -> drawBanner(ctx, cx, y, text, col, w, alpha)
 angel-zero/src/hud.js:1278 -> drawJam(ctx); :1294 -> drawStrikeTargets(ctx); :1326 -> drawCenterBanners(ctx, g)

@@ -1335,6 +1335,32 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     warm); zero JS/WebGL errors (in-app + Edge `BAD_LINES=0` on five URLs);
     120-frame sample avg 7.06 ms / max 14.7 ms / 0 frames over 16.6 ms.
     All 21 `?v=` tags bumped to s61a (+ the new `loadout.js?v=s61a` imports).
+- [x] **High-altitude contrails + canopy droplets + cockpit mist** *(build `s62a`,
+  `src/vfx.js`, `src/audio.js`, `index.html`)*
+  - `Ribbon` now takes per-instance `step` / `minDt` / `far`; the haze fade is a
+    `uFar` uniform (no new shader program). Wingtip / LEX ribbons keep defaults
+    and the existing 0.85 colour clamp stays under the 0.92 bloom threshold.
+  - Ten pooled contrail ribbons (2 nozzles x lead + WARDEN-2/3 + CRIMSON-1/2)
+    sample every 22 m / 0.09 s (~9 s of trail), tinted `#eef2f6 x vaporTint`.
+    `vfx.updateContrails(emitters, now)` fills a reused 5-entry descriptor array
+    with no per-frame allocation; teleports / death decay through the existing
+    RIB_JUMP guard and `clearTrails()` clears them too. `vfx.contrailStats`
+    reports active emitters / live samples and is logged on the warp line.
+  - Canopy wetness eases toward 0.75 in cloud above 500 ft in first person
+    (0.25 s in, 0.83 s out) and feeds the existing `canopyGlass.update` rain
+    input, so the airspeed-driven aft streaks appear without new uniforms or
+    draw calls. The existing `uRain > 0.01 || uMoist > 0.05` fast path covers it.
+  - Mist patter is a pre-allocated high-passed / band-passed white-noise loop
+    with a 17 Hz square AM into `cockpitLP`; `update()` only ramps its params.
+    `__audioDebug().mist` reports gain / band centre.
+  - Verified headless: `?nointro&debug&alt=4000&spd=230&warp=6` →
+    `contrailStats.active=3, live≈440` (lead + 2 wingmen), visible ribbon meshes
+    with alpha ≈0.52; `alt=3300` → `active=0`; cockpit cloud run →
+    `__audioDebug().mist.gain=0.028, hz=8861` and canopy `rain=0.75`; climbing
+    out clears it to 0.05 in ~2.5 s; zero JS/WebGL errors (in-app + Edge
+    `BAD_LINES=0` on four URLs); 120-frame sample avg 4.28 ms / max 5.9 ms /
+    0 frames over 16.6 ms. Debug `?contrailalt` spawns at 4,000 m.
+    Every `?v=` tag bumped to s62a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
