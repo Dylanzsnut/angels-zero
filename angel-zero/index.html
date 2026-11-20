@@ -344,6 +344,8 @@
           <button class="tod-btn" id="wxBtn" type="button">[ CYCLE WEATHER: RANDOM ]</button>
           <span id="diffChip">THREAT: NORMAL</span>
           <button class="tod-btn" id="diffBtn" type="button">[ DIFFICULTY: NORMAL ]</button>
+          <span id="modeChip">MODE: MISSION</span>
+          <button class="tod-btn" id="modeBtn" type="button">[ MODE: MISSION ]</button>
           <span id="loadoutChip">LOADOUT: MSL + 4AAM // GHOST</span>
           <span id="buildChip">v1.0.5</span>
           <span>ROE: WEAPONS FREE</span>
@@ -403,6 +405,7 @@
             <div class="bind"><span class="k"><kbd>ALT</kbd> <kbd>MMB</kbd></span><span class="a">Free Look (hold + mouse)</span></div>
             <div class="bind"><span class="k"><kbd>E</kbd></span><span class="a">Eject bailout</span></div>
             <div class="bind"><span class="k"><kbd>H</kbd> <kbd>ESC</kbd></span><span class="a">Tactical menu</span></div>
+            <div class="bind"><span class="k"><kbd>TAB</kbd> <kbd>TAB</kbd></span><span class="a">End sortie / debrief</span></div>
             <div class="bind"><span class="k"><kbd>BKSP</kbd></span><span class="a">Reset aircraft</span></div>
           </div>
         </div>
@@ -438,6 +441,7 @@
         </div>
         <div class="btns">
           <button class="secondary-btn" id="restartBtn" type="button">[ RESTART MISSION ]</button>
+          <button class="secondary-btn" id="endBtn" type="button">[ END SORTIE // DEBRIEF ]</button>
           <button class="mute" id="patchButton" type="button">[ PATCH NOTES v1.0.5 ]</button>
           <button class="launch pulse" id="launchBtn" type="button">[ LAUNCH SORTIE ]</button>
         </div>
@@ -487,29 +491,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s64a';
-import { createBlastFX } from './src/blastfx.js?v=s64a';
-import { createHUD } from './src/hud.js?v=s64a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s64a';
-import { createCombat } from './src/combat.js?v=s64a';
-import { createEjection } from './src/eject.js?v=s64a';
-import { createAudio } from './src/audio.js?v=s64a';
-import { createRadio } from './src/radio.js?v=s64a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s64a';
-import { createLivery } from './src/livery.js?v=s64a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s64a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s64a';
-import { createCanopyFX } from './src/canopy.js?v=s64a';
-import { createNVG } from './src/nvg.js?v=s64a';
-import { createWorld, WORLD } from './src/world.js?v=s64a';
-import { createSurfaces } from './src/surfaces.js?v=s64a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s64a';
-import { createFreeLook } from './src/freelook.js?v=s64a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s64a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s64a';
-import { SPW, SQUADRON, loadSPW, saveSPW, loadLivery, saveLivery } from './src/loadout.js?v=s64a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s64a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s64a';
+import { createVFX } from './src/vfx.js?v=s65a';
+import { createBlastFX } from './src/blastfx.js?v=s65a';
+import { createHUD } from './src/hud.js?v=s65a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s65a';
+import { createCombat } from './src/combat.js?v=s65a';
+import { createEjection } from './src/eject.js?v=s65a';
+import { createAudio } from './src/audio.js?v=s65a';
+import { createRadio } from './src/radio.js?v=s65a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s65a';
+import { createLivery } from './src/livery.js?v=s65a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s65a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s65a';
+import { createCanopyFX } from './src/canopy.js?v=s65a';
+import { createNVG } from './src/nvg.js?v=s65a';
+import { createWorld, WORLD } from './src/world.js?v=s65a';
+import { createSurfaces } from './src/surfaces.js?v=s65a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s65a';
+import { createFreeLook } from './src/freelook.js?v=s65a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s65a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s65a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s65a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s65a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s65a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -519,6 +523,7 @@ const DEBUG = Q.has('debug');
 // Hangar selection: persisted values, optionally overridden by ?spw= / ?livery= without saving.
 let selectedSPW = DEBUG && Q.has('spw') && SPW[Q.get('spw')] ? Q.get('spw') : loadSPW();
 let selectedLivery = DEBUG && Q.has('livery') && SQUADRON[Q.get('livery')] ? Q.get('livery') : loadLivery();
+let selectedMode = DEBUG && Q.has('mode') && MODES.includes(Q.get('mode')) ? Q.get('mode') : loadMode();
 
 /* ============================================================================
    0. RENDERER / SCENE / CAMERA / LIGHTS
@@ -1164,6 +1169,7 @@ function showMenu(kind) {
   previewRowEl.style.display = pause ? 'none' : '';
   pauseStatsEl.classList.toggle('show', pause);
   restartBtn.classList.toggle('show', pause);
+  document.getElementById('endBtn').classList.toggle('show', pause);
   if (pause) {
     document.getElementById('statTime').textContent = cockpit.missionClock(simTime);
     document.getElementById('statScore').textContent = String(combat.score || 0).padStart(6, '0');
@@ -1205,6 +1211,21 @@ function startSortie() {
   tele.reset();
   combat.styleCounts = {}; combat.comboPeak = 1;
   Object.assign(sortie, { active: true, t0: simTime, ace0: combat.aceDowns || 0, endAt: null, failReason: '' });
+  if (combat.mode === 'FURBALL') {
+    state.position.set(0, 1829, -3000);                       // cloud-sea centre, 6,000 ft, above the 5,800 ft tops
+    state.quaternion.identity(); state.velocity.set(0, 0, -216);
+    state.speed = 216; state.throttle = 0.85;
+    state.gear = 0; state.gearDown = false; state.onGround = false;
+    flightMode = 'FLY';
+    vfx.clearTrails(); prevPlanePos.copy(state.position); camVelocity.set(0, 0, 0);
+    camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position);
+    for (const w of wingmen) {
+      w.pos.copy(w.off).applyQuaternion(state.quaternion).add(state.position);
+      w.quat.copy(state.quaternion); w.vel.copy(state.velocity);
+    }
+    combatSys.setWingOrder('FORM');
+    combatSys.say('FURBALL // WEAPONS FREE — ENDLESS BANDITS', 3, '#ffbf3f');
+  }
 }
 function sortieStats() {
   const sc = combat.styleCounts || {};
@@ -1213,7 +1234,7 @@ function sortieStats() {
     phase: combat.phase || 1 };
 }
 function watchSortie() {
-  if (!sortie.active || appMode !== 'PLAY') return;
+  if (!sortie.active || appMode !== 'PLAY' || combat.mode === 'FURBALL') return;
   if (sortie.endAt === null && (combat.aceDowns || 0) > sortie.ace0) sortie.endAt = simTime + 4.5;   // victory lap, then debrief
   if (sortie.endAt !== null && simTime >= sortie.endAt) endSortie('CLEARED');
 }
@@ -1253,7 +1274,10 @@ const swatchCss = L => `linear-gradient(90deg, ${L.body} 0 62%, ${L.trim} 62% 10
 // Composite rank: time / damage / accuracy / objectives (100 points total).
 function computeRank(st, outcome) {
   const cl = THREE.MathUtils.clamp;
-  const ptsTime = 30 * cl((900 - Math.max(0, st.time || 0)) / 600, 0, 1);
+  const furball = combat.mode === 'FURBALL';
+  const valid = outcome === 'CLEARED' || (furball && (st.kills || 0) >= 1);
+  const killsPerMin = (st.kills || 0) / Math.max(1, Math.max(0, st.time || 0) / 60);
+  const ptsTime = furball ? 30 * cl(killsPerMin / 2.5, 0, 1) : 30 * cl((900 - Math.max(0, st.time || 0)) / 600, 0, 1);
   const ptsDmg = 25 * (1 - Math.min(100, combat.maxDmg || 0) / 100);
   const gunAcc = Math.min(1, 4 * (combat.gunHitsP || 0) / Math.max(1, combat.gunRounds || 0));
   const mslAcc = (combat.mslHitsP || 0) / Math.max(1, combat.mslFiredP || 0);
@@ -1264,8 +1288,8 @@ function computeRank(st, outcome) {
   const ptsObj = (aceK ? 8 : 0) + (allStrikes ? 6 : 0) + (traps ? 6 : 0);
   const total = ptsTime + ptsDmg + ptsAcc + ptsObj;
   let rank = total >= 85 ? 'S' : total >= 70 ? 'A' : total >= 50 ? 'B' : 'C';
-  if (outcome !== 'CLEARED' && (rank === 'S' || rank === 'A')) rank = 'B';
-  return { ptsTime, ptsDmg, ptsAcc, ptsObj, total, rank, gunAcc, mslAcc, aceK, allStrikes, traps };
+  if (!valid && (rank === 'S' || rank === 'A')) rank = 'B';
+  return { ptsTime, ptsDmg, ptsAcc, ptsObj, total, rank, gunAcc, mslAcc, aceK, allStrikes, traps, furball, killsPerMin };
 }
 
 // Tactical trace map: DOM 2D only (no WebGL programs or draw calls).
@@ -1355,10 +1379,14 @@ function startDebriefMap() {
   dbRAF = requestAnimationFrame(drawDebriefMap);
 }
 function showDebrief(outcome, st, res) {
-  const cleared = outcome === 'CLEARED';
+  const cleared = outcome === 'CLEARED' || (outcome === 'FURBALL' && (st.kills || 0) >= 1);
+  const fur = combat.mode === 'FURBALL';
   debriefEl.classList.toggle('failed', !cleared);
-  document.getElementById('dbTitle').textContent = cleared ? 'SORTIE CLEARED' : 'SORTIE FAILED';
-  document.getElementById('dbSub').textContent = cleared ? `ACE SOL-1 "CRIMSON VULTURE" DESTROYED // ${fmtClock(st.time)} ON STATION`
+  document.getElementById('dbTitle').textContent = fur ? (cleared ? 'FURBALL COMPLETE' : 'FURBALL ENDED')
+    : cleared ? 'SORTIE CLEARED' : 'SORTIE FAILED';
+  document.getElementById('dbSub').textContent = fur
+    ? `${st.kills || 0} BANDITS SPLASHED // ${fmtClock(st.time)} ON STATION`
+    : cleared ? `ACE SOL-1 "CRIMSON VULTURE" DESTROYED // ${fmtClock(st.time)} ON STATION`
     : `${sortie.failReason || 'AIRCRAFT LOST'} // PHASE ${st.phase} // ${fmtClock(st.time)} ON STATION`;
   const rk = document.getElementById('dbRank');
   rk.textContent = res.rank; rk.className = 'db-rank rank-' + res.rank;
@@ -1387,6 +1415,10 @@ function showDebrief(outcome, st, res) {
     ['PTS ACC / OBJ', `${ri.ptsAcc.toFixed(1)} / ${ri.ptsObj.toFixed(1)}`],
     ['RANK TOTAL', ri.total.toFixed(1) + ' / 100']
   ];
+  if (fur) {
+    cells.push(['MODE FURBALL', 'ENDLESS'], ['KILLS/MIN', ri.killsPerMin.toFixed(2)],
+      ['ACE PAIRS DOWNED', Math.floor((combat.furballKills || 0) / 5)]);
+  }
   document.getElementById('dbStats').innerHTML = cells.map(([k, v]) => `<div class="db-cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
   startDebriefMap();
   document.getElementById('dbUnlocks').innerHTML = res.unlocked.map(id => {
@@ -1515,6 +1547,10 @@ function restartMission() {
 }
 launchBtn.addEventListener('click', e => { e.stopPropagation(); if (appMode === 'MENU') launchSortie(); else resumeSim(); });
 restartBtn.addEventListener('click', e => { e.stopPropagation(); restartMission(); });
+document.getElementById('endBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  endSortie(combat.mode === 'FURBALL' ? 'FURBALL' : 'ABORTED');
+});
 camOrbitBtn.addEventListener('click', e => { e.stopPropagation(); setMenuPreview(false); });
 camCockpitBtn.addEventListener('click', e => { e.stopPropagation(); setMenuPreview(true); });
 hBadge.addEventListener('click', e => { e.stopPropagation(); pauseSim(); });
@@ -1558,6 +1594,15 @@ addEventListener('keydown', e => {
     else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
     else if (k === 'k' && !e.repeat) toggleMusic();
     if (e.code === 'Space') e.preventDefault();
+    return;
+  }
+  if (k === 'tab') {
+    e.preventDefault();
+    if (!e.repeat) {
+      const now = performance.now();
+      if (now - (combat.endConfirmT || 0) < 2000) { combat.endConfirmT = 0; endSortie(combat.mode === 'FURBALL' ? 'FURBALL' : 'ABORTED'); }
+      else combat.endConfirmT = now;
+    }
     return;
   }
   if ((k === 'h' || k === 'escape') && !e.repeat) { pauseSim(); return; }
@@ -2562,6 +2607,7 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }),
   getLivery: () => livery ? livery.current : null });
 combatSys.setSPW(selectedSPW);
+combatSys.setMode(selectedMode);
 if (DEBUG && Q.has('spw')) combatSys.setWeapon(SPW[selectedSPW].wpn);   // debug override also flies the selected SPW
 const missiles = combatSys.missiles;
 radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
@@ -2718,6 +2764,23 @@ syncDifficultyUI();
 if (DEBUG) console.log('[ANGELS_ZERO] difficulty boot', diffMode, DIFF_FORCED ? '(forced)' : '(stored)');
 // ?diffcycle=n: press [ DIFFICULTY ] n times at boot (headless persistence test).
 if (DEBUG && Q.has('diffcycle')) for (let i = 0; i < (Number(Q.get('diffcycle')) || 1); i++) diffBtn.click();
+
+const modeChip = document.getElementById('modeChip'), modeBtn = document.getElementById('modeBtn');
+function syncModeUI() {
+  const fur = selectedMode === 'FURBALL';
+  modeBtn.textContent = fur ? '[ MODE: FURBALL // INSTANT ACTION ]' : '[ MODE: MISSION ]';
+  modeChip.textContent = fur ? 'MODE: FURBALL // ENDLESS' : 'MODE: MISSION';
+  modeChip.classList.toggle('hot', fur);
+}
+modeBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (appMode !== 'MENU') return;
+  selectedMode = selectedMode === 'FURBALL' ? 'MISSION' : 'FURBALL';
+  saveMode(selectedMode);
+  combatSys.setMode(selectedMode);
+  syncModeUI();
+});
+syncModeUI();
 
 const cockpit = createCockpit3D(THREE, { scene, camera, renderer, sunLight, sunDir: SUN_DIR, envTex, state, combat,
   missiles, STALL_AOA, getEnemies: () => combatSys.enemies });
@@ -2934,6 +2997,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     const strikeKillAt = Q.has('strikekillat') ? Number(Q.get('strikekillat')) : -1;
     const debriefAt = Q.has('debriefat') ? Number(Q.get('debriefat')) : -1;
     const nearAt = Q.has('nearat') ? Number(Q.get('nearat')) : -1;
+    const killAts = Q.has('killat') ? Q.get('killat').split(',').map(Number) : [];
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
       const t0 = i * h, t1 = t0 + h;
       advanceTimeScale(h);                               // time scale runs on real warp time too
@@ -2983,7 +3047,11 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         console.log('[ANGELS_ZERO] tod', t1.toFixed(2), atmosphere.active.name, 'exp', renderer.toneMappingExposure.toFixed(3), 'sun', sunLight.intensity.toFixed(3), 'hemi', hemiLight.intensity.toFixed(3), 'stars', atmosphere.current.stars.toFixed(2));
       if (Q.has('nvgat') && Number(Q.get('nvgat')) >= t0 && Number(Q.get('nvgat')) < t1) { setNVG(!nvg.active, true); console.log('[ANGELS_ZERO] N @', t1.toFixed(2), 'nvg', nvg.active, 'hemi', hemiLight.intensity.toFixed(3), 'amb', ambLight.intensity.toFixed(3), 'sun', sunLight.intensity.toFixed(3), 'exp', renderer.toneMappingExposure.toFixed(2), 'gain', nvg.gain.toFixed(1), 'tod', atmosphere.active.name); }
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
-      if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
+      for (let ki = 0; ki < killAts.length; ki++) if (killAts[ki] >= t0 && killAts[ki] < t1) {
+        let victim = null;
+        for (const en of combatSys.enemies) if (en.alive && !en.aceFlight && !en.bomber) { victim = en; break; }
+        if (victim) { combatSys.killEnemy(combatSys.enemies.indexOf(victim)); console.log('[ANGELS_ZERO] kill @', t1.toFixed(2), victim.label); }
+      }
       // ?blastat=s[,kind[,dist]]: detonate (air | ground | water | ship) dist m ahead of the jet (ground / water: on the surface below that point).
       if (Q.has('blastat')) {
         const [bs, bk, bd] = Q.get('blastat').split(',');

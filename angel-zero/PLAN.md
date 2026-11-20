@@ -1400,6 +1400,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     different damage yields B vs C; the same 75-point total yields A when
     cleared and B when failed; zero JS/WebGL errors. Debug `?debriefat=s`,
     `?nearat=s`. Every `?v=` tag bumped to s64a.
+- [x] **FURBALL instant-action mode** *(build `s65a`, `src/loadout.js`,
+  `src/combat.js`, `src/hud.js`, `index.html`)*
+  - New `MODE_KEY` / `MODES` persistence with a briefing `[ MODE: … ]` toggle;
+    `?mode=FURBALL` overrides without saving. FURBALL hot-starts airborne at
+    6,000 ft / 420 kt over the cloud sea with gear up, cleared trails, a snapped
+    chase camera and wingmen in formation.
+  - `furballTick()` recycles dead bandits from the existing six-slot pool every
+    3.5 s at 6–9 km / 1,400–2,600 m, keeping two slots free for the CRIMSON pair;
+    a fresh ace pair spawns every five player kills. Mission waves, phases and
+    the ace-kill end trigger are untouched when `C.mode === 'MISSION'`.
+  - Double-Tab (or the pause-menu button) ends the sortie; a TAB-again HUD
+    banner confirms the armed state. FURBALL debriefs rank on kills/minute,
+    show mode, kill rate and ace pairs, and `[ SORTIE AGAIN ]` keeps the mode.
+  - Verified headless: briefing toggle persists across two runs; FURBALL warp
+    holds 1,829 m / 216 m/s with `furball.alive = 6`; five kills spawn
+    CRIMSON-1/2; double-Tab opens `FURBALL COMPLETE` with a rank and 18 cells;
+    MISSION-mode regression still shows Phase 1 with six bandits; zero
+    JS/WebGL errors across three Edge CLI URLs. Debug `?mode=FURBALL`.
+    Every `?v=` tag bumped to s65a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

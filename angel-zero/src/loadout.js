@@ -2,7 +2,8 @@
 // Two small localStorage keys, validated on read: a corrupt / foreign value or a
 // storage exception (private mode, blocked site data) falls back to the defaults.
 
-export const SPW_KEY = 'angelsZero_spw', LIVERY_KEY = 'angelsZero_livery';
+export const SPW_KEY = 'angelsZero_spw', LIVERY_KEY = 'angelsZero_livery', MODE_KEY = 'angelsZero_mode';
+export const MODES = ['MISSION', 'FURBALL'];
 
 export const SPW = {
   '4AAM': { wpn: 'AAM4', label: '4AAM', hud: '4AAM' },
@@ -27,3 +28,5 @@ export const loadSPW = () => read(SPW_KEY, '4AAM', v => Object.prototype.hasOwnP
 export const saveSPW = id => write(SPW_KEY, Object.prototype.hasOwnProperty.call(SPW, id) ? id : '4AAM');
 export const loadLivery = () => read(LIVERY_KEY, 'GHOST', v => Object.prototype.hasOwnProperty.call(SQUADRON, v));
 export const saveLivery = id => write(LIVERY_KEY, Object.prototype.hasOwnProperty.call(SQUADRON, id) ? id : 'GHOST');
+export const loadMode = () => read(MODE_KEY, 'MISSION', v => MODES.includes(v));
+export const saveMode = id => write(MODE_KEY, MODES.includes(id) ? id : 'MISSION');

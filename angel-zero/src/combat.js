@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s64a';
-import { SPW } from './loadout.js?v=s64a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s65a';
+import { SPW } from './loadout.js?v=s65a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -23,6 +23,8 @@ export function createCombat(THREE, env) {
   const rand = Math.random;
 
   const WAVE_SIZE = 6;
+  const FURBALL_TICK = 3.5, FURBALL_MIN = 6, FURBALL_ACE_EVERY = 5;
+  let FURBALL_MAX = 8;                                      // set once the bandit pool exists
   const GUN_MAX = 940, GUN_RATE = 100, BULLET_SPEED = 1050;   // M61A1: 6,000 rpm, 1,050 m/s
   let MSL_MAX = 6;                                            // becomes the pylon-missile count once the GLB loads
   const MSL_INTERVAL = 0.6, MSL_RELOAD = 6;
@@ -610,6 +612,8 @@ export function createCombat(THREE, env) {
     };
   }
   for (let i = 0; i < WAVE_SIZE; i++) enemies.push(makeEnemy(i));
+  FURBALL_MAX = Math.min(8, enemies.length - 2);             // two pool slots reserved for the CRIMSON pair
+  const _fur = new THREE.Vector3();                          // recycler scratch (allocated once)
 
   function resetAI(e) {
     e.cruise = (360 + rand() * 80) * KT;                     // 360-440 kt cruise
@@ -639,7 +643,8 @@ export function createCombat(THREE, env) {
   const CRIMSON_TINT = new THREE.Color(0x9e1b2c);
   const ACE_FLIGHT_HP = 1.6, ACE_FLIGHT_TURN = 1.25, ACE_DECOY_CD = 8, ACE_DECOY_N = 2, ACE_FLIGHT_BONUS = 2500;
   let aceFlightDone = false;
-  Object.assign(C, { phase: 0, ace: null, aceDowns: 0 });
+  Object.assign(C, { phase: 0, ace: null, aceDowns: 0, mode: 'MISSION', furballKills: 0 });
+  let furT = 0;
   function makeAce(e) {
     e.ace = true; e.label = ACE.label; e.type = ACE.type;
     e.hp = e.hpMax = ACE.hp; e.wingL = e.wingR = ACE.wing; e.flaresLeft = ACE.flares;
@@ -672,6 +677,29 @@ export function createCombat(THREE, env) {
     let n = 0;
     for (const e of enemies) if (e.alive && !e.bomber && !e.ace && !e.aceFlight) n++;
     return n;
+  }
+  // FURBALL: keep the pool topped up with recycled slots; no new objects or vectors.
+  function furballTick(dt) {
+    furT -= dt;
+    if (furT > 0) return;
+    furT = FURBALL_TICK;
+    let alive = 0;
+    for (const e of enemies) if (e.alive && !e.bomber && !e.aceFlight) alive++;
+    const target = Math.max(FURBALL_MIN, Math.min(FURBALL_MAX, FURBALL_MIN + (rand() < 0.5 ? 0 : 2)));
+    if (alive >= target) return;
+    for (const e of enemies) {
+      if (e.alive || e.aceFlight || e.bomber) continue;
+      const a = rand() * Math.PI * 2, d = 6000 + rand() * 3000;
+      e.pos.set(S.position.x + Math.cos(a) * d, 1400 + rand() * 1200, S.position.z + Math.sin(a) * d);
+      e.alt = e.pos.y;
+      e.fwd.copy(_fur.copy(S.position).sub(e.pos).setY(0).normalize());
+      e.hp = e.hpMax = 100; e.alive = true; e.wreck = null; e.aceFlight = false;
+      clearAce(e);
+      e.speed = e.cruise; e.vel.copy(e.fwd).multiplyScalar(e.speed); e.prev.copy(e.pos);
+      resetAI(e); e.tac = e.mode = 'ENGAGE'; e.mslCD = 0; e.bLock = 0; orient(e);
+      writeFleet();
+      return;
+    }
   }
   function spawnAceFlight() {
     if (aceFlightDone) return false;
@@ -1253,6 +1281,12 @@ export function createCombat(THREE, env) {
     }
     if (env.onTele) env.onTele(e.aceFlight || e.ace ? 'ACE_KILL' : 'KILL', e.pos);
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
+    if (C.mode === 'FURBALL') {
+      C.furballKills++;
+      if (C.furballKills % FURBALL_ACE_EVERY === 0 && !enemies.some(x => x.aceFlight && x.alive)) {
+        aceFlightDone = false; spawnAceFlight();
+      }
+    }
     if (e.aceFlight) {
       C.score += ACE_FLIGHT_BONUS;
       pushEvent('DESTROYED', 'ACE DOWN // ' + e.label, 2500, '#ffd45a');
@@ -1942,8 +1976,8 @@ export function createCombat(THREE, env) {
   /* ======================================================= missile flight */
   // WARDEN flight: G toggles formation / engage. Friendly shots never touch the
   // hostile director budget, and wingman kills award no player score.
-  function setWingOrder() {
-    C.wingOrder = C.wingOrder === 'ENGAGE' ? 'FORM' : 'ENGAGE';
+  function setWingOrder(order) {
+    C.wingOrder = order || (C.wingOrder === 'ENGAGE' ? 'FORM' : 'ENGAGE');
     C.wingOrderT = performance.now();
     if (env.onWing) env.onWing(C.wingOrder === 'ENGAGE' ? 'Engaging at will, Lead.' : 'Reforming echelon, Lead.', 'WARDEN');
     return C.wingOrder;
@@ -3485,7 +3519,8 @@ export function createCombat(THREE, env) {
     chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [],
-      gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0 });
+      gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0, furballKills: 0 });
+    furT = 0;
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
     for (const m of missiles) if (!m.enemy || m.target?.isPlayer) { m.active = false; m.mesh.visible = false; }
@@ -3571,7 +3606,7 @@ export function createCombat(THREE, env) {
     cloudClear = Math.max(0, cloudClear - dt);
 
     if (ready) {
-      if (!aceFlightDone && C.phase !== 3 && waveAlive() <= WAVE_SIZE * 0.5) spawnAceFlight();
+      if (C.mode !== 'FURBALL' && !aceFlightDone && C.phase !== 3 && waveAlive() <= WAVE_SIZE * 0.5) spawnAceFlight();
       for (const e of enemies) {
         if (e.alive) { if (e.crippled) updateCrippled(e, dt); else updateEnemy(e, dt, playerActive); }
         else if (e.wreck) updateWreck(e, dt);
@@ -3580,15 +3615,18 @@ export function createCombat(THREE, env) {
       updateDebris(dt);
       updateBombers(dt);
       // Next phase once the air wave is gone -- PHASE 2 also needs the task force sunk.
-      if (!enemies.some(e => e.alive || e.wreck)) {
-        if (C.phase === 2 && fleetAlive()) {
-          waveTimer = 0;
-          if (playerActive && env.onRadio) env.onRadio('FLEET_REMAIN');
-        } else {
-          waveTimer += dt;
-          if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
-        }
-      } else waveTimer = 0;
+      if (C.mode !== 'FURBALL') {
+        if (!enemies.some(e => e.alive || e.wreck)) {
+          if (C.phase === 2 && fleetAlive()) {
+            waveTimer = 0;
+            if (playerActive && env.onRadio) env.onRadio('FLEET_REMAIN');
+          } else {
+            waveTimer += dt;
+            if (waveTimer > 4) { waveTimer = 0; spawnWave(); }
+          }
+        } else waveTimer = 0;
+      }
+      if (C.mode === 'FURBALL') furballTick(dt);
       writeFleet();
       updateFleet(dt);
       updateDefences(dt);
@@ -3607,7 +3645,7 @@ export function createCombat(THREE, env) {
       const c = JAM_C[i];
       if (Math.hypot(S.position.x - c.x, S.position.z - c.z) < JAM_R) { inSector = true; break; }
     }
-    C.jamming = strikeAlive() && inSector && S.radalt > JAM_ALT ? Math.min(1, (S.radalt - JAM_ALT) / 60) : 0;
+    C.jamming = C.mode === 'FURBALL' ? 0 : strikeAlive() && inSector && S.radalt > JAM_ALT ? Math.min(1, (S.radalt - JAM_ALT) / 60) : 0;
     C.sectorLow = !!inSector && S.radalt <= JAM_ALT;
     if (C.sectorLow && !sectorLowPrev && nowMs - sectorLowT > 20000) {
       sectorLowT = nowMs;
@@ -3669,6 +3707,7 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     setSPW,
+    setMode(id) { C.mode = id === 'FURBALL' ? 'FURBALL' : 'MISSION'; C.furballKills = 0; furT = 0; return C.mode; },
     get difficulty() { return C.difficulty; },
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
     repairEngines() { resetEngines(); return C.engState; },
@@ -3777,6 +3816,8 @@ export function createCombat(THREE, env) {
       return { difficulty: C.difficulty,
         carrier: env.getCarrierStats ? env.getCarrierStats() : null,
         tele: env.getTeleStats ? env.getTeleStats() : null,
+        furball: { mode: C.mode, alive: waveAlive() + enemies.filter(e => e.alive && e.aceFlight).length,
+          kills: C.furballKills || 0, nextAce: FURBALL_ACE_EVERY - (C.furballKills || 0) % FURBALL_ACE_EVERY },
         loadout: { spw: C.spw, wpn: C.weapon, qaam: C.qaam, livery: env.getLivery ? env.getLivery() : null },
         strike: { alive: strikeAlive() ? strikeTargets.filter(t => t.alive).length : 0,
           labels: strikeTargets.filter(t => t.alive).map(t => t.label).join(','),

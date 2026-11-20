@@ -3,6 +3,12 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.0.7', title: 'FURBALL INSTANT-ACTION MODE', bullets: [
+    'Switch to FURBALL in the briefing for an airborne 6,000 ft hot start above the cloud sea — no runway, no mission phases.',
+    'Bandits recycle endlessly from the existing pool, with a CRIMSON ace pair arriving every five kills.',
+    'Press TAB twice (or use the pause menu) to end the sortie and open the debrief.',
+    'FURBALL debriefs rank on kills per minute and show kill rate and ace pairs downed.'
+  ] },
   { version: 'v1.0.6', title: 'TACTICAL TRACE DEBRIEF & COMPOSITE RANK', bullets: [
     'Every sortie records a fixed-size flight trace and combat events, then replays them as an animated tactical map in the debrief.',
     'Kill, ace, strike, carrier-trap and near-miss icons pop along the trace with island, bridge and canyon landmarks underneath.',
