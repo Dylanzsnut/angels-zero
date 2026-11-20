@@ -441,26 +441,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s57a';
-import { createBlastFX } from './src/blastfx.js?v=s57a';
-import { createHUD } from './src/hud.js?v=s57a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s57a';
-import { createCombat } from './src/combat.js?v=s57a';
-import { createEjection } from './src/eject.js?v=s57a';
-import { createAudio } from './src/audio.js?v=s57a';
-import { createRadio } from './src/radio.js?v=s57a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s57a';
-import { createLivery } from './src/livery.js?v=s57a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s57a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s57a';
-import { createCanopyFX } from './src/canopy.js?v=s57a';
-import { createNVG } from './src/nvg.js?v=s57a';
-import { createWorld, WORLD } from './src/world.js?v=s57a';
-import { createSurfaces } from './src/surfaces.js?v=s57a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s57a';
-import { createFreeLook } from './src/freelook.js?v=s57a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s57a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s57a';
+import { createVFX } from './src/vfx.js?v=s58a';
+import { createBlastFX } from './src/blastfx.js?v=s58a';
+import { createHUD } from './src/hud.js?v=s58a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s58a';
+import { createCombat } from './src/combat.js?v=s58a';
+import { createEjection } from './src/eject.js?v=s58a';
+import { createAudio } from './src/audio.js?v=s58a';
+import { createRadio } from './src/radio.js?v=s58a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s58a';
+import { createLivery } from './src/livery.js?v=s58a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s58a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s58a';
+import { createCanopyFX } from './src/canopy.js?v=s58a';
+import { createNVG } from './src/nvg.js?v=s58a';
+import { createWorld, WORLD } from './src/world.js?v=s58a';
+import { createSurfaces } from './src/surfaces.js?v=s58a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s58a';
+import { createFreeLook } from './src/freelook.js?v=s58a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s58a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s58a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -831,6 +831,11 @@ if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mo
 const camVelocity = new THREE.Vector3();
 let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
 const D2R = Math.PI / 180;
+// Allied carrier arrest / catapult constants (world-relative to CVN-ALLY).
+const TRAP_X = 14, TRAP_DY = 3.5, TRAP_KT = 175, TRAP_PITCH = -6 * D2R, ARREST_T = 1.6;
+const carrier = { phase: null, t: 0, v0: 0, wire: 0, cool: 0, pitDone: false };
+const _lp = new THREE.Vector3(), _qInv = new THREE.Quaternion(), _cq = new THREE.Quaternion();
+const _carrierPos = new THREE.Vector3(), _carrierVel = new THREE.Vector3();
 const flyShake = { t: 0.35, k: 0 };                   // preallocated near-miss rattle state
 let wakeRoll = 0, wakeT = 0;                          // wake bump into the roll command
 let prevMach = 0, machArmed = true, machShake = null;
@@ -876,6 +881,13 @@ function resetAircraft() {
   if (DEBUG && Q.has('thr')) state.throttle = THREE.MathUtils.clamp(Number(Q.get('thr')), 0, 1);   // ?thr=0..1 throttle
   applyPose();
   if (DEBUG && Q.has('at')) {                           // test hook: ?at=x,y,z,hdg or a named spot
+    if (Q.get('at') === 'carrier' && combat.ally) {
+      const a = combat.ally;
+      state.position.copy(a.pos).addScaledVector(a.fwd, -1200); state.position.y = a.deckY + 120;
+      state.quaternion.copy(a.g.quaternion);
+      state.velocity.set(0, 0, -state.speed).applyQuaternion(state.quaternion);
+      state.gearDown = true; state.gear = 1;
+    } else {
     const spots = {
       airbase: [RWY_X(), 140, 4300, 0], canyon: [world.canyonX(-5300), 120, -5300, 0],
       bridgeA: [-4350, 32, -3880, 92], bridgeB: [2650, 32, -3990, 70],
@@ -889,6 +901,7 @@ function resetAircraft() {
     state.position.set(v[0], v[1], v[2]);
     state.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(AX_Y, -THREE.MathUtils.degToRad(v[3] || 0)));
     state.velocity.set(0, 0, -state.speed).applyQuaternion(state.quaternion);
+    }
   }
   combatSys.resetPlayer();
   roll.left = 0;
@@ -1418,6 +1431,78 @@ function shaped(v, dz = 0.03) {
 //    hysteresis (< 160 kt in, > 180 kt and AoA < 16 deg out) that eases the
 //    nose onto the velocity vector -- no snaps, no wing-rock impulses.
 // ---------------------------------------------------------------------------
+function updateCarrierOp(dt) {
+  const ally = combat.ally;
+  if (!ally) { carrier.phase = null; return; }
+  const sstep = THREE.MathUtils.smoothstep;
+  combat.carrierPhase = carrier.phase;
+  const qc = ally.g.quaternion, fwd = ally.fwd;
+  carrier.t += dt;
+  const place = (height) => {
+    _carrierPos.copy(_lp).applyQuaternion(qc).add(ally.pos);
+    state.position.copy(_carrierPos);
+    state.position.y = height !== undefined ? height : ally.deckY + GEAR_H;
+    state.velocity.copy(ally.vel);
+    state.quaternion.slerp(qc, 1 - Math.exp(-dt * 4));
+  };
+  if (carrier.phase === 'ARREST') {
+    const vRel = carrier.v0 * (1 - sstep(carrier.t, 0, ARREST_T));
+    _lp.z -= vRel * dt;
+    _lp.x *= Math.exp(-dt * 3);
+    place();
+    _carrierVel.copy(fwd).multiplyScalar(vRel).add(ally.vel);
+    state.velocity.copy(_carrierVel);
+    state.onGround = true;
+    state.throttle += (0.2 - state.throttle) * Math.min(1, dt * 4);
+    state.afterburner = 0;
+    if (Math.floor(carrier.t / 0.35) !== Math.floor((carrier.t - dt) / 0.35)) blastShake = Math.max(blastShake, 0.18);
+    if (carrier.t >= ARREST_T) { carrier.phase = 'DECK'; carrier.t = 0; }
+  } else if (carrier.phase === 'DECK') {
+    if (!carrier.pitDone) {
+      combatSys.pitStop();
+      combat.health = 100;
+      if (combat.chaff !== undefined) combat.chaff = combat.chaffMax;
+      if (combat.engSide) combatSys.repairEngines();
+      combatSys.say('WARDEN-2: "Good trap, Lead! Deck crew is turning your bird."', 3, '#00ff66');
+      if (onWing) onWing('Good trap, Lead! Deck crew is turning your bird.', 'WARDEN-2');
+      carrier.pitDone = true;
+    }
+    const targetZ = -ally.len / 2 + 45;
+    _lp.x += (8 - _lp.x) * Math.min(1, dt * 3);
+    _lp.z += (targetZ - _lp.z) * Math.min(1, dt * 2);
+    place(); state.onGround = true; state.throttle = 0.2; state.afterburner = 0;
+    if (carrier.t >= 3) { carrier.phase = 'CAT'; carrier.t = 0; }
+  } else if (carrier.phase === 'CAT') {
+    if (keys.w) state.throttle = Math.min(1, state.throttle + dt * 0.5);
+    if (keys.s) state.throttle = Math.max(0.15, state.throttle - dt * 0.5);
+    place(); state.onGround = true; state.afterburner = 0;
+    if (state.throttle >= 0.95) {
+      carrier.phase = 'LAUNCH'; carrier.t = 0;
+      onSfx('catapult'); blastShake = Math.max(blastShake, 0.5);
+      for (let i = 0; i < 26; i++) {
+        const localZ = -60 - i * 2.2, side = i % 2 ? 8 : -8;
+        _lp.set(side, ally.deckY + 1.2, localZ).applyQuaternion(qc).add(ally.pos);
+        combatSys.emitSmoke({ x: _lp.x, y: _lp.y, z: _lp.z, vx: (Math.random() - 0.5) * 3,
+          vy: 4 + Math.random() * 5, vz: (Math.random() - 0.5) * 3,
+          life: 1.6 + Math.random() * 0.8, s0: 3, s1: 18, r: 0.92, g: 0.92, b: 0.92, a: 0.6, drag: 1.2 });
+      }
+    }
+  } else if (carrier.phase === 'LAUNCH') {
+    const v = 85.0 * sstep(carrier.t, 0, 1.4);
+    _lp.z -= v * dt;
+    place();
+    _carrierVel.copy(fwd).multiplyScalar(v).add(ally.vel);
+    state.velocity.copy(_carrierVel);
+    if (Math.floor(carrier.t / 0.35) !== Math.floor((carrier.t - dt) / 0.35)) blastShake = Math.max(blastShake, 0.25);
+    if (carrier.t >= 1.4) {
+      state.velocity.copy(fwd).multiplyScalar(85).add(ally.vel);
+      state.onGround = false;
+      state.pitch = 3 * D2R;
+      carrier.phase = null; carrier.cool = 1.0; carrier.t = 0; combat.carrierPhase = null;
+    }
+  }
+}
+
 function updatePhysics(dt) {
   const clamp = THREE.MathUtils.clamp, sstep = THREE.MathUtils.smoothstep;
   const q = state.quaternion;
@@ -1427,6 +1512,32 @@ function updatePhysics(dt) {
     state.gear = clamp(state.gear + Math.sign(tgt - state.gear) * dt / GEAR_TRAVEL, 0, 1);
     if (g0 !== state.gear && (state.gear === 0 || state.gear === 1)) audio.gearLock(state.gear === 1);
   }
+  // --- allied carrier trap detection (before any ground / flight integration)
+  if (combat.ally) {
+    const ally = combat.ally;
+    carrier.cool = Math.max(0, carrier.cool - dt);
+    if (!carrier.phase && carrier.cool <= 0 && flightMode === 'FLY') {
+      _qInv.copy(ally.g.quaternion).invert();
+      _lp.copy(state.position).sub(ally.pos).applyQuaternion(_qInv);
+      const half = ally.len / 2;
+      const inZone = _lp.z >= half - 105 && _lp.z <= half - 60;
+      const rel = _carrierVel.copy(state.velocity).sub(ally.vel).applyQuaternion(_qInv);
+      const vAlong = -rel.z;
+      if (inZone && Math.abs(_lp.x) < TRAP_X && Math.abs(state.position.y - ally.deckY) < TRAP_DY &&
+          state.velocity.length() * 1.94384 < TRAP_KT && state.pitch > TRAP_PITCH && state.gear >= 1) {
+        const wireZ = half - 64, wireZ2 = half - 78, wireZ3 = half - 92;
+        let wire = 1, best = Math.abs(_lp.z - wireZ);
+        if (Math.abs(_lp.z - wireZ2) < best) { wire = 2; best = Math.abs(_lp.z - wireZ2); }
+        if (Math.abs(_lp.z - wireZ3) < best) { wire = 3; }
+        carrier.phase = 'ARREST'; carrier.t = 0; carrier.v0 = Math.max(10, vAlong); carrier.wire = wire;
+        carrier.pitDone = false;
+        combat.trapT = performance.now(); combat.trapWire = wire;
+        blastShake = Math.max(blastShake, 0.45);
+        onSfx('trap');
+      }
+    }
+  }
+  if (carrier.phase) { updateCarrierOp(dt); return; }
   if (state.onGround) { updateGround(dt); return; }
   _fwd.set(0, 0, -1).applyQuaternion(q); _up.set(0, 1, 0).applyQuaternion(q); _right.set(1, 0, 0).applyQuaternion(q);
   const bank = Math.atan2(_right.y, _up.y);
@@ -2105,6 +2216,8 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'flameout') audio.flameout();
   else if (type === 'caution') audio.masterCaution();
   else if (type === 'aceWarn') audio.aceWarning();
+  else if (type === 'trap') audio.cableScreech();
+  else if (type === 'catapult') audio.catapult();
   else if (type === 'style') audio.styleChime(scale);
   else if (type === 'whoosh') audio.missileWhoosh();
   else if (type === 'steam') audio.steamHiss();
@@ -2138,7 +2251,8 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx, onFlyby, onWing,
-  getWingmen: () => wingmen });
+  getWingmen: () => wingmen, addBox: world.addBox,
+  getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }) });
 const missiles = combatSys.missiles;
 radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
@@ -2503,11 +2617,31 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     const logAt = (Q.get('logat') || '').split(',').filter(Boolean).map(Number);
     const mslAt = Q.has('mslat') ? Number(Q.get('mslat')) : -1, rollAt = Q.has('rollat') ? Number(Q.get('rollat')) : -1;
     const aceWingAt = Q.has('acewingat') ? Number(Q.get('acewingat')) : -1;
+    const trapAt = Q.has('trapat') ? Number(Q.get('trapat')) : -1, catAt = Q.has('catat') ? Number(Q.get('catat')) : -1;
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
       const t0 = i * h, t1 = t0 + h;
       if (mslAt >= t0 && mslAt < t1) { console.log('[ANGELS_ZERO] fire @', t1.toFixed(2), combat.lockState, combat.lockProgress.toFixed(2)); combatSys.fireMissile(); }
       if (rollAt >= t0 && rollAt < t1) startRoll(1);
       if (aceWingAt >= t0 && aceWingAt < t1) { console.log('[ANGELS_ZERO] ace flight @', t1.toFixed(2), combatSys.spawnAceFlight()); }
+      if (trapAt >= t0 && trapAt < t1 && combat.ally) {
+        const a = combat.ally, half = a.len / 2;
+        _lp.set(0, a.deckY + 2, half - 78);
+        state.position.copy(_lp).applyQuaternion(a.g.quaternion).add(a.pos);
+        state.velocity.set(0, 0, -77).applyQuaternion(a.g.quaternion);
+        state.quaternion.copy(a.g.quaternion);
+        state.gearDown = true; state.gear = 1; state.onGround = false;
+        console.log('[ANGELS_ZERO] trap wire @', t1.toFixed(2), state.position.toArray());
+      }
+      if (catAt >= t0 && catAt < t1 && combat.ally) {
+        const a = combat.ally;
+        _lp.set(8, a.deckY + GEAR_H, -a.len / 2 + 45);
+        state.position.copy(_lp).applyQuaternion(a.g.quaternion).add(a.pos);
+        state.quaternion.copy(a.g.quaternion); state.velocity.copy(a.vel);
+        state.gearDown = true; state.gear = 1; state.onGround = true; state.throttle = 1;
+        carrier.phase = 'CAT'; carrier.t = 0; carrier.pitDone = true;
+        combat.carrierPhase = 'CAT';
+        console.log('[ANGELS_ZERO] catapult @', t1.toFixed(2));
+      }
       if (Q.has('cloudon')) {                         // ?cloudon=t:i -> drop a debug cumulus onto bandit i's path at warp time t
         const [ct, ci] = Q.get('cloudon').split(':').map(Number), e = combatSys.enemies[ci];
         if (e && ct >= t0 && ct < t1) { vfx.placeDebugCloud(e.pos.clone().addScaledVector(e.vel, 1.5)); console.log('[ANGELS_ZERO] cloud on', e.label, '@', t1.toFixed(2)); }

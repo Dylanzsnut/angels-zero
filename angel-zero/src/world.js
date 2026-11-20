@@ -1096,7 +1096,7 @@ export function createWorld(THREE, env) {
   }
 
   return {
-    terrain, props, heightAt, analyticHeight, collide, update,
+    terrain, props, heightAt, analyticHeight, collide, addBox, update,
     forest: trees.mesh, farmEdge: FARM.edge,
     get treeStats() { const { mesh, ...s } = trees; return s; },
     runway: RWY, bridges: bridgeInfo, obstacleCount: () => boxes.length + cyls.length,

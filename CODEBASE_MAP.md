@@ -8,7 +8,7 @@ angel-zero/src/nvg.js:30 -> UnrealBloomPass(size, 0.48, 0.32, 0.92)
 angel-zero/src/nvg.js:134 -> render(scene, camera, t, cockpit)
 
 angel-zero/index.html:792 -> state (global: position, velocity, quaternion, speed, mach, throttle, afterburner)
-angel-zero/index.html:1379 -> updatePhysics(dt)
+angel-zero/index.html:1506 -> updatePhysics(dt); :1434 -> updateCarrierOp(dt)
 angel-zero/index.html:1400 -> state.mach = speed / sos
 angel-zero/index.html:1469 -> state.pitchRate += qDot * dt
 angel-zero/index.html:1527 -> state.rollRate += (pCmd - state.rollRate) * dt; :1528 -> wakeRoll bump
@@ -23,7 +23,7 @@ angel-zero/src/combat.js:815 -> updateEnemy(e, dt, playerActive)
 angel-zero/src/combat.js:287 -> missiles (global pool)
 angel-zero/src/combat.js:304 -> director (global)
 angel-zero/src/combat.js:329 -> launch(fromPos, fromQuat, fromVel, target, enemy, quality, visual, guidance)
-angel-zero/src/combat.js:671 -> spawnAceFlight(); :666 -> waveAlive(); :1826 -> updateWingmen(dt); :1820 -> setWingOrder(); :1811 -> updateMissiles(dt, playerActive)
+angel-zero/src/combat.js:2774 -> buildAlliedCarrier(); :2793 -> updateAlly(dt); :671 -> spawnAceFlight(); :666 -> waveAlive(); :1826 -> updateWingmen(dt); :1820 -> setWingOrder(); :1811 -> updateMissiles(dt, playerActive)
 angel-zero/src/combat.js:1884 -> fuse = m.enemy ? 22 : 18; :1899 -> flyby trigger (dist, k, side)
 angel-zero/src/combat.js:2250 -> dispenseChaff(); :2268 -> updateChaff(dt)
 angel-zero/src/combat.js:2743 -> surfaceSAM(from, label)
@@ -40,7 +40,7 @@ angel-zero/src/audio.js:12 -> createAudio()
 angel-zero/src/audio.js:13 -> ctx / master / cockpitLP / N (globals)
 angel-zero/src/audio.js:266 -> explosion(intensity, delay)
 angel-zero/src/audio.js:309 -> flybyWhoosh(k, cockpit)
-angel-zero/src/audio.js:586 -> masterCaution(); :643 -> aceWarning()
+angel-zero/src/audio.js:586 -> masterCaution(); :643 -> cableScreech(); :660 -> catapult(); :673 -> aceWarning()
 angel-zero/index.html:477 -> PERF_DEBUG / renderer.info.autoReset (globals); :826 -> onFlyby({ dist, k, side }); :1324 -> Z chaff / J ECM / L gear / G orders; :2002 -> onWing(text, caption, tint); :2080 -> onSfx(type, pos, scale); :2503 -> acewingat hook
 angel-zero/src/hud.js:102 -> alertState / alertOverride (globals)
 angel-zero/src/hud.js:1218 -> drawBanner(ctx, cx, y, text, col, w, alpha)

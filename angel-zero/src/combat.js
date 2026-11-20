@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s57a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s58a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -2770,6 +2770,36 @@ export function createCombat(THREE, env) {
     return Object.assign(t, { type: 'DDG', hp: 170, fleet: true, len: 142, beam: 16, aimH: 6, sinkMax: 14,
       ciws: [new THREE.Vector3(0, 14, 30)], sams: [new THREE.Vector3(0, 7, -30)], smokeAt: new THREE.Vector3(0, 16, 6) });
   }
+  // Friendly CVN: same carrier geometry, but never a surface target / emitter.
+  function buildAlliedCarrier() {
+    const t = buildCarrier();
+    mergeStatic(t.g, [t.spin]);
+    t.g.name = 'CVN-ALLY';
+    const R = env.runway || { x: 900, z1: 1600 };
+    const startZ = R.z1 + 3000;
+    t.g.position.set(R.x, 0, startZ);
+    t.g.rotation.y = 0;                                   // bow / forward = local -Z = north
+    scene.add(t.g);
+    const pos = t.g.position, fwd = new THREE.Vector3(0, 0, -1), vel = new THREE.Vector3(0, 0, -4.1);
+    if (env.addBox) {
+      env.addBox(pos.x, 0, pos.z, t.beam / 2, 12, t.len / 2, 0);              // hull
+      env.addBox(pos.x + 27, t.aimH + 10, pos.z + 40, 6, 12, 20, 0);         // island stays solid
+    }
+    C.ally = { g: t.g, fwd, pos, vel, deckY: t.aimH, len: t.len, beam: t.beam,
+      spin: t.spin, startZ, ciws: t.ciws, sams: t.sams };
+    return C.ally;
+  }
+  const _allyScratch = new THREE.Vector3();
+  function updateAlly(dt) {
+    const a = C.ally;
+    if (!a) return;
+    const step = 4.1 * dt;
+    a.pos.addScaledVector(a.fwd, step);
+    if (a.fwd.z < 0 && a.pos.z < a.startZ - 3000) { a.fwd.set(0, 0, 1); a.g.rotation.y = Math.PI; }
+    else if (a.fwd.z > 0 && a.pos.z > a.startZ) { a.fwd.set(0, 0, -1); a.g.rotation.y = 0; }
+    a.vel.copy(a.fwd).multiplyScalar(4.1);
+    a.spin.rotation.z += dt * 0.6;
+  }
 
   // Wake: Kelvin arms (19.5 deg), bow crest, hull-side foam and a widening turbulent
   // stern wake whose foam texture is fixed to the water (scrolls with ship speed).
@@ -3294,6 +3324,7 @@ export function createCombat(THREE, env) {
     collectStores(model);
     buildFleet(model, nozzleLocal);
     buildBaseDefences();
+    buildAlliedCarrier();
     spawnFleet();
     spawnWave();
     spawnSurface();
@@ -3383,6 +3414,7 @@ export function createCombat(THREE, env) {
 
   function update(dt, now, opts) {
     const playerActive = opts.playerActive;
+    updateAlly(dt);
     updateSafe(playerActive);
     C.hitFlash = Math.max(0, C.hitFlash - dt);
     C.missileWarning = Math.max(0, C.missileWarning - dt);
@@ -3489,6 +3521,7 @@ export function createCombat(THREE, env) {
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     get difficulty() { return C.difficulty; },
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
+    repairEngines() { resetEngines(); return C.engState; },
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
     // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
@@ -3589,6 +3622,7 @@ export function createCombat(THREE, env) {
     },
     stats() {
       return { difficulty: C.difficulty,
+        carrier: env.getCarrierStats ? env.getCarrierStats() : null,
         aceFlight: { done: aceFlightDone, alive: enemies.filter(e => e.aceFlight && e.alive).length,
           labels: enemies.filter(e => e.aceFlight && e.alive).map(e => e.label).join(',') },
         director: { max: director.max, stagger: director.stagger, inFlight: director.inFlight, peak: director.peak,

@@ -1296,6 +1296,10 @@ export function createHUD(THREE, A) {
       const age = now - C.aceFlightT;
       drawBanner(ctx, cx, upperY + 36, '[ WARNING // ACE SQUADRON INBOUND ]', WARN, 380, pulseAlpha(200) * (1 - age / 3000));
     }
+    if (C.trapT && now - C.trapT < 2600)
+      drawBanner(ctx, cx, upperY, '[ WIRE #' + C.trapWire + ' // CARRIER TRAP ]', G, 340, 1);
+    if (C.carrierPhase === 'CAT')
+      drawBanner(ctx, cx, lowerY, '[ CATAPULT ARMED // FULL THROTTLE TO LAUNCH ]', AMBER, 420, pulseAlpha(400));
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));

@@ -639,6 +639,36 @@ export function createAudio() {
     }
   }
 
+  // Arrestor cable: band-passed tearing noise + falling square whine + hull thump.
+  function cableScreech() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const bp = filt('bandpass', 1800, 4); bp.frequency.setValueAtTime(1800, t); bp.frequency.exponentialRampToValueAtTime(900, t + 1.6);
+    const ng = gain(0); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(0.35, t + 0.01); ng.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+    n.connect(bp).connect(ng).connect(N.body); n.start(t, Math.random()); n.stop(t + 1.65);
+    const o = ctx.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(140, t + 1.6);
+    const lp = filt('lowpass', 1200, 0.7), og = gain(0);
+    og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.35, t + 0.01); og.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+    o.connect(lp).connect(og).connect(N.body); o.start(t); o.stop(t + 1.65);
+    const th = ctx.createOscillator(); th.type = 'sine'; th.frequency.value = 70;
+    const tg = gain(0); tg.gain.setValueAtTime(0.35, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    th.connect(tg).connect(N.body); th.start(t); th.stop(t + 0.34);
+  }
+  // Steam catapult: low-pass noise sweep + 55 Hz bed.
+  function catapult() {
+    if (!ready) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const lp = filt('lowpass', 900, 0.8); lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(300, t + 1.4);
+    const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    n.connect(lp).connect(g).connect(N.body); n.start(t, Math.random()); n.stop(t + 1.45);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 55;
+    const og = gain(0); og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.22, t + 0.1); og.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    o.connect(og).connect(N.body); o.start(t); o.stop(t + 1.45);
+  }
+
   // Priority ACE inbound: square 1320 -> 990 -> 1320 Hz, 120 ms each, 40 ms gaps.
   function aceWarning() {
     if (!ready) return;
@@ -1193,7 +1223,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, aceWarning, cableScreech, catapult, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.

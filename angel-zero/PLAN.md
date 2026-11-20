@@ -1236,6 +1236,28 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     `aceFlight.alive = 2`, labels `CRIMSON-1,CRIMSON-2`, 0 JS/WebGL errors,
     `__perfDebug.frameMs` 4.9 ms, no shader-count increase from the tint.
     All 21 `?v=` tags bumped to s57a.
+- [x] **Allied CVN + arrest / catapult** *(build `s58a`, `src/world.js`,
+  `src/combat.js`, `src/audio.js`, `src/hud.js`, `index.html`)*
+  - `CVN-ALLY "OVERLORD"` reuses `buildCarrier()` / `mergeStatic()`, is friendly,
+    never a target or emitter, steams 8 kt on a 6 km north-south racetrack south
+    of AFB, exposes `C.ally = {g, fwd, pos, vel, deckY, len}` and adds hull +
+    island AABB collision via `env.addBox` (exported from `world.js`).
+  - Trap zone behind the stern (wires #1-3 at len/2-64/-78/-92): gear down,
+    <175 kt, >-6 deg pitch, within 14 m / 3.5 m of the deck → `ARREST` early
+    return in `updatePhysics` with a 1.6 s exponential cable deceleration and
+    `#wire` banner / `audio.cableScreech()` / blast impulse.
+  - 3 s `DECK` turnaround calls `combatSys.pitStop()` once, restores
+    health/flares/chaff/engines, WARDEN callout + CRT, slides to the bow
+    shuttle. `CAT` holds until throttle >= 0.95, then `LAUNCH` strokes to 85 m/s
+    relative over 1.4 s with 26 pooled steam puffs, `audio.catapult()` and a
+    1 s re-trap cooldown.
+  - Debug: `?at=carrier`, `?trapat=s`, `?catat=s`; `stats().carrier` reports
+    `{phase, wire, t, localZ}`.
+  - Verified headless: `?nointro&debug&trapat=1&warp=8&logat=1.2,2.8,6,8`
+    shows ARREST -> DECK -> CAT, wire 2, `dmg.pct=0`, flares full, zero
+    JS/WebGL errors (in-app + Edge); `&catat=1&thr=1` launches airborne with
+    phase cleared; 120-frame sample max 13.6 ms / 0 frames over 16.6 ms.
+    All 21 `?v=` tags bumped to s58a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
