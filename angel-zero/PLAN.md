@@ -1157,6 +1157,26 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     232 calls / 1,034,131 triangles, 6 bandits and 27 enemy tracers live.
     Headless Edge log: 0 JS/WebGL errors. Passes 1–5, `gpuWarm` and blast
     shake maths untouched; all `?v=` tags bumped to s53a.
+- [x] **Missile near-miss / flyby feedback** *(build `s54a`, `src/combat.js`,
+  `src/audio.js`, `src/hud.js`, `index.html`)*
+  - Missile pool objects carry `flybyTriggered:false`, `flyMinD:Infinity`,
+    reset in `launch()`. In `updateMissiles`, after the fuse check (so hits
+    never count), a hostile missile tracking the player records its closest
+    approach; once it recedes past `minD + 2` with `minD < 140`, it fires
+    `env.onFlyby({ dist, k, side })` once. `side` uses preallocated scratch
+    vectors; no per-frame `new THREE.*`.
+  - `onFlyby` drives a preallocated `flyShake` (rotation-only camera rattle),
+    a 0.25 s wake roll bump into `state.rollRate`, a CSS inset `#flybyPulse`
+    (220 ms opacity animation), `combat.nearMissT` for `dist < 75`, and
+    `onSfx('flyby')`.
+  - `audio.flybyWhoosh(k, cockpit)`: white-noise band-pass sweep 2,600→340 Hz
+    (Q 2.4), sawtooth 240→68 Hz, cockpit low-pass 2,200 Hz / chase 9,000 Hz,
+    to `N.body`; `audio.flyby = { k, count }`.
+  - HUD banner `[ NEAR MISS // EVADED ]` for 1400 ms after `combat.nearMissT`.
+  - Verified headless: `onFlyby({dist:60,k:0.8,side:1})` sets `flyShake.k=0.8`,
+    `nearMissT`, pulse inset shadow `rgba(255,220,170,0.176)`, audio counter 1,
+    `__perfDebug.frameMs` 3 ms, zero JS/WebGL errors (in-app browser and Edge).
+    All 21 `?v=` tags bumped to s54a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

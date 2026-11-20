@@ -305,6 +305,27 @@ export function createAudio() {
     N.boomCount = (N.boomCount || 0) + 1;
     N.lastBoom = { t: +t.toFixed(3), count: N.boomCount };
   }
+  // Missile near-miss: band-passed whoosh + falling saw sub, low-passed for cockpit.
+  function flybyWhoosh(k, cockpit) {
+    if (!ready) return;
+    const t = ctx.currentTime, kk = Math.min(1, Math.max(0.1, k));
+    const lp = filt('lowpass', cockpit ? 2200 : 9000, 0.7); lp.connect(N.body);
+    const n = ctx.createBufferSource(); n.buffer = N.white;
+    const bp = filt('bandpass', 2600, 2.4);
+    bp.frequency.setValueAtTime(2600, t); bp.frequency.exponentialRampToValueAtTime(340, t + 0.38);
+    const ng = gain(0); ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.9 * kk, t + 0.09);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+    n.connect(bp).connect(ng).connect(lp); n.start(t, Math.random()); n.stop(t + 0.4);
+    const sub = ctx.createOscillator(); sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(240, t); sub.frequency.exponentialRampToValueAtTime(68, t + 0.38);
+    const sg = gain(0); sg.gain.setValueAtTime(0, t);
+    sg.gain.linearRampToValueAtTime(0.2 * kk, t + 0.09);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+    sub.connect(sg).connect(lp); sub.start(t); sub.stop(t + 0.4);
+    N.flybyCount = (N.flybyCount || 0) + 1;
+    N.lastFlyby = { k: +kk.toFixed(2), count: N.flybyCount };
+  }
   function missileLaunch() {
     if (!ready) return;
     const t = ctx.currentTime;
@@ -1158,7 +1179,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.
@@ -1184,6 +1205,7 @@ export function createAudio() {
     // Last two-stage detonation (crack band, sub sweep, crack / boom times, travel delay).
     get blast() { return N.lastBlast || null; },
     get boom() { return N.lastBoom || null; },
+    get flyby() { return N.lastFlyby || null; },
     // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
     get canopyRain() {
       if (!N.canopyBus) return null;

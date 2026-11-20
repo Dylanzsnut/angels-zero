@@ -8,6 +8,7 @@
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05080c; font-family:'Rajdhani','Share Tech Mono',monospace; }
   #gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
   #hud { position:fixed; inset:0; width:100vw; height:100vh; display:block; pointer-events:none; z-index:10; }
+  #flybyPulse { position:fixed; inset:0; pointer-events:none; z-index:11; opacity:0; }
   /* NVG: dark halo + slight lift keeps green symbology crisp over the green tube image. */
   body.nvg #hud { filter: drop-shadow(0 0 1.2px rgba(0,0,0,.95)) drop-shadow(0 0 2.5px rgba(0,8,3,.85)) brightness(1.12); }
   #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#52ff9c; font-size:13px; font-weight:600; letter-spacing:3px; pointer-events:none; text-shadow:0 0 10px rgba(0,255,110,.55); }
@@ -246,6 +247,7 @@
 <body>
   <canvas id="gl"></canvas>
   <canvas id="hud"></canvas>
+  <div id="flybyPulse"></div>
   <div id="status">LOADING F-15...</div>
   <div id="menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
     <div class="panel">
@@ -433,26 +435,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s53a';
-import { createBlastFX } from './src/blastfx.js?v=s53a';
-import { createHUD } from './src/hud.js?v=s53a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s53a';
-import { createCombat } from './src/combat.js?v=s53a';
-import { createEjection } from './src/eject.js?v=s53a';
-import { createAudio } from './src/audio.js?v=s53a';
-import { createRadio } from './src/radio.js?v=s53a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s53a';
-import { createLivery } from './src/livery.js?v=s53a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s53a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s53a';
-import { createCanopyFX } from './src/canopy.js?v=s53a';
-import { createNVG } from './src/nvg.js?v=s53a';
-import { createWorld, WORLD } from './src/world.js?v=s53a';
-import { createSurfaces } from './src/surfaces.js?v=s53a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s53a';
-import { createFreeLook } from './src/freelook.js?v=s53a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s53a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s53a';
+import { createVFX } from './src/vfx.js?v=s54a';
+import { createBlastFX } from './src/blastfx.js?v=s54a';
+import { createHUD } from './src/hud.js?v=s54a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s54a';
+import { createCombat } from './src/combat.js?v=s54a';
+import { createEjection } from './src/eject.js?v=s54a';
+import { createAudio } from './src/audio.js?v=s54a';
+import { createRadio } from './src/radio.js?v=s54a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s54a';
+import { createLivery } from './src/livery.js?v=s54a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s54a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s54a';
+import { createCanopyFX } from './src/canopy.js?v=s54a';
+import { createNVG } from './src/nvg.js?v=s54a';
+import { createWorld, WORLD } from './src/world.js?v=s54a';
+import { createSurfaces } from './src/surfaces.js?v=s54a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s54a';
+import { createFreeLook } from './src/freelook.js?v=s54a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s54a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s54a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -811,11 +813,23 @@ if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mo
 
 const camVelocity = new THREE.Vector3();
 let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
+const D2R = Math.PI / 180;
+const flyShake = { t: 0.35, k: 0 };                   // preallocated near-miss rattle state
+let wakeRoll = 0, wakeT = 0;                          // wake bump into the roll command
 let prevMach = 0, machArmed = true, machShake = null;
 function onMach1() {
   machShake = { t: 0, T: 0.25, k: 1 };
   combat.mach1T = performance.now();
   onSfx('sonicboom');
+}
+const flybyPulse = document.getElementById('flybyPulse');
+function onFlyby({ dist, k, side }) {
+  flyShake.k = k; flyShake.t = 0;                       // rattle starts now
+  wakeRoll = side * (12 + 16 * k) * D2R; wakeT = 0.25; // wake turbulence rolls the jet away
+  flybyPulse.style.boxShadow = `inset 0 0 65px rgba(255,220,170,${0.22 * k})`;
+  flybyPulse.animate([{ opacity: 1 }, { opacity: 0 }], 220);
+  if (dist < 75) combat.nearMissT = performance.now();
+  onSfx('flyby', null, k);
 }
 const camFrame = new THREE.Quaternion(), _camQ = new THREE.Quaternion(), _camAlign = new THREE.Quaternion(), _camNose = new THREE.Vector3();
 const prevPlanePos = new THREE.Vector3();
@@ -1492,6 +1506,7 @@ function updatePhysics(dt) {
   // so the jet stops rotating when the input is released instead of coasting.
   const rollIdle = roll.left <= 0 && Math.abs(rollIn) < 0.04 && rudderIn === 0;
   state.rollRate += (pCmd - state.rollRate) * Math.min(1, (roll.left > 0 ? 12 : 1.5 + 6.5 * auth) * kxx * (rollIdle ? 1.8 : 1) * dt);
+  if (wakeT > 0) { state.rollRate += wakeRoll * (wakeT / 0.25) * dt * 8; wakeT -= dt; }
 
   // Yaw: rudder + weathercock stability (nose into the airflow) + adverse yaw from roll.
   const rCmd = rudderIn * 0.32 * (0.3 + 0.7 * auth) - beta * (0.6 + 2.6 * auth) - 0.06 * state.rollRate
@@ -1860,6 +1875,13 @@ function updateCameraAndVisuals(dt, now) {
     camera.rotateX(Math.sin(tt) * a); camera.rotateY(Math.sin(tt * 1.37 + 1.1) * a * 0.8); camera.rotateZ(Math.sin(tt * 0.83 + 2.3) * a * 0.6);
     blastShake *= Math.exp(-dt * 7);
   } else blastShake = 0;
+  if (flyShake.t < 0.35) {
+    // Missile near-miss: high-frequency airframe rattle, rotation only.
+    flyShake.t = Math.min(0.35, flyShake.t + dt);
+    const a = flyShake.k * Math.exp(-9.5 * flyShake.t);
+    const ang = Math.sin(flyShake.t * 2 * Math.PI * 41) * a * (firstPerson ? 0.9 : 1.6) * D2R;
+    camera.rotateX(ang); camera.rotateZ(ang);
+  }
   if (machShake) {
     // Mach-1 buffet: rotation-only impulse, so the chase spring needs no undo.
     machShake.t += dt;
@@ -2016,6 +2038,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'steam') audio.steamHiss();
   else if (type === 'clack') audio.flareClack();
   else if (type === 'sonicboom') audio.sonicBoom();
+  else if (type === 'flyby') audio.flybyWhoosh(scale, firstPerson);
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR, canyonX: world.canyonX, runway: world.runway,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });
@@ -2042,7 +2065,7 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
-  isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx });
+  isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx, onFlyby });
 const missiles = combatSys.missiles;
 radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
@@ -2561,7 +2584,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, get firstPerson() { return firstPerson; },
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, flyShake, onFlyby, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, get firstPerson() { return firstPerson; },
     get appMode() { return appMode; },
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };

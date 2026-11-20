@@ -1275,6 +1275,10 @@ export function createHUD(THREE, A) {
       const age = now - C.mach1T;
       drawBanner(ctx, cx, upperY, '[ MACH 1.0 // SUPERSONIC ]', '#00ff66', 300, 1 - age / 1400);
     }
+    if (C.nearMissT && now - C.nearMissT < 1400) {
+      const age = now - C.nearMissT;
+      drawBanner(ctx, cx, upperY, '[ NEAR MISS // EVADED ]', '#00ff66', 300, 1 - age / 1400);
+    }
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));

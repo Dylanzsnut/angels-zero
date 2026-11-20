@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s53a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s54a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -285,13 +285,15 @@ export function createCombat(THREE, env) {
   const plumeMat = new THREE.MeshBasicMaterial({ color: 0xffb050, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   const plumeGeo = new THREE.ConeGeometry(0.12, 1.6, 10, 1, true); plumeGeo.rotateX(-Math.PI / 2); plumeGeo.translate(0, 0, 2.25);
   const missiles = [];
+  const _flyRel = new THREE.Vector3(), _flyRight = new THREE.Vector3();   // flyby side test (no per-frame allocation)
   for (let i = 0; i < 16; i++) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(mslBody, mslMat), new THREE.Mesh(mslNose, mslDark), new THREE.Mesh(finGeo, mslDark), new THREE.Mesh(canardGeo, mslDark));
     const parts = g.children.slice();
     const plume = new THREE.Mesh(plumeGeo, plumeMat); g.add(plume);
     g.visible = false; scene.add(g);
-    missiles.push({ mesh: g, parts, visual: null, plume, active: false, enemy: false, target: null, vel: new THREE.Vector3(), age: 0, life: 12, motor: false, losPrev: new THREE.Vector3(), smokeAcc: 0 });
+    missiles.push({ mesh: g, parts, visual: null, plume, active: false, enemy: false, target: null, vel: new THREE.Vector3(), age: 0, life: 12, motor: false, losPrev: new THREE.Vector3(), smokeAcc: 0,
+      flybyTriggered: false, flyMinD: Infinity });
   }
   const MSL_NOSE = new THREE.Vector3(0, 0, -1);
   const RAILS = [new THREE.Vector3(-2.7, -0.95, 0.9), new THREE.Vector3(2.7, -0.95, 0.9)];
@@ -329,6 +331,7 @@ export function createCombat(THREE, env) {
     m.active = true; m.enemy = enemy; m.target = target; m.age = 0; m.motor = false; m.life = enemy ? 10 : 12; m.smokeAcc = 0;
     m.q = quality || MSL_FULL; m.lostTrack = false; m.breakChecked = false; m.flareSalvo = -1;
     m.aam = false; m.minD = Infinity; m.closeCall = false; m.hitPlayer = false;
+    m.flybyTriggered = false; m.flyMinD = Infinity;
     m.cloudLost = false; m.cloudT = 0; m.cloud = 0; m.reacquired = false;
     m.terrainLost = false; m.maskT = 0; m.sam = false; m.friendly = false;
     m.mesh.position.copy(fromPos); m.mesh.quaternion.copy(fromQuat); m.mesh.visible = true; m.plume.visible = false;
@@ -1890,6 +1893,18 @@ export function createCombat(THREE, env) {
               else { explosion(pos, 0.8, { vel: tgt.vel }); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
               logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
+            }
+            // Near-miss: closest approach already passed and the missile is receding.
+            // Hits `continue` above, so they can never raise a flyby.
+            if (m.enemy && !m.flybyTriggered && !m.hitPlayer) {
+              const d = pos.distanceTo(S.position);
+              if (d < m.flyMinD) m.flyMinD = d;
+              else if (m.flyMinD < 140 && d > m.flyMinD + 2) {
+                m.flybyTriggered = true;
+                const k = Math.max(0.15, 1 - m.flyMinD / 140);
+                const side = Math.sign(_flyRel.copy(pos).sub(S.position).dot(_flyRight.set(1, 0, 0).applyQuaternion(S.quaternion))) || 1;
+                if (env.onFlyby) env.onFlyby({ dist: m.flyMinD, k, side });
+              }
             }
           }
         }
