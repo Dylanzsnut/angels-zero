@@ -431,24 +431,24 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s46a';
-import { createHUD } from './src/hud.js?v=s46a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s46a';
-import { createCombat } from './src/combat.js?v=s46a';
-import { createEjection } from './src/eject.js?v=s46a';
-import { createAudio } from './src/audio.js?v=s46a';
-import { createRadio } from './src/radio.js?v=s46a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s46a';
-import { createLivery } from './src/livery.js?v=s46a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s46a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s46a';
-import { createCanopyFX } from './src/canopy.js?v=s46a';
-import { createNVG } from './src/nvg.js?v=s46a';
-import { createWorld, WORLD } from './src/world.js?v=s46a';
-import { createSurfaces } from './src/surfaces.js?v=s46a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s46a';
-import { createFreeLook } from './src/freelook.js?v=s46a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s46a';
+import { createVFX } from './src/vfx.js?v=s47a';
+import { createHUD } from './src/hud.js?v=s47a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s47a';
+import { createCombat } from './src/combat.js?v=s47a';
+import { createEjection } from './src/eject.js?v=s47a';
+import { createAudio } from './src/audio.js?v=s47a';
+import { createRadio } from './src/radio.js?v=s47a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s47a';
+import { createLivery } from './src/livery.js?v=s47a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s47a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s47a';
+import { createCanopyFX } from './src/canopy.js?v=s47a';
+import { createNVG } from './src/nvg.js?v=s47a';
+import { createWorld, WORLD } from './src/world.js?v=s47a';
+import { createSurfaces } from './src/surfaces.js?v=s47a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s47a';
+import { createFreeLook } from './src/freelook.js?v=s47a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s47a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1841,7 +1841,8 @@ function updateCameraAndVisuals(dt, now) {
   followOcean();
 
   vfx.setEngineOut(flightMode === 'FLY' && combat.engineOut ? (combat.engineOut === 'L' ? 0 : 1) : -1);
-  vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson });
+  vfx.update(dt, now, state, { visible: jet.visible && modelReady && flightMode === 'FLY', firstPerson,
+    rain: weather.rainHere || 0, cloud: Math.max(combat.playerCloud || 0, vfx.mist) });
   // Weather: rain volume, lightning, gusts; overcast / haze / flash feed the atmosphere, clouds and sea.
   weather.update(dt, state.velocity, Math.min(1, navLevel), firstPerson && flightMode === 'FLY');
   atmosphere.setWeather({ overcast: weather.current.overcast, fogMul: weather.current.fogMul, flash: weather.flash });
@@ -1899,7 +1900,7 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
 };
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
-  canopyRain: audio.canopyRain, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
+  canopyRain: audio.canopyRain, wind: audio.wind, ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
   music: audio.music, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.

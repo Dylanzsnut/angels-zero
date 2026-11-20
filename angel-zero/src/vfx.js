@@ -171,65 +171,125 @@ export function createVFX(THREE, env) {
     }
   }
 
-  /* ------------------------------------------ soft wingtip contrail ribbons */
-  const TRAIL_V = LOG_V + `
-    attribute float aAlpha; attribute float aSide;
-    varying float vA; varying float vS;
-    void main() { vA = aAlpha; vS = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  /* ------------------------------- continuous world-space vapor ribbons */
+  // Each ribbon is a ring buffer of world-space samples (Float32/Float64 arrays,
+  // mutated in place -- no per-frame allocation). Sample 0 is "live": it rides
+  // the emitter every frame; a new sample is committed once the emitter has
+  // moved >= 3.5 m or 16 ms have passed. Every sample keeps the condensation
+  // level it was born with, so when the pull eases the existing ribbon detaches
+  // and fades out behind the jet instead of vanishing at once. Edges are
+  // extruded each frame along cross(tangent, toCamera), so the strip always
+  // faces the viewer (chase, cockpit, padlock, free look) and never goes edge-on.
+  const RIB_MAX = 96, RIB_STEP = 3.5, RIB_DT = 0.016, RIB_JUMP = 120;
+  const RIB_V = LOG_V + `
+    attribute float aAlpha;
+    varying float vA; varying vec2 vUv;
+    void main() {
+      vA = aAlpha; vUv = uv;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vA *= 1.0 - smoothstep(1500.0, 4200.0, -mv.z);          // thin out into the haze, never pop
+      gl_Position = projectionMatrix * mv;
       #include <logdepthbuf_vertex>
     }`;
-  const TRAIL_F = LOG_F + `
-    varying float vA; varying float vS;
+  const RIB_F = LOG_F + `
+    uniform vec3 uCol; uniform float uWisp; uniform float uTime;
+    varying float vA; varying vec2 vUv;
     void main() {
       #include <logdepthbuf_fragment>
-      float edge = 1.0 - vS * vS;
-      gl_FragColor = vec4(0.97, 0.985, 1.0, vA * edge * edge);
-    }`;
-  class Trail {
-    constructor(max = 180, life = 2.6) {
-      this.max = max; this.life = life; this.points = [];
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(max * 6), 3));
-      geo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(max * 2), 1));
-      const side = new Float32Array(max * 2);
-      for (let i = 0; i < max; i++) { side[i * 2] = -1; side[i * 2 + 1] = 1; }
-      geo.setAttribute('aSide', new THREE.BufferAttribute(side, 1));
-      const idx = new Uint16Array((max - 1) * 6);
-      for (let i = 0; i < max - 1; i++) { const a = i * 2; idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6); }
-      geo.setIndex(new THREE.BufferAttribute(idx, 1));
-      this.geo = geo;
-      this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({
-        vertexShader: TRAIL_V, fragmentShader: TRAIL_F, transparent: true, depthWrite: false, side: THREE.DoubleSide
-      }));
-      this.mesh.frustumCulled = false;
-      scene.add(this.mesh);
-      this._d = new THREE.Vector3(); this._c = new THREE.Vector3(); this._s = new THREE.Vector3();
-    }
-    emit(p, base, now) { this.points.unshift({ p: p.clone(), base, born: now }); if (this.points.length > this.max) this.points.pop(); }
-    clear() { this.points.length = 0; }
-    update(camPos, now) {
-      const pos = this.geo.attributes.position.array, al = this.geo.attributes.aAlpha.array, P = this.points;
-      for (let i = 0; i < this.max; i++) {
-        const it = P[i];
-        const o = i * 6;
-        if (!it) { al[i * 2] = al[i * 2 + 1] = 0; pos.fill(0, o, o + 6); continue; }
-        const age = Math.min(1, (now - it.born) / this.life);
-        const prev = P[Math.max(0, i - 1)].p, next = P[Math.min(P.length - 1, i + 1)].p;
-        this._d.subVectors(prev, next);
-        if (this._d.lengthSq() < 1e-6) this._d.set(0, 0, 1);
-        this._c.subVectors(camPos, it.p);
-        this._s.crossVectors(this._d, this._c).normalize();
-        const hw = (0.14 + 1.25 * age) * (0.5 + 0.5 * Math.sqrt(it.base));
-        pos[o] = it.p.x + this._s.x * hw; pos[o + 1] = it.p.y + this._s.y * hw; pos[o + 2] = it.p.z + this._s.z * hw;
-        pos[o + 3] = it.p.x - this._s.x * hw; pos[o + 4] = it.p.y - this._s.y * hw; pos[o + 5] = it.p.z - this._s.z * hw;
-        al[i * 2] = al[i * 2 + 1] = it.base * Math.pow(1 - age, 1.6) * 0.75;
+      float across = pow(max(sin(vUv.x * 3.14159265), 0.0), 1.6); // soft gaussian-like cross-width falloff
+      float a = vA * across;
+      // LEX sheets: streaky, broken-up wisps along the flow.
+      if (uWisp > 0.0) {
+        float w = 0.55 + 0.45 * sin(vUv.x * 19.0 + vUv.y * 7.0 - uTime * 9.0) * sin(vUv.x * 7.0 - vUv.y * 13.0 + uTime * 5.0);
+        a *= mix(1.0, w, uWisp);
       }
+      gl_FragColor = vec4(min(uCol, vec3(0.85)), a);       // stays under the bloom threshold
+    }`;
+  class Ribbon {
+    constructor({ w0, w1, life, alpha, wisp = 0 }) {
+      this.w0 = w0; this.w1 = w1; this.life = life; this.alphaK = alpha;
+      this.px = new Float32Array(RIB_MAX * 3); this.born = new Float64Array(RIB_MAX); this.ba = new Float32Array(RIB_MAX);
+      this.head = 0; this.count = 0; this.lastCommit = -1e9;
+      const geo = new THREE.BufferGeometry();
+      const pos = new THREE.BufferAttribute(new Float32Array(RIB_MAX * 6), 3).setUsage(THREE.DynamicDrawUsage);
+      const uv = new THREE.BufferAttribute(new Float32Array(RIB_MAX * 4), 2).setUsage(THREE.DynamicDrawUsage);
+      const al = new THREE.BufferAttribute(new Float32Array(RIB_MAX * 2), 1).setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('position', pos); geo.setAttribute('uv', uv); geo.setAttribute('aAlpha', al);
+      const idx = new Uint16Array((RIB_MAX - 1) * 6);
+      for (let i = 0; i < RIB_MAX - 1; i++) { const a = i * 2; idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6); }
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.setDrawRange(0, 0);
+      this.geo = geo;
+      this.mat = new THREE.ShaderMaterial({
+        uniforms: { uCol: { value: new THREE.Color(0xe8eef4) }, uWisp: { value: wisp }, uTime: { value: 0 } },
+        vertexShader: RIB_V, fragmentShader: RIB_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: true
+      });
+      this.mesh = new THREE.Mesh(geo, this.mat);
+      this.mesh.frustumCulled = false; this.mesh.renderOrder = 5;
+      scene.add(this.mesh);
+      this._t = new THREE.Vector3(); this._c = new THREE.Vector3(); this._s = new THREE.Vector3(); this._ps = new THREE.Vector3(0, 1, 0);
+    }
+    clear() { this.count = 0; this.head = 0; this.lastCommit = -1e9; this.geo.setDrawRange(0, 0); }
+    slot(i) { return (this.head - i + RIB_MAX) % RIB_MAX; }   // i = 0 newest
+    setSample(k, p, now, a) { const o = k * 3; this.px[o] = p.x; this.px[o + 1] = p.y; this.px[o + 2] = p.z; this.born[k] = now; this.ba[k] = a; }
+    push(p, now, a) { this.head = (this.head + 1) % RIB_MAX; this.setSample(this.head, p, now, a); this.count = Math.min(RIB_MAX, this.count + 1); }
+    // Feed the emitter's world position and current condensation level once per frame.
+    emit(p, a, now) {
+      if (this.count === 0) { this.push(p, now, a); this.push(p, now, a); this.lastCommit = now; return; }
+      const h = this.head * 3, px = this.px;
+      const dx = p.x - px[h], dy = p.y - px[h + 1], dz = p.z - px[h + 2];
+      if (dx * dx + dy * dy + dz * dz > RIB_JUMP * RIB_JUMP) { this.clear(); this.push(p, now, a); this.push(p, now, a); this.lastCommit = now; return; }
+      // Distance from the last committed sample (slot 1) decides whether the live head is frozen.
+      const k1 = this.slot(1) * 3;
+      const ex = p.x - px[k1], ey = p.y - px[k1 + 1], ez = p.z - px[k1 + 2];
+      if (ex * ex + ey * ey + ez * ez >= RIB_STEP * RIB_STEP || now - this.lastCommit >= RIB_DT) { this.push(p, now, a); this.lastCommit = now; }
+      else this.setSample(this.head, p, now, a);          // live head rides the emitter
+    }
+    update(camPos, now) {
+      const n = this.count, px = this.px;
+      const pos = this.geo.attributes.position.array, uv = this.geo.attributes.uv.array, al = this.geo.attributes.aAlpha.array;
+      this.mat.uniforms.uTime.value = now;
+      let live = 0;
+      for (let i = 0; i < n; i++) {
+        const k = this.slot(i), o = k * 3;
+        const age = Math.min(1, Math.max(0, (now - this.born[k]) / this.life));
+        // Tangent from the neighbouring samples (central difference, one-sided at the ends).
+        const ka = this.slot(Math.max(0, i - 1)) * 3, kb = this.slot(Math.min(n - 1, i + 1)) * 3;
+        const t = this._t.set(px[ka] - px[kb], px[ka + 1] - px[kb + 1], px[ka + 2] - px[kb + 2]);
+        const c = this._c.set(camPos.x - px[o], camPos.y - px[o + 1], camPos.z - px[o + 2]);
+        const s = this._s.crossVectors(t, c);
+        if (s.lengthSq() < 1e-8) s.copy(this._ps); else { s.normalize(); this._ps.copy(s); }
+        const hw = 0.5 * (this.w0 + (this.w1 - this.w0) * Math.sqrt(age));
+        const v = i * 6, w = i * 4, q = i * 2;
+        pos[v] = px[o] + s.x * hw; pos[v + 1] = px[o + 1] + s.y * hw; pos[v + 2] = px[o + 2] + s.z * hw;
+        pos[v + 3] = px[o] - s.x * hw; pos[v + 4] = px[o + 1] - s.y * hw; pos[v + 5] = px[o + 2] - s.z * hw;
+        const along = n > 1 ? i / (n - 1) : 0;
+        uv[w] = 0; uv[w + 1] = along; uv[w + 2] = 1; uv[w + 3] = along;
+        // Birth level x lengthwise dissipation x soft root (emerges from the tip) x soft tail (never truncated).
+        const root = Math.min(1, i / 2.5), tail = Math.min(1, (n - 1 - i) / 10);
+        const a = this.ba[k] * Math.pow(1 - age, 1.5) * root * tail * this.alphaK;
+        al[q] = al[q + 1] = a;
+        if (a > 0.002) live++;
+      }
+      this.live = live;
+      this.geo.setDrawRange(0, n > 1 ? (n - 1) * 6 : 0);
       this.geo.attributes.position.needsUpdate = true;
+      this.geo.attributes.uv.needsUpdate = true;
       this.geo.attributes.aAlpha.needsUpdate = true;
+      this.mesh.visible = live > 0;
     }
   }
-  const trailL = new Trail(), trailR = new Trail();
+  // Wingtip vortex cores: 0.14 m at the tip -> 0.65 m diffused, ~2.1 s dissipation.
+  const trailL = new Ribbon({ w0: 0.14, w1: 0.65, life: 2.1, alpha: 0.78 });
+  const trailR = new Ribbon({ w0: 0.14, w1: 0.65, life: 2.1, alpha: 0.78 });
+  // LEX / wing-root overwing sheets: broad, streaky, short-lived (hard pulls & PSMs only).
+  const lexL = new Ribbon({ w0: 0.7, w1: 2.4, life: 0.75, alpha: 0.34, wisp: 0.85 });
+  const lexR = new Ribbon({ w0: 0.7, w1: 2.4, life: 0.75, alpha: 0.34, wisp: 0.85 });
+  const ribbons = [trailL, trailR, lexL, lexR];
   const tipL = new THREE.Vector3(-6.6, -0.6, 4.0), tipR = new THREE.Vector3(6.6, -0.6, 4.0);
+  const lexPL = new THREE.Vector3(-2.05, 0.05, -0.9), lexPR = new THREE.Vector3(2.05, 0.05, -0.9);
+  const RIB_DAY = new THREE.Color(0xe8eef4), RIB_OVC = new THREE.Color(0xbfc7cf), _ribCol = new THREE.Color();
+  let vaporTarget = 0, lexTarget = 0;
 
   /* ------------------------------------------------ over-wing vapor clouds */
   // High-AoA condensation: wispy sheets over the inner wing roots and the
@@ -894,19 +954,34 @@ export function createVFX(THREE, env) {
     const q = s.quaternion;
     updatePlumes(s, now);
 
-    // Contrails intensify with G (> 1.8 G) and with hard rolling pulls.
-    const gPull = smooth(s.gLoad, 1.8, 5.5);
-    const roll = 0.45 * smooth(Math.abs(s.rollRate), 1.0, 2.6) * smooth(s.gLoad, 1.2, 3.0);
-    const base = opts.visible ? Math.min(1, gPull + roll + (s.highG ? 0.6 : 0)) * smooth(s.speed, 110, 190) : 0;
-    trailL.emit(_w.copy(tipL).applyQuaternion(q).add(s.position), base, now);
-    trailR.emit(_w.copy(tipR).applyQuaternion(q).add(s.position), base, now);
-    trailL.update(camera.position, now);
-    trailR.update(camera.position, now);
+    // Wingtip condensation: brisk pulls / banks (> 2 G, |AoA| > 7.5 deg, |roll| > 1.2 rad/s)
+    // above 160 kt; +40 % in humid / overcast / rain air or inside cloud; dries out above 22,000 ft.
+    const kts = s.speed * 1.94384, altFt = s.position.y / FT;
+    const aoaDeg = Math.abs(s.alpha || 0) * 57.2958;
+    const pull = Math.max(smooth(s.gLoad, 2.0, 5.5), smooth(aoaDeg, 7.5, 15), 0.6 * smooth(Math.abs(s.rollRate), 1.2, 2.6));
+    const inCloud = opts.cloud || 0;
+    const humid = Math.max(smooth(coverage, 0.6, 1.0), Math.min(1, opts.rain || 0), inCloud > 0.25 ? 1 : 0);
+    const dry = 1 - smooth(altFt, 18000, 26000);
+    let vT = opts.visible ? Math.min(1, pull * (0.72 + 0.28 * (s.highG ? 1 : 0))) * smooth(kts, 160, 200) * (1 + 0.4 * humid) * (0.25 + 0.75 * dry) : 0;
+    if (force.vapor && opts.visible) vT = 1;
+    vT = Math.min(1, vT);
+    vaporTarget += (vT - vaporTarget) * Math.min(1, dt * (vT > vaporTarget ? 6.0 : 2.5));
+    // LEX / root sheet: > 4.8 G or AoA > 14 deg, thick air only.
+    let lT = opts.visible ? Math.max(smooth(s.gLoad, 4.8, 7.5), smooth(aoaDeg, 14, 24)) * smooth(kts, 140, 190) * (1 + 0.4 * humid) * (1 - smooth(altFt, 14000, 20000)) : 0;
+    if (force.vapor && opts.visible) lT = 1;
+    lT = Math.min(1, lT);
+    lexTarget += (lT - lexTarget) * Math.min(1, dt * (lT > lexTarget ? 6.0 : 2.5));
+    _ribCol.copy(RIB_DAY).lerp(RIB_OVC, humid).multiply(vaporTint);
+    for (const r of ribbons) r.mat.uniforms.uCol.value.copy(_ribCol);
+    trailL.emit(_w.copy(tipL).applyQuaternion(q).add(s.position), vaporTarget, now);
+    trailR.emit(_w.copy(tipR).applyQuaternion(q).add(s.position), vaporTarget, now);
+    lexL.emit(_w.copy(lexPL).applyQuaternion(q).add(s.position), lexTarget, now);
+    lexR.emit(_w.copy(lexPR).applyQuaternion(q).add(s.position), lexTarget, now);
+    for (const r of ribbons) r.update(camera.position, now);
 
-    // Over-wing condensation: above 5.2 G, below 12,000 ft, denser in thick air.
-    const altFt = s.position.y / FT;
+    // Over-wing condensation puffs: above 4.8 G / 14 deg AoA, below 12,000 ft, denser in thick air.
     const rhoRatio = Math.exp(-s.position.y / 8500);
-    const gTrig = smooth(s.gLoad, 5.2, 8.0) + (s.highG && s.gLoad > 5.2 ? 0.25 : 0);
+    const gTrig = Math.max(smooth(s.gLoad, 4.8, 8.0), smooth(aoaDeg, 14, 26)) + (s.highG && s.gLoad > 4.8 ? 0.25 : 0);
     const vTarget = force.vapor ? 1 : opts.visible
       ? Math.min(1, gTrig) * (1 - smooth(altFt, 10000, 12000)) * (0.55 + 0.45 * rhoRatio) * smooth(s.speed, 110, 190) : 0;
     vaporLevel += (vTarget - vaporLevel) * Math.min(1, dt * (vTarget > vaporLevel ? 6 : 2.2));
@@ -936,7 +1011,7 @@ export function createVFX(THREE, env) {
   return {
     attachPlume,
     setWingtips(l, r) { tipL.copy(l); tipR.copy(r); buildVapor(); },
-    clearTrails() { trailL.clear(); trailR.clear(); for (const q of sprayP) q.on = false; coneT = 0; vaporLevel = 0; },
+    clearTrails() { for (const r of ribbons) r.clear(); vaporTarget = lexTarget = 0; for (const q of sprayP) q.on = false; coneT = 0; vaporLevel = 0; },
     update,
     get mist() { return mist; },
     cloudDensity, placeDebugCloud,
@@ -970,7 +1045,14 @@ export function createVFX(THREE, env) {
       cloudTime = Math.random() * 900;
       updateWind(0); sortClouds(0, true);
     },
-    get trailPoints() { return trailL.points.filter(p => p.base > 0.01).length; },
+    get trailPoints() { return trailL.live || 0; },
+    // Ribbon state for debugging: condensation levels, samples, live (visible) samples, colour.
+    get ribbons() {
+      return { vapor: +vaporTarget.toFixed(3), lex: +lexTarget.toFixed(3),
+        tipL: { n: trailL.count, live: trailL.live || 0 }, tipR: { n: trailR.count, live: trailR.live || 0 },
+        lexL: { n: lexL.count, live: lexL.live || 0 }, lexR: { n: lexR.count, live: lexR.live || 0 },
+        col: '#' + _ribCol.getHexString() };
+    },
     get vaporLevel() { return vaporLevel; },
     // Time-of-day tint for condensation (white at noon, rose at dawn, dim blue-grey at night).
     setVaporTint(c) { vaporTint.copy(c); },

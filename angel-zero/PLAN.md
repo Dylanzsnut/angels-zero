@@ -938,6 +938,43 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     250x160, aspect updated. Headless: 50 % throttle no nozzle glare, sky /
     clouds unchanged; AB + gun: white-hot cores, glowing bolts converging
     ahead, muzzle starburst; night AB; NVG; menu; zero page / shader errors.
+- [x] **Visual Pass 2: world-space wingtip / LEX vapor ribbons + airspeed / AoA wind-rush audio** *(build `s47a`, `src/vfx.js`, `src/audio.js`, `index.html`)*
+  - Ribbons (`Ribbon` in `src/vfx.js`, replaces the old object-per-sample
+    `Trail`): 4 continuous strips (2 wingtip vortex cores, 2 LEX / wing-root
+    sheets), each a 96-sample ring buffer in Float32 / Float64 arrays with
+    pre-allocated `position` / `uv` / `aAlpha` DynamicDraw attributes and a
+    static index; zero per-frame allocation. The live head rides the emitter;
+    a sample is committed every >= 3.5 m or 16 ms. Edges extruded each frame
+    along `cross(tangent, toCamera)` so the strip faces every camera (chase,
+    cockpit, free-look orbit, padlock). Jump > 120 m between frames resets the
+    buffer (respawn / teleport / restart never streaks); `clearTrails()` too.
+  - Condensation level `vaporTarget` (attack 6 /s, decay 2.5 /s): > 2 G, |AoA|
+    > 7.5 deg or |roll| > 1.2 rad/s above 160 kt; +40 % in humid air (overcast
+    coverage, rain, in-cloud > 0.25); tapers 18-26k ft (dry air). Each sample
+    keeps its birth level, so on level-off the ribbon detaches and dissipates
+    behind the jet (~2.1 s, `pow(1-age,1.5)`), soft root at the tip, soft tail.
+    Width 0.14 m at the tip -> 0.65 m diffused; cross-width alpha
+    `pow(sin(uv.x*PI),1.6)`; colour #e8eef4 day / #bfc7cf overcast x the
+    time-of-day vapor tint, clamped to RGB <= 0.85 (never blooms), fades out
+    1.5-4.2 km from the camera.
+  - LEX / root sheets: > 4.8 G or AoA > 14 deg below 14-20k ft; broad (0.7 ->
+    2.4 m), streaky animated wisps, 0.75 s life. The existing over-wing puff
+    sprites now trigger at the same 4.8 G / 14 deg thresholds.
+  - Wind bus (`src/audio.js`, pre-allocated nodes, params only per frame):
+    two decorrelated pink-noise loops -> band-pass Q 0.85 (220 Hz @ 150 kt ->
+    1,150 Hz @ 650 kt) panned -/+0.65, gain 0.2 x clamp((kt-110)/520)^1.6 x
+    view (chase 1.15, cockpit 0.8); buffet rumble band-pass 140-360 Hz Q 1.4
+    swelling with G > 3.2 / |AoA| > 11 deg; bus low-pass 16 kHz chase / 1.8 kHz
+    cockpit straight into the master. All via `setTargetAtTime(.., 0.06)`. Bus
+    0 below 80 kt, when muted, out of FLY; `suspend()` (pause / debrief) drops
+    it to 0 instantly so resume ramps in. `__audioDebug().wind` (targets +
+    live params) and `__audioDebug().ribbons`.
+  - Verified (pane): 181 kt level slip 0.0095 @ 278 Hz, no buffet; 510 kt 5.6 G
+    slip 0.151 @ 890 Hz + buffet 0.142 @ 272 Hz; cockpit LP 1.8 kHz; paused /
+    muted / 74 kt -> bus 0, resume ramps back. Level-off: vapor 0.66 -> 0.01
+    over 2 s with the trail fading out; +4 km teleport -> buffer reset. Frame
+    ~6-7 ms. Headless: smooth unkinked arcs from both tips (side orbit and
+    chase), day / night / overcast, zero page errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

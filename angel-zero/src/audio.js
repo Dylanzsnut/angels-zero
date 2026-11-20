@@ -203,6 +203,23 @@ export function createAudio() {
     N.buffVCA.gain.value = 0.55;
     N.nextBreath = 0;
 
+    // Slipstream wind & AoA buffeting bus (pre-allocated; only AudioParams move per frame).
+    // Two decorrelated pink-noise loops (independent random loop offsets) -> band-pass
+    // (Q 0.85, 220 Hz @ 150 kt -> 1,150 Hz @ 650 kt) panned L/R; a low-mid resonant
+    // buffet rumble (140-360 Hz, Q 1.4) swells under G / AoA. The bus then passes a
+    // view-aware low-pass (sealed canopy ~1.8 kHz) straight into the master.
+    N.windLP = filt('lowpass', 16000, 0.6); N.windBus = gain(0);
+    N.windBus.connect(N.windLP).connect(master);
+    N.slipGain = gain(0); N.slipGain.connect(N.windBus);
+    N.slip = [-0.65, 0.65].map(pan => {
+      const src = loopNoise(pink), bp = filt('bandpass', 220, 0.85), pn = ctx.createStereoPanner();
+      pn.pan.value = pan; src.connect(bp).connect(pn).connect(N.slipGain);
+      return { src, bp };
+    });
+    N.windBuffN = loopNoise(pink); N.windBuffBP = filt('bandpass', 140, 1.4); N.windBuffGain = gain(0);
+    N.windBuffN.connect(N.windBuffBP).connect(N.windBuffGain).connect(N.windBus);
+    N.windDbg = { kts: 0, slipGain: 0, slipHz: 220, buffGain: 0, buffHz: 140, lp: 16000, bus: 0 };
+
     // Procedural fallbacks for the sampled layers.
     N.buffNoise = loopNoise(brown); N.buffBP = filt('bandpass', 75, 1.1); N.buffFGain = gain(0);
     N.buffNoise.connect(N.buffBP).connect(N.buffFGain).connect(cockpitLP);
@@ -215,7 +232,31 @@ export function createAudio() {
   }
 
   function resume() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); }
-  function suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); }
+  function suspend() {
+    // Wind bus to silence first, so resuming ramps it back in instead of clicking.
+    if (N.windBus) { N.windBus.gain.cancelScheduledValues(ctx.currentTime); N.windBus.gain.setValueAtTime(0, ctx.currentTime); N.windDbg.bus = 0; }
+    if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+  }
+  // Slipstream / buffet mix (once per frame from update()).
+  function updateWind(p, kts, live) {
+    const WT = 0.06, ak = Math.abs(p.aoa || 0), gl = p.gLoad || 1;
+    const cl = (x) => Math.min(1, Math.max(0, x));
+    const run = live && !muted && kts >= 80 ? 1 : 0;            // runway idle / taxi / dead stick -> silent
+    const q = Math.pow(cl((kts - 110) / 520), 1.6);              // dynamic pressure feel
+    const slipHz = 220 + 930 * cl((kts - 150) / 500);
+    const view = p.cockpit ? 0.8 : 1.15;                         // brighter exterior rush in chase view
+    const slipGain = run * 0.2 * q * view;
+    const buffK = run * Math.max(sm(gl, 3.2, 7.5), sm(ak, 11, 24)) * sm(kts, 100, 220);
+    const buffHz = 140 + 220 * buffK, buffGain = 0.26 * buffK * (0.85 + 0.25 * q) * (p.cockpit ? 1.1 : 0.9);
+    const lp = p.cockpit ? 1800 : 16000;
+    for (const s of N.slip) set(s.bp.frequency, slipHz, WT);
+    set(N.slipGain.gain, slipGain, WT);
+    set(N.windBuffBP.frequency, buffHz, WT); set(N.windBuffGain.gain, buffGain, WT);
+    set(N.windLP.frequency, lp, WT);
+    set(N.windBus.gain, run, WT);
+    N.windDbg = { kts: Math.round(kts), slipGain: +slipGain.toFixed(4), slipHz: Math.round(slipHz), buffGain: +buffGain.toFixed(4),
+      buffHz: Math.round(buffHz), lp, bus: run, live: { slip: +N.slipGain.gain.value.toFixed(4), bp: Math.round(N.slip[0].bp.frequency.value), buff: +N.windBuffGain.gain.value.toFixed(4) } };
+  }
 
   /* ------------------------------------------------------- one-shot events */
   function explosion(intensity = 1) {
@@ -1008,6 +1049,7 @@ export function createAudio() {
     set(N.buffSweep.frequency, 220 + 460 * buffK, 0.1); set(N.buffGain2.gain, 0.42 * buffK, 0.1);
     if (N.buff) { set(N.buffGain.gain, 0.25 * buffK, 0.12); set(N.buff.playbackRate, 0.9 + 0.3 * buffK, 0.2); }
     set(N.buffFGain.gain, 0.25 * buffK * (0.7 + 0.3 * Math.random()), 0.05);
+    updateWind(p, kts, live);
     // G-LOC: hearing tunnel (14 kHz -> 480 Hz above 0.45) on the outside world only.
     set(N.tunnel.frequency, 14000 * Math.pow(480 / 14000, sm(gs, 0.45, 1.0)), 0.12);
     // Pilot anti-G breathing from 5 G / strain 0.15; heartbeat from strain 0.35 (95 -> 155 BPM).
@@ -1103,6 +1145,8 @@ export function createAudio() {
       return Math.sqrt(s / N.anaBuf.length);
     },
     get layers() { return N.dbg || null; },
+    // Slipstream / buffet bus targets + live AudioParam values (for __audioDebug).
+    get wind() { return N.windDbg || null; },
     // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
     get canopyRain() {
       if (!N.canopyBus) return null;
