@@ -1119,6 +1119,7 @@ export function createVFX(THREE, env) {
     cloudDensity, placeDebugCloud,
     get cloudCount() { return banks.filter(b => b.on && !b.dbg).length; },
     setCloudSea, get cloudSea() { return cloudSea; },
+    get wind() { return WIND; },                          // live cloud wind (m/s), reseeded per sortie
     // Cloud-sea layout stats: bank count, size ranges (m), base / top ft, min clearance from the windows.
     get seaStats() {
       const s = banks.filter(b => b.sea);

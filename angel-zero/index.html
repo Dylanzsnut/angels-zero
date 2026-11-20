@@ -431,24 +431,25 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s49a';
-import { createHUD } from './src/hud.js?v=s49a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s49a';
-import { createCombat } from './src/combat.js?v=s49a';
-import { createEjection } from './src/eject.js?v=s49a';
-import { createAudio } from './src/audio.js?v=s49a';
-import { createRadio } from './src/radio.js?v=s49a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s49a';
-import { createLivery } from './src/livery.js?v=s49a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s49a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s49a';
-import { createCanopyFX } from './src/canopy.js?v=s49a';
-import { createNVG } from './src/nvg.js?v=s49a';
-import { createWorld, WORLD } from './src/world.js?v=s49a';
-import { createSurfaces } from './src/surfaces.js?v=s49a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s49a';
-import { createFreeLook } from './src/freelook.js?v=s49a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s49a';
+import { createVFX } from './src/vfx.js?v=s50a';
+import { createBlastFX } from './src/blastfx.js?v=s50a';
+import { createHUD } from './src/hud.js?v=s50a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s50a';
+import { createCombat } from './src/combat.js?v=s50a';
+import { createEjection } from './src/eject.js?v=s50a';
+import { createAudio } from './src/audio.js?v=s50a';
+import { createRadio } from './src/radio.js?v=s50a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s50a';
+import { createLivery } from './src/livery.js?v=s50a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s50a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s50a';
+import { createCanopyFX } from './src/canopy.js?v=s50a';
+import { createNVG } from './src/nvg.js?v=s50a';
+import { createWorld, WORLD } from './src/world.js?v=s50a';
+import { createSurfaces } from './src/surfaces.js?v=s50a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s50a';
+import { createFreeLook } from './src/freelook.js?v=s50a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s50a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -803,6 +804,7 @@ let uiModal = false, firstPerson = Q.has('cockpit');
 if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mouse.nx = mx || 0; mouse.ny = my || 0; }
 
 const camVelocity = new THREE.Vector3();
+let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
 const camFrame = new THREE.Quaternion(), _camQ = new THREE.Quaternion(), _camAlign = new THREE.Quaternion(), _camNose = new THREE.Vector3();
 const prevPlanePos = new THREE.Vector3();
 const CAM_OFFSET = new THREE.Vector3(0, 4.4, 26);
@@ -847,7 +849,7 @@ function resetAircraft() {
   }
   combatSys.resetPlayer();
   roll.left = 0;
-  vfx.clearTrails(); hud.resetMaxG();
+  vfx.clearTrails(); if (blast) blast.clear(); hud.resetMaxG();
   jet.visible = true;
   camera.position.copy(CAM_OFFSET).applyQuaternion(state.quaternion).add(state.position);
   camVelocity.set(0, 0, 0); camFrame.copy(state.quaternion);
@@ -928,6 +930,7 @@ function applyWarmState(fp, nv) {
   if (fp) for (let i = 0; i < 9; i++) cockpit.update(1 / 60, simTime, _warmEye.copy(EYE).applyQuaternion(state.quaternion).add(state.position), state.quaternion);
   weather.rainMesh.visible = true;                     // rain streak program even in dry weather
   combatSys.warmVisuals(true);                         // HDR muzzle flash + tracer bolt programs
+  blast.warm(true);                                    // detonation pools (fire / smoke / sparks / debris / foam)
 }
 function warmupGPUAsync() {
   if (gpuWarm.done || gpuWarm.pending || !renderer.compileAsync) return gpuWarm.pending;
@@ -1836,7 +1839,14 @@ function updateCameraAndVisuals(dt, now) {
     const a = 0.0016;
     camera.rotateX((Math.random() - 0.5) * a); camera.rotateY((Math.random() - 0.5) * a);
   }
+  if (blastShake > 0.002) {
+    // Decaying blast-wave impulse: ~3 deg at point blank in chase, 55 % in the cockpit (HUD stays readable).
+    const a = blastShake * 0.05 * (firstPerson ? 0.55 : 1), tt = now * 47;
+    camera.rotateX(Math.sin(tt) * a); camera.rotateY(Math.sin(tt * 1.37 + 1.1) * a * 0.8); camera.rotateZ(Math.sin(tt * 0.83 + 2.3) * a * 0.6);
+    blastShake *= Math.exp(-dt * 7);
+  } else blastShake = 0;
   camera.updateMatrixWorld();
+  if (blast && !fxHold) blast.update(dt);
   oceanUniforms.uCam.value.copy(camera.position);
   followOcean();
 
@@ -1900,7 +1910,7 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
 };
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
-  canopyRain: audio.canopyRain, wind: audio.wind, ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
+  canopyRain: audio.canopyRain, wind: audio.wind, blast: audio.blast, blastFx: blast ? blast.stats : null, shake: +blastShake.toFixed(3), ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
   music: audio.music, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
@@ -1953,7 +1963,13 @@ function bombWhistle() {
 function onSfx(type, pos, scale = 1) {
   const d = pos ? pos.distanceTo(camera.position) : 0;
   const near = 1 / (1 + d / 900);
-  if (type === 'explosion') audio.explosion(scale * near * 1.2);
+  if (type === 'explosion') {
+    // Warhead crack now + sub-bass boom delayed by the sound travel time (0.02-0.40 s).
+    const dj = pos ? pos.distanceTo(state.position) : 9999;
+    audio.explosion(scale * near * 1.2, THREE.MathUtils.clamp(d / 343, 0.02, 0.4));
+    // Blast-wave rattle within 950 m of the jet (stronger the closer it is).
+    if (dj < 950 && flightMode === 'FLY') blastShake = Math.max(blastShake, Math.min(1.2, 0.35 + scale * 0.4) * Math.pow(1 - dj / 950, 1.6));
+  }
   else if (type === 'launch') audio.missileLaunch(near);
   else if (type === 'hit') audio.hit(Math.min(1, near * 2.5));
   else if (type === 'release') audio.bombRelease(firstPerson ? 1 : 0.7);
@@ -1993,7 +2009,9 @@ function setNVG(on, silent) {
 // Reactive AWACS / enemy radio comms (src/radio.js), fed by combat events.
 let radioSys = null;
 function onRadio(kind, d) { if (radioSys) radioSys.event(kind, d); }
-const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio, runway: world.runway,
+// Pooled impact detonations (Visual Pass 5): fireballs, rings, sparks, debris, hanging smoke, geysers.
+blast = createBlastFX(THREE, { scene, camera, terrainHeight, sunDir: SUN_DIR, wind: vfx.wind, sunLight, hemiLight });
+const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, jet, groundLevel, terrainHeight, onRadio, runway: world.runway, blast,
   cloudDensity: p => vfx.cloudDensity(p),
   terrainCenter: { x: TERRAIN_CENTER.x, z: TERRAIN_CENTER.y }, bridges: world.bridges, canyonX: world.canyonX,
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
@@ -2341,6 +2359,16 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       if (Q.has('nvgat') && Number(Q.get('nvgat')) >= t0 && Number(Q.get('nvgat')) < t1) { setNVG(!nvg.active, true); console.log('[ANGELS_ZERO] N @', t1.toFixed(2), 'nvg', nvg.active, 'hemi', hemiLight.intensity.toFixed(3), 'amb', ambLight.intensity.toFixed(3), 'sun', sunLight.intensity.toFixed(3), 'exp', renderer.toneMappingExposure.toFixed(2), 'gain', nvg.gain.toFixed(1), 'tod', atmosphere.active.name); }
       if (Q.has('cat') && Number(Q.get('cat')) >= t0 && Number(Q.get('cat')) < t1) { const t = combatSys.designateInSight(); console.log('[ANGELS_ZERO] C @', t1.toFixed(2), '->', t ? t.label : 'none'); }
       if (Q.has('killat') && Number(Q.get('killat')) >= t0 && Number(Q.get('killat')) < t1) { const d = combat.designated; if (d) combatSys.killEnemy(combatSys.enemies.indexOf(d)); console.log('[ANGELS_ZERO] kill designated @', t1.toFixed(2), d ? d.label : '-'); }
+      // ?blastat=s[,kind[,dist]]: detonate (air | ground | water | ship) dist m ahead of the jet (ground / water: on the surface below that point).
+      if (Q.has('blastat')) {
+        const [bs, bk, bd] = Q.get('blastat').split(',');
+        if (Number(bs) >= t0 && Number(bs) < t1) {
+          const p = new THREE.Vector3(0, 0, -(Number(bd) || 260)).applyQuaternion(state.quaternion).add(state.position);
+          if (bk === 'ground' || bk === 'water') p.y = Math.max(terrainHeight(p.x, p.z), 0) + 1;
+          combatSys.explosion(p, bk === 'water' ? 1 : 1.7, { kind: bk || 'air', vel: bk && bk !== 'air' ? undefined : state.velocity.clone().multiplyScalar(0.5) });
+          console.log('[ANGELS_ZERO] blast @', t1.toFixed(2), bk || 'air', JSON.stringify(p.toArray().map(Math.round)));
+        }
+      }
       if (Q.has('bombat') && Number(Q.get('bombat')) >= t0 && Number(Q.get('bombat')) < t1) { combatSys.setWeapon('BOMB'); console.log('[ANGELS_ZERO] drop @', t1.toFixed(2), JSON.stringify(combatSys.stats().stores)); combatSys.dropBomb(); }
       if (Q.has('wingtrack') && DEBUG_FIRE) {        // ?wingtrack=L|R: test pilot keeps the nose on bandit 0's wing while firing
         const e = combatSys.enemies[0];
@@ -2404,6 +2432,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
         nearestRain: +weather.nearestVisible().toFixed(2), audio: audio.canopyRain }), 'fleet', JSON.stringify(combatSys.fleetStats()));
   }
   if (DEBUG && Q.has('pause')) pauseSim();
+  if (DEBUG && Q.has('fxhold')) fxHold = true;
   if (DEBUG) console.log('[ANGELS_ZERO] F-15 ready:', names.length, 'nodes; wingtip', WINGTIP_R.toArray().map(x => +x.toFixed(2)));
 }, undefined, err => {
   console.error('[ANGELS_ZERO] GLTF load failed', err);
@@ -2474,7 +2503,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, get firstPerson() { return firstPerson; },
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, get firstPerson() { return firstPerson; },
     get appMode() { return appMode; },
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };

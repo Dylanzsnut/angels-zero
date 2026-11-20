@@ -259,17 +259,27 @@ export function createAudio() {
   }
 
   /* ------------------------------------------------------- one-shot events */
-  function explosion(intensity = 1) {
+  // Two-stage detonation: an immediate metallic warhead crack (white noise through a
+  // band-pass sweeping 3,000 -> 850 Hz, 2 ms attack, ~0.12 s), then -- `delay` s later
+  // (sound travel, 0.02-0.40 s) -- the sub-bass shockwave thump (sine 110 -> 36 Hz) and
+  // the rolling brown-noise body.
+  function explosion(intensity = 1, delay = 0.02) {
     if (!ready) return;
-    const t = ctx.currentTime, k = Math.min(1.4, Math.max(0.05, intensity));
+    const t = ctx.currentTime, k = Math.min(1.4, Math.max(0.05, intensity)), tb = t + Math.max(0, delay);
+    const cn = ctx.createBufferSource(); cn.buffer = N.white;
+    const cbp = filt('bandpass', 3000, 1.6); cbp.frequency.setValueAtTime(3000, t); cbp.frequency.exponentialRampToValueAtTime(850, t + 0.11);
+    const cg = gain(0); cg.gain.setValueAtTime(0, t); cg.gain.linearRampToValueAtTime(0.75 * k, t + 0.002); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    cn.connect(cbp).connect(cg).connect(cockpitLP); cn.start(t, Math.random()); cn.stop(t + 0.15);
     const sub = ctx.createOscillator(); sub.type = 'sine';
-    sub.frequency.setValueAtTime(60, t); sub.frequency.exponentialRampToValueAtTime(24, t + 1.4);
-    const sg = gain(0); sg.gain.setValueAtTime(0, t); sg.gain.linearRampToValueAtTime(0.9 * k, t + 0.015); sg.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
-    sub.connect(sg).connect(cockpitLP); sub.start(t); sub.stop(t + 1.7);
+    sub.frequency.setValueAtTime(110, tb); sub.frequency.exponentialRampToValueAtTime(36, tb + 0.9);
+    const sg = gain(0); sg.gain.setValueAtTime(0, tb); sg.gain.linearRampToValueAtTime(1.0 * k, tb + 0.012); sg.gain.exponentialRampToValueAtTime(0.001, tb + 1.5);
+    sub.connect(sg).connect(cockpitLP); sub.start(tb); sub.stop(tb + 1.6);
     const n = ctx.createBufferSource(); n.buffer = N.brown;
-    const lp = filt('lowpass', 900, 0.8); lp.frequency.setValueAtTime(1400, t); lp.frequency.exponentialRampToValueAtTime(120, t + 1.8);
-    const ng = gain(0); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(1.1 * k, t + 0.02); ng.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
-    n.connect(lp).connect(ng).connect(cockpitLP); n.start(t, Math.random()); n.stop(t + 2.3);
+    const lp = filt('lowpass', 900, 0.8); lp.frequency.setValueAtTime(1400, tb); lp.frequency.exponentialRampToValueAtTime(120, tb + 1.8);
+    const ng = gain(0); ng.gain.setValueAtTime(0, tb); ng.gain.linearRampToValueAtTime(1.0 * k, tb + 0.02); ng.gain.exponentialRampToValueAtTime(0.001, tb + 2.2);
+    n.connect(lp).connect(ng).connect(cockpitLP); n.start(tb, Math.random()); n.stop(tb + 2.3);
+    N.blastCount = (N.blastCount || 0) + 1;
+    N.lastBlast = { k: +k.toFixed(2), crackHz: [3000, 850], crackAt: +t.toFixed(3), subHz: [110, 36], boomAt: +tb.toFixed(3), delay: +(tb - t).toFixed(3), count: N.blastCount };
   }
   function missileLaunch() {
     if (!ready) return;
@@ -1147,6 +1157,8 @@ export function createAudio() {
     get layers() { return N.dbg || null; },
     // Slipstream / buffet bus targets + live AudioParam values (for __audioDebug).
     get wind() { return N.windDbg || null; },
+    // Last two-stage detonation (crack band, sub sweep, crack / boom times, travel delay).
+    get blast() { return N.lastBlast || null; },
     // Canopy rain layer state (for __audioDebug): bus gain, hiss gain / band, tap rate and count.
     get canopyRain() {
       if (!N.canopyBus) return null;

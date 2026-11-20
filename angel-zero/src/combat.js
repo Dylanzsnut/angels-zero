@@ -124,10 +124,13 @@ export function createCombat(THREE, env) {
 
   const flashes = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffa040, 0, 900, 1.6); scene.add(l); return { l, t: 0 }; });
   let flashNext = 0;
-  function explosion(pos, scale = 1) {
+  // opts: { kind: 'air' | 'ground' | 'ship' | 'water', vel } -> src/blastfx.js pooled
+  // detonation (Visual Pass 5); kind is classified from the height above the surface if omitted.
+  function explosion(pos, scale = 1, opts) {
     if (env.onSfx) env.onSfx('explosion', pos, scale);
     const f = flashes[flashNext]; flashNext = (flashNext + 1) % flashes.length;
     f.l.position.copy(pos); f.t = 0.45 * scale; f.l.intensity = 0;
+    if (env.blast) { env.blast.detonate(pos, scale, opts); return; }
     const n = Math.round(46 * scale);
     for (let i = 0; i < n; i++) {                                    // expanding fireball
       const v = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().multiplyScalar((20 + rand() * 55) * scale);
@@ -147,6 +150,11 @@ export function createCombat(THREE, env) {
     }
   }
   function splash(pos, scale = 1) {
+    if (env.blast) {                                                 // water geyser + foam ring (no mid-air puff)
+      env.blast.detonate(pos, Math.max(0.6, scale * 1.6), { kind: 'water' });
+      if (env.onSfx) env.onSfx('explosion', pos, scale * 0.6);
+      return;
+    }
     for (let i = 0; i < 60 * scale; i++) {
       const a = rand() * Math.PI * 2, s = (6 + rand() * 18) * scale;
       smoke.spawn({ x: pos.x, y: 0.5, z: pos.z, vx: Math.cos(a) * s, vy: (18 + rand() * 40) * scale, vz: Math.sin(a) * s, life: 1.6 + rand() * 1.6, s0: 4 * scale, s1: (16 + rand() * 14) * scale,
@@ -1090,7 +1098,7 @@ export function createCombat(THREE, env) {
         ai.rams++;
         shockRing(mid, 0xcfe6ff, true);
         hitSparks(mid, S.velocity);
-        explosion(mid, 1.3);
+        explosion(mid, 1.3, { vel: e.vel, kind: 'air' });
         destroyEnemy(e, false, 'RAM');
         damagePlayer(45);
         C.hitFlash = 0.6;
@@ -1103,7 +1111,7 @@ export function createCombat(THREE, env) {
   function destroyEnemy(e, byMissile, how) {
     if (!e.alive) return;
     e.alive = false;
-    explosion(e.pos, 1.7);
+    explosion(e.pos, 1.7, { vel: e.vel, kind: 'air' });
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
     if (how === 'BASE') {                                          // ARCHIPELAGO AFB air defence kill: no player credit
       if (C.lockTarget === e) C.lockTarget = null;
@@ -1841,8 +1849,8 @@ export function createCombat(THREE, env) {
                 if (!C.engSide && C.fireArmed && !C.dead && rand() < 0.35) igniteEngine('MISSILE HIT');
               }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
-              else if (tgt.fleet) { explosion(pos, 1.3); damageSurface(tgt, 90); }          // ship: multi-hit
-              else { explosion(pos, 0.8); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
+              else if (tgt.fleet) { explosion(pos, 1.3, { kind: 'ship' }); damageSurface(tgt, 90); }          // ship: multi-hit
+              else { explosion(pos, 0.8, { vel: tgt.vel }); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
               logShot(m, tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
@@ -2087,6 +2095,11 @@ export function createCombat(THREE, env) {
   // Water geyser or ground fireball (bombs and crashing wrecks).
   function impactFx(pos, water, k) {
     shockRing(pos, water ? 0xdff4ff : 0xffd8a0, false);
+    if (env.blast) {                                                 // pooled geyser / ground burst (Visual Pass 5)
+      if (water) { env.blast.detonate(pos, 2.4 * k, { kind: 'water' }); if (env.onSfx) env.onSfx('bomb', pos, 0.8 * k); }
+      else { explosion(pos, 2.4, { kind: 'ground' }); if (env.onSfx) env.onSfx('bomb', pos, k); }
+      return;
+    }
     if (water) {
       // Water geyser: tall white column, falling spray curtain, low mist.
       splash(pos, 2.4);
@@ -2320,7 +2333,7 @@ export function createCombat(THREE, env) {
     if (!t.alive) return;
     t.alive = false; t.burn = t.fleet ? 70 : 45;
     for (const m of t.mats) m.color.multiplyScalar(0.28);
-    explosion(t.pos, t.ship ? 3.2 : 2.4);
+    explosion(t.pos, t.ship ? 3.2 : 2.4, { kind: t.ship ? 'ship' : 'ground' });
     const pts = t.kind === 'CARRIER' ? 6000 : t.ship ? 2500 : t.kind === 'FLAK' ? 800 : 1200;
     C.score += pts; C.kills++;
     pushEvent('DESTROYED', `${t.kind} ${t.label} ${t.ship ? 'SUNK' : 'DESTROYED'}`, pts, '#52ff9c');
@@ -2647,7 +2660,7 @@ export function createCombat(THREE, env) {
           while (t.secondaries.length && t.secT >= t.secondaries[0]) {
             t.secondaries.shift();
             _da.set((rand() - 0.5) * t.beam, t.aimH * 0.6, (rand() - 0.5) * t.len * 0.8).applyQuaternion(t.g.quaternion).add(t.g.position);
-            explosion(_da, 1.6 + rand() * 1.6); shockRing(_da, 0xffd8a0, false);
+            explosion(_da, 1.6 + rand() * 1.6, { kind: 'ship' }); shockRing(_da, 0xffd8a0, false);
           }
         }
         continue;

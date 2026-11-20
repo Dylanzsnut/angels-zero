@@ -1042,6 +1042,49 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     the main island -> rotated varied plots, hedges, groves + tree lines;
     4,500 ft over the AFB window -> clean tarmac, bare rock cliffs, farmland
     hazing out, no moire; zero page / shader errors.
+- [x] **Visual Pass 5: HDR impact fireballs, shockwave rings, arcing debris, hanging smoke** *(build `s50a`, new `src/blastfx.js`, `src/combat.js`, `src/audio.js`, `src/vfx.js`, `index.html`)*
+  - `createBlastFX` (fixed circular pools, oldest recycled, one instanced draw
+    per pool hidden while empty, zero per-frame allocation): 240 hanging smoke,
+    512 trail puffs, 160 spray, 80 fireball, 48 flash / ring, 200 sparks,
+    40 debris, 8 foam rings. `combat.explosion(pos, scale, { kind, vel })`
+    routes every missile / 4AAM / UGB / gun-kill / ship / crash explosion and
+    `splash()` into it (kind classified from height above the surface when
+    omitted); the old point-sprite explosion remains only as a fallback.
+  - Air: L1 HDR flash core (3.2, 2.5, 1.4) full for 0.10 s, under the 0.92
+    threshold by 0.14 s, gone at 0.32 s + additive pressure ring 12 -> 90 m
+    in 0.28 s (peak 0.55 x 0.66, never blooms); L2 4-6 noise fireballs 8 ->
+    ~38 m, blackbody HDR (2.2, 1.05, 0.25) -> #ff5a12 -> #7a1c08 -> charcoal
+    with sooty thin edges and per-puff heat jitter; L3 18-26 additive spark
+    streaks (2.8, 1.7, 0.7) at 90-220 m/s, drag + gravity, e^-4.5t; L4 4-6
+    dark tumbling chunks inheriting 55 % of the airframe velocity, ballistic,
+    trailing ember -> charcoal puffs every 60 ms, splash / dust where they land.
+  - Hanging smoke: 6-9 soot puffs (#1c2024 -> #343b42) 12 -> 45 m in 1.4 s,
+    then drift with the live cloud wind (`vfx.wind`) and billow for 10-15 s,
+    fade in 0.25 s / out over the last 35 %; sun-shaded (warm-grey crown,
+    soot core, forward-scatter fringe toward the sun), luminance-capped at
+    0.42 (never blooms), 45 -> 12 m proximity fade, scene fog.
+  - Water: geyser column filled base -> apex (50-85 m), mist skirt, flat
+    broken foam ring 6 -> 70 m at y = 0.4, small flash; no black puff.
+    Ground / ship: flash + ring at the surface, fireballs reflected off the
+    terrain normal, spark spray about the normal, 4 clods, two-tone 12 s
+    column (lit earth-dust skirt + dark soot venting at 18-26 m/s).
+  - Shake: detonations within 950 m add a decaying rotational impulse
+    (0.35 + 0.4 x scale) x (1 - d/950)^1.6, ~2.2 deg at 150 m, 55 % in the
+    cockpit, decay e^-7t (applied like the gun vibration, re-set each frame).
+  - Audio: `explosion(intensity, delay)` = immediate warhead crack (white
+    noise, band-pass 3,000 -> 850 Hz, 2 ms attack) + sub thump (110 -> 36 Hz)
+    and rolling body delayed clamp(d / 343, 0.02, 0.40) s.
+    `__audioDebug().blast`, `.blastFx`, `.shake`; `__az.blast.stats / glow`.
+  - Debug: `?blastat=s[,air|ground|water|ship[,dist]]` (warp), `?fxhold`
+    (with `&freeze`) holds the blast layers after a warp for stills.
+  - Verified (pane): glow timeline -> above the 0.92 threshold only until
+    ~0.16 s, all layers < 0.6 by 0.2 s; real MSL kill -> `MIG-29A DESTROYED`;
+    4 simultaneous kills: 7.6 ms average / 11.5 ms p95 / 16.8 ms worst
+    frame, 109 programs before and after (warm-up compiles the pools); shake
+    0.78 / 0.43 / 0.05 at 150 / 400 / 800 m, none beyond 950 m. Headless
+    (cloud sea): 0.08 s flash + ring, 0.5 s orange fireball + debris trails,
+    5 s charcoal cluster against the sky, geyser column over the sea, soot
+    plume off a hillside; zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
