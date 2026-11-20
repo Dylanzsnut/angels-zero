@@ -368,49 +368,54 @@ export function createVFX(THREE, env) {
   }
 
   /* --------------------------------------- Prandtl-Glauert vapor cone */
-  const conePts = [];
-  for (let i = 0; i <= 28; i++) { const f = i / 28; conePts.push(new THREE.Vector2(1.2 + 6.6 * Math.pow(f, 1.7), -3.4 + f * 7.2)); }
-  const coneGeo = new THREE.LatheGeometry(conePts, 72);
-  coneGeo.rotateX(Math.PI / 2);                       // lathe Y -> jet Z, narrow end toward the nose
-  const coneMat = new THREE.ShaderMaterial({
-    uniforms: { uOp: { value: 0 }, uTime: { value: 0 } },
-    vertexShader: LOG_V + `
-      varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-      void main() { vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz;
-        gl_Position = projectionMatrix * mv;
-        #include <logdepthbuf_vertex>
-      }`,
-    fragmentShader: LOG_F + `
-      uniform float uOp; uniform float uTime;
-      varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-      void main() {
-        #include <logdepthbuf_fragment>
-        float facing = abs(dot(normalize(vN), normalize(vV)));
-        float along = smoothstep(0.0, 0.6, vUv.y) * (1.0 - smoothstep(0.80, 1.0, vUv.y));
-        float streak = 0.78 + 0.22 * sin(vUv.x * 92.0 + uTime * 2.5) * sin(vUv.x * 31.0 - uTime * 1.3);
-        float a = uOp * along * (0.7 + 0.3 * pow(1.0 - facing, 1.3)) * streak;
-        gl_FragColor = vec4(0.97, 0.98, 1.0, clamp(a * 1.05, 0.0, 0.85));
-      }`,
-    transparent: true, depthWrite: false, side: THREE.DoubleSide
-  });
-  const machCone = new THREE.Mesh(coneGeo, coneMat);
-  machCone.position.set(0, -0.2, 0.9);
-  machCone.renderOrder = 5;
-  machCone.visible = false;
-  jet.add(machCone);
-  let prevMach = 0, coneT = 0;
-  const CONE_TIME = 1.5;
-  function updateMachCone(s, dt, now) {
-    if ((prevMach < 1 && s.mach >= 1) || (prevMach >= 1 && s.mach < 1)) coneT = CONE_TIME;
-    prevMach = s.mach;
-    coneT = Math.max(0, coneT - dt);
-    const burst = coneT > 0 ? smooth(coneT, 0, 0.35) * Math.sqrt(coneT / CONE_TIME) : 0;
-    const hold = 0.28 * (1 - smooth(Math.abs(s.mach - 1), 0.0, 0.035));
-    const op = force.cone ? 0.9 : Math.max(burst, hold);
-    machCone.visible = op > 0.005;
-    coneMat.uniforms.uOp.value = op;
-    coneMat.uniforms.uTime.value = now;
-    machCone.scale.setScalar(0.92 + 0.12 * (1 - coneT / CONE_TIME));
+  // Two nested open cones, apex at the nose, opening aft. All geometry and
+  // materials are created once here; updateMachCone allocates nothing per frame.
+  function coneMaterial() {
+    return new THREE.ShaderMaterial({
+      uniforms: { uOp: { value: 0 }, uTime: { value: 0 } },
+      vertexShader: LOG_V + `
+        varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+        void main() { vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz;
+          gl_Position = projectionMatrix * mv;
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: LOG_F + `
+        uniform float uOp; uniform float uTime;
+        varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+        void main() {
+          #include <logdepthbuf_fragment>
+          float facing = abs(dot(normalize(vN), normalize(vV)));
+          float along = smoothstep(0.0, 0.45, vUv.y) * (1.0 - smoothstep(0.80, 1.0, vUv.y));
+          float streak = 0.78 + 0.22 * sin(vUv.x * 92.0 + uTime * 2.5) * sin(vUv.x * 31.0 - uTime * 1.3);
+          float a = uOp * along * (0.75 + 0.25 * pow(1.0 - facing, 1.3)) * streak;
+          vec3 c = min(vec3(0.97, 0.98, 1.0), vec3(0.85));
+          gl_FragColor = vec4(c, clamp(a, 0.0, 0.85));
+        }`,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: true
+    });
+  }
+  function coneGeometry(radius, length) {
+    const g = new THREE.ConeGeometry(radius, length, 48, 1, true);
+    g.rotateX(-Math.PI / 2);                          // cone apex +Y -> -Z (nose), base -> +Z (aft)
+    g.translate(0, 0, length / 2);                    // apex at z = 0
+    return g;
+  }
+  const machConeInner = new THREE.Mesh(coneGeometry(4.2, 9.0), coneMaterial());
+  const machConeOuter = new THREE.Mesh(coneGeometry(6.0, 12.0), coneMaterial());
+  machConeInner.position.copy(machConeOuter.position).set(0, -0.1, -9.45);
+  machConeInner.renderOrder = 5; machConeOuter.renderOrder = 4;
+  machConeInner.visible = false; machConeOuter.visible = false;
+  jet.add(machConeInner, machConeOuter);
+  let coneClock = 0;
+  function updateMachCone(dt, mach, isCockpit) {
+    coneClock += dt;
+    const win = force.cone ? 1 : smooth(mach, 0.98, 1.0) * (1 - smooth(mach, 1.02, 1.05));
+    const show = !isCockpit && win > 0.005;
+    machConeInner.visible = machConeOuter.visible = show;
+    machConeInner.material.uniforms.uOp.value = win * 0.22;
+    machConeOuter.material.uniforms.uOp.value = win * 0.12;
+    machConeInner.material.uniforms.uTime.value = coneClock;
+    machConeOuter.material.uniforms.uTime.value = coneClock;
   }
 
   /* -------------------------------------------------- low-level sea spray */
@@ -1103,7 +1108,7 @@ export function createVFX(THREE, env) {
     }
 
     updateSpeedLines(s, dt, opts.firstPerson);
-    updateMachCone(s, dt, now);
+    updateMachCone(dt, s.mach, opts.firstPerson);
     updateSpray(s, dt, opts.visible);
     updateWind(dt);
     updateMist(dt);
@@ -1113,7 +1118,7 @@ export function createVFX(THREE, env) {
   return {
     attachPlume,
     setWingtips(l, r) { tipL.copy(l); tipR.copy(r); buildVapor(); },
-    clearTrails() { for (const r of ribbons) r.clear(); vaporTarget = lexTarget = 0; for (const q of sprayP) q.on = false; coneT = 0; vaporLevel = 0; },
+    clearTrails() { for (const r of ribbons) r.clear(); vaporTarget = lexTarget = 0; for (const q of sprayP) q.on = false; vaporLevel = 0; },
     update,
     get mist() { return mist; },
     cloudDensity, placeDebugCloud,
@@ -1171,7 +1176,7 @@ export function createVFX(THREE, env) {
     get vaporLevel() { return vaporLevel; },
     // Time-of-day tint for condensation (white at noon, rose at dawn, dim blue-grey at night).
     setVaporTint(c) { vaporTint.copy(c); },
-    get coneOpacity() { return coneMat.uniforms.uOp.value; },
+    get coneOpacity() { return machConeInner.material.uniforms.uOp.value; },
     get sprayCount() { return sprayP.filter(q => q.on).length; },
     clouds
   };

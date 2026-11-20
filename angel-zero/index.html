@@ -433,26 +433,26 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s51a';
-import { createBlastFX } from './src/blastfx.js?v=s51a';
-import { createHUD } from './src/hud.js?v=s51a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s51a';
-import { createCombat } from './src/combat.js?v=s51a';
-import { createEjection } from './src/eject.js?v=s51a';
-import { createAudio } from './src/audio.js?v=s51a';
-import { createRadio } from './src/radio.js?v=s51a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s51a';
-import { createLivery } from './src/livery.js?v=s51a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s51a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s51a';
-import { createCanopyFX } from './src/canopy.js?v=s51a';
-import { createNVG } from './src/nvg.js?v=s51a';
-import { createWorld, WORLD } from './src/world.js?v=s51a';
-import { createSurfaces } from './src/surfaces.js?v=s51a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s51a';
-import { createFreeLook } from './src/freelook.js?v=s51a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s51a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s51a';
+import { createVFX } from './src/vfx.js?v=s52a';
+import { createBlastFX } from './src/blastfx.js?v=s52a';
+import { createHUD } from './src/hud.js?v=s52a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s52a';
+import { createCombat } from './src/combat.js?v=s52a';
+import { createEjection } from './src/eject.js?v=s52a';
+import { createAudio } from './src/audio.js?v=s52a';
+import { createRadio } from './src/radio.js?v=s52a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s52a';
+import { createLivery } from './src/livery.js?v=s52a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s52a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s52a';
+import { createCanopyFX } from './src/canopy.js?v=s52a';
+import { createNVG } from './src/nvg.js?v=s52a';
+import { createWorld, WORLD } from './src/world.js?v=s52a';
+import { createSurfaces } from './src/surfaces.js?v=s52a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s52a';
+import { createFreeLook } from './src/freelook.js?v=s52a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s52a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s52a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -808,6 +808,12 @@ if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mo
 
 const camVelocity = new THREE.Vector3();
 let blastShake = 0, blast = null, fxHold = false;     // fxHold: ?fxhold (with &freeze) holds the blast layers after a warp, for stills                     // blast-wave camera impulse; src/blastfx.js (assigned once the world exists)
+let prevMach = 0, machArmed = true, machShake = null;
+function onMach1() {
+  machShake = { t: 0, T: 0.25, k: 1 };
+  combat.mach1T = performance.now();
+  onSfx('sonicboom');
+}
 const camFrame = new THREE.Quaternion(), _camQ = new THREE.Quaternion(), _camAlign = new THREE.Quaternion(), _camNose = new THREE.Vector3();
 const prevPlanePos = new THREE.Vector3();
 const CAM_OFFSET = new THREE.Vector3(0, 4.4, 26);
@@ -1399,6 +1405,8 @@ function updatePhysics(dt) {
   const sos = 340.3 - 0.0041 * Math.min(state.position.y, 11000);
   const mach = speed / sos;
   state.mach = mach;
+  if (prevMach < 1.0 && state.mach >= 1.0 && machArmed) { machArmed = false; onMach1(); }
+  if (state.mach < 0.97) machArmed = true;
   const alpha = Math.atan2(-_vdir.dot(_up), _vdir.dot(_fwd));
   const beta = Math.atan2(_vdir.dot(_right), _vdir.dot(_fwd));
   state.alpha = alpha; state.beta = beta;
@@ -1563,6 +1571,7 @@ function updatePhysics(dt) {
     } else if (state.radalt <= 0.5) triggerEject('crash');
     else if (world.collide(state.position, 3)) triggerEject('crash');      // bridges, towers, hangars, turbines
   }
+  prevMach = state.mach;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1848,6 +1857,15 @@ function updateCameraAndVisuals(dt, now) {
     camera.rotateX(Math.sin(tt) * a); camera.rotateY(Math.sin(tt * 1.37 + 1.1) * a * 0.8); camera.rotateZ(Math.sin(tt * 0.83 + 2.3) * a * 0.6);
     blastShake *= Math.exp(-dt * 7);
   } else blastShake = 0;
+  if (machShake) {
+    // Mach-1 buffet: rotation-only impulse, so the chase spring needs no undo.
+    machShake.t += dt;
+    const a = machShake.k * (1 - machShake.t / machShake.T);
+    if (a > 0) {
+      const ang = Math.sin(machShake.t * 2 * Math.PI * 38) * (0.9 * Math.PI / 180) * a * (firstPerson ? 0.5 : 1);
+      camera.rotateX(ang); camera.rotateZ(ang);
+    } else machShake = null;
+  }
   camera.updateMatrixWorld();
   if (blast && !fxHold) blast.update(dt);
   oceanUniforms.uCam.value.copy(camera.position);
@@ -1994,6 +2012,7 @@ function onSfx(type, pos, scale = 1) {
   else if (type === 'whoosh') audio.missileWhoosh();
   else if (type === 'steam') audio.steamHiss();
   else if (type === 'clack') audio.flareClack();
+  else if (type === 'sonicboom') audio.sonicBoom();
 }
 const vfx = createVFX(THREE, { scene, camera, jet, renderer, terrainHeight, sunDir: SUN_DIR, canyonX: world.canyonX, runway: world.runway,
   force: DEBUG && Q.has('force') ? Q.get('force').split(',') : [] });

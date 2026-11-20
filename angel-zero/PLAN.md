@@ -1122,6 +1122,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   - No new materials or shaders: program count 109 before/after. Pass 1-5
     visuals unchanged, 375 px briefing wraps cleanly, zero page / WebGL errors.
     No per-frame allocations added (director is a preallocated closure + loop).
+- [x] **Mach-1 cone, boom & buffet** *(build `s52a`, `src/vfx.js`, `src/audio.js`,
+  `src/hud.js`, `index.html`)*
+  - `updateMachCone(dt, mach, isCockpit)` replaces the old burst cone: two
+    pre-allocated open cones (inner r 4.2 / L 9, outer r 6 / L 12), apex at the
+    nose, opening aft; `transparent`, `depthWrite:false`, `DoubleSide`,
+    `toneMapped:true`, four logdepthbuf chunks, colour clamped to 0.85.
+    Opacity `smoothstep(0.98,1.0,mach) * (1 - smoothstep(1.02,1.05,mach))`,
+    inner peak 0.22 / outer 0.12, hidden in cockpit. Zero per-frame allocation.
+  - Transonic trigger in `updatePhysics`: `prevMach < 1 && mach >= 1 && machArmed`
+    → `onMach1()` (shake `{t:0,T:0.25,k:1}`, `combat.mach1T`, `onSfx('sonicboom')`);
+    re-arms below 0.97. Shake is rotation-only (0.9 deg at 38 Hz, half in cockpit).
+  - `audio.sonicBoom()`: two white-noise band-pass cracks 1,800→600 Hz at t and
+    t+0.11 (2 ms attack / 80 ms decay), sine 62→28 Hz sub peaking 1.0 at
+    12 ms and decaying to 0.001 by t+1.2, through `cockpitLP`, then
+    `duckWorld(0.55, 0.25)`; `audio.boom` = `{t, count}`.
+  - HUD banner `[ MACH 1.0 // SUPERSONIC ]` for 1400 ms after `combat.mach1T`.
+  - Verified headless: zero JS/WebGL errors, cone visible only outside Mach
+    0.98–1.05, boom counter and banner fire on the crossing, no shader-count
+    change. All `?v=` tags bumped to s52a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
