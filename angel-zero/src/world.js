@@ -244,15 +244,107 @@ export function createWorld(THREE, env) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const detail = detailTexture(256, 777);
   const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
+  // ---- Procedural patchwork farmland (GLSL; FARM.* is its exact JS twin for tree lines).
+  // Low-frequency Voronoi macro-regions (2.4 km) each pick one of 4 local road axes
+  // (0, 22, -17, 38 deg) and an origin offset; inside, 520 m columns split at a per-column
+  // ratio (0.3-0.7) and staggered 460 m rows split per row -> plots 140-380 m, never one
+  // global grid. Hedgerows (6 m) on plot edges, grey country roads on region borders,
+  // furrows along each plot's axis faded out by their screen-space frequency (no moire).
+  const lin = hex => new THREE.Color(hex);              // THREE.Color(hex) converts sRGB -> linear
+  const FARM_U = {
+    uPal: { value: [0x4a5935, 0x7e6c47, 0x3a4c2d, 0x42382c, 0x64684a].map(lin) },
+    uHedge: { value: lin(0x26331f) }, uRoad: { value: lin(0x5d5c57) }, uShore: { value: lin(0x3b3a34) },
+    uRockA: { value: lin(0x3c4349) }, uRockB: { value: lin(0x282d32) }, uPeak: { value: lin(0x6b706c) },
+    // Exclusion rectangles (xmin, xmax, zmin, zmax): ARCHIPELAGO AFB airfield + port town.
+    uAfb: { value: new THREE.Vector4(RWY.x - 300, RWY.x + 560, RWY.z0 - 450, RWY.z1 + 450) },
+    uTown: { value: new THREE.Vector4(-2050, -450, -1850, 350) }
+  };
+  const FARM_GLSL = `
+    uniform vec3 uPal[5]; uniform vec3 uHedge; uniform vec3 uRoad; uniform vec3 uShore;
+    uniform vec3 uRockA; uniform vec3 uRockB; uniform vec3 uPeak; uniform vec4 uAfb; uniform vec4 uTown;
+    float fh12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+    float rectMask(vec2 p, vec4 r, float f) {           // 1 inside the rectangle, feathered by f metres
+      vec2 d = max(vec2(r.x - p.x, r.z - p.y), vec2(p.x - r.y, p.y - r.w));
+      return 1.0 - smoothstep(0.0, f, max(d.x, d.y));
+    }
+    // out: field colour; e.x = hedge distance (m), e.y = road distance (m), e.z = furrow axis coordinate.
+    vec3 farmField(vec2 xz, out vec3 e) {
+      vec2 q = xz / 2400.0, ci = floor(q);
+      float f1 = 9.0, f2 = 9.0; vec2 rid = vec2(0.0);
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        vec2 g = ci + vec2(float(i), float(j));
+        vec2 pt = g + 0.15 + 0.7 * vec2(fh12(g), fh12(g + 17.3));
+        float d = length(q - pt);
+        if (d < f1) { f2 = f1; f1 = d; rid = g; } else if (d < f2) f2 = d;
+      }
+      float k = floor(fh12(rid + 5.1) * 4.0);
+      float ang = k < 1.0 ? 0.0 : k < 2.0 ? 0.383972 : k < 3.0 ? -0.296706 : 0.663225;
+      float ca = cos(ang), sa = sin(ang);
+      vec2 uv = vec2(ca * xz.x + sa * xz.y, -sa * xz.x + ca * xz.y) + vec2(fh12(rid + 3.7), fh12(rid + 9.2)) * 1000.0;
+      float rk = rid.x * 31.0 + rid.y;
+      float cI = floor(uv.x / 520.0), lx = uv.x - cI * 520.0;
+      float s1 = (0.3 + 0.4 * fh12(vec2(cI, rk))) * 520.0;
+      float col = cI * 2.0 + (lx < s1 ? 0.0 : 1.0);
+      float dU = min(min(lx, 520.0 - lx), abs(lx - s1));
+      float vv = uv.y + fh12(vec2(col, rk + 1.0)) * 460.0;
+      float rJ = floor(vv / 460.0), ly = vv - rJ * 460.0;
+      float s2 = (0.3 + 0.4 * fh12(vec2(rJ, col + rk))) * 460.0;
+      float row = rJ * 2.0 + (ly < s2 ? 0.0 : 1.0);
+      float dV = min(min(ly, 460.0 - ly), abs(ly - s2));
+      vec2 fid = vec2(col, row) + rid * 97.0;
+      float pk = fh12(fid);
+      int pi = int(min(4.0, floor(pk * 5.0)));
+      vec3 c = uPal[0];
+      for (int n = 1; n < 5; n++) if (n == pi) c = uPal[n];
+      // Albedo lift (the authored palette is sRGB-dark; ACES would crush it to one olive mass)
+      // + per-plot tone jitter so neighbouring plots of the same crop still read apart.
+      c *= 2.2 * (0.8 + 0.4 * fh12(fid + 4.4));
+      e = vec3(min(dU, dV), (f2 - f1) * 1200.0, fh12(fid + 2.0) > 0.5 ? uv.x : uv.y);
+      return c;
+    }`;
   // World-space triplanar detail + horizontal rock strata on steep faces (no UV stretching on cliffs).
   terrainMat.onBeforeCompile = sh => {
     sh.uniforms.uDetail = { value: detail };
+    Object.assign(sh.uniforms, FARM_U);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos; varying vec3 vWNrm;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position, 1.0)).xyz; vWNrm = normalize(mat3(modelMatrix) * normal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail; varying vec3 vWPos; varying vec3 vWNrm;')
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail; varying vec3 vWPos; varying vec3 vWNrm;\n' + FARM_GLSL)
       .replace('#include <map_fragment>', `#include <map_fragment>
+        // Land bands: shore < 14 m, raw rock where normal.y < 0.78, pale stone > 340 m,
+        // patchwork farmland on 14-310 m gentle ground (outside the airfield / town).
+        if (vWPos.y > 0.0) {
+          float ny = clamp(vWNrm.y, 0.0, 1.0);
+          float cliffK = 1.0 - smoothstep(0.72, 0.82, ny);
+          float farmK = smoothstep(13.0, 18.0, vWPos.y) * (1.0 - smoothstep(295.0, 315.0, vWPos.y)) * smoothstep(0.78, 0.86, ny)
+            * (1.0 - rectMask(vWPos.xz, uAfb, 160.0)) * (1.0 - rectMask(vWPos.xz, uTown, 140.0));
+          vec3 land = diffuseColor.rgb;
+          if (farmK > 0.001) {
+            vec3 fe;
+            vec3 fc = farmField(vWPos.xz, fe);
+            float camD = length(vWPos - cameraPosition);
+            // Far away the per-plot colours average out (no sub-pixel colour sparkle).
+            fc = mix(fc, (uPal[0] + uPal[1] + uPal[2] + uPal[3] + uPal[4]) * 0.44, smoothstep(7000.0, 16000.0, camD));
+            // Plow furrows: 7 m stripes along the plot axis, faded by screen-space frequency.
+            float ff = fwidth(fe.z) / 7.0;
+            fc *= 1.0 + 0.08 * sin(fe.z * 0.8975979) * (1.0 - smoothstep(0.12, 0.45, ff));
+            // Hedgerows (6 m) and roads (5 m), anti-aliased; thinner than a pixel -> fractional coverage.
+            float fwH = max(fwidth(fe.x), 0.01), fwR = max(fwidth(fe.y), 0.01);
+            float hedge = clamp((3.0 - fe.x) / fwH + 0.5, 0.0, 1.0);
+            hedge = mix(hedge, min(1.0, 6.0 / fwH) * 0.5, smoothstep(1.5, 6.0, fwH));
+            float road = clamp((2.5 - fe.y) / fwR + 0.5, 0.0, 1.0);
+            road = mix(road, min(1.0, 5.0 / fwR) * 0.5, smoothstep(1.5, 6.0, fwR));
+            fc = mix(fc, uHedge, hedge * 0.9);
+            fc = mix(fc, uRoad, road * 0.85);
+            land = mix(land, fc, farmK);
+          }
+          vec3 rock = mix(uRockA, uRockB, 0.5 + 0.5 * sin(vWPos.y * 0.21 + vWPos.x * 0.004 + vWPos.z * 0.003));
+          land = mix(land, rock, cliffK * smoothstep(2.0, 8.0, vWPos.y));
+          land = mix(land, uPeak, smoothstep(320.0, 360.0, vWPos.y) * (1.0 - cliffK));
+          land = mix(land, uShore, 1.0 - smoothstep(10.0, 16.0, vWPos.y));
+          diffuseColor.rgb = land;
+        }
         vec3 tw = pow(abs(vWNrm), vec3(4.0)); tw /= (tw.x + tw.y + tw.z);
         float d1 = texture2D(uDetail, vWPos.zy * 0.012).r * tw.x + texture2D(uDetail, vWPos.xz * 0.012).r * tw.y + texture2D(uDetail, vWPos.xy * 0.012).r * tw.z;
         float d2 = texture2D(uDetail, vWPos.zy * 0.0021).r * tw.x + texture2D(uDetail, vWPos.xz * 0.0021).r * tw.y + texture2D(uDetail, vWPos.xy * 0.0021).r * tw.z;
@@ -745,6 +837,146 @@ export function createWorld(THREE, env) {
 
   flushBatches();
 
+  // ---- INSTANCED FOREST GROVES ---------------------------------------------------
+  // ~3,000 low-poly conifers (22 triangles each) in ONE InstancedMesh: organic groves
+  // seeded where cluster noise is high, plus tree lines on the farmland hedgerows
+  // (FARM.edge is the exact float32 JS twin of the terrain shader's plot math).
+  // Rejected: < 16 m / > 290 m, slope > 0.42 (4-neighbour samples), the airfield
+  // + 450 m buffer and both approach funnels, the port town, bridge abutments and
+  // anything within reach of a collision box / cylinder. Trunks sink 1.5 m.
+  const FARM = (() => {
+    const f = Math.fround;
+    const fract = x => f(x - Math.floor(x));
+    function h12(px, py) {
+      let x = fract(f(px * f(0.1031))), y = fract(f(py * f(0.1031))), z = x;
+      const d = f(f(x * f(y + f(33.33))) + f(f(y * f(z + f(33.33))) + f(z * f(x + f(33.33)))));
+      x = f(x + d); y = f(y + d); z = f(z + d);
+      return fract(f(f(x + y) * z));
+    }
+    // Hedge distance (m) and road distance (m) at world (x, z) -- mirrors farmField().
+    function edge(x, z) {
+      const qx = x / 2400, qz = z / 2400, cx = Math.floor(qx), cz = Math.floor(qz);
+      let f1 = 9, f2 = 9, rx = 0, rz = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const gx = cx + i, gz = cz + j;
+        const px = gx + 0.15 + 0.7 * h12(gx, gz), pz = gz + 0.15 + 0.7 * h12(gx + 17.3, gz + 17.3);
+        const d = Math.hypot(qx - px, qz - pz);
+        if (d < f1) { f2 = f1; f1 = d; rx = gx; rz = gz; } else if (d < f2) f2 = d;
+      }
+      const k = Math.floor(h12(rx + 5.1, rz + 5.1) * 4);
+      const ang = [0, 0.383972, -0.296706, 0.663225][k];
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const u = ca * x + sa * z + h12(rx + 3.7, rz + 3.7) * 1000, v = -sa * x + ca * z + h12(rx + 9.2, rz + 9.2) * 1000;
+      const rk = rx * 31 + rz;
+      const cI = Math.floor(u / 520), lx = u - cI * 520, s1 = (0.3 + 0.4 * h12(cI, rk)) * 520;
+      const col = cI * 2 + (lx < s1 ? 0 : 1), dU = Math.min(lx, 520 - lx, Math.abs(lx - s1));
+      const vv = v + h12(col, rk + 1) * 460, rJ = Math.floor(vv / 460), ly = vv - rJ * 460, s2 = (0.3 + 0.4 * h12(rJ, col + rk)) * 460;
+      const row = rJ * 2 + (ly < s2 ? 0 : 1), dV = Math.min(ly, 460 - ly, Math.abs(ly - s2));
+      return { hedge: Math.min(dU, dV), road: (f2 - f1) * 1200, plot: h12(col + rx * 97, row + rz * 97) };
+    }
+    return { edge };
+  })();
+  const trees = (() => {
+    const rnd = env.mulberry32(60617);
+    const inRect = (x, z, r, pad = 0) => x > r.x - pad && x < r.y + pad && z > r.z - pad && z < r.w + pad;
+    const AFB = FARM_U.uAfb.value, TOWN = FARM_U.uTown.value;
+    const bSeg = bridgeInfo.map(b => [b.a.x, b.a.z, b.b.x, b.b.z]);
+    const segD = (x, z, [ax, az, bx, bz]) => {
+      const dx = bx - ax, dz = bz - az, t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1);
+      return Math.hypot(x - ax - dx * t, z - az - dz * t);
+    };
+    const reject = { low: 0, high: 0, slope: 0, afb: 0, built: 0 };
+    function ok(x, z) {
+      const y = heightAt(x, z);
+      if (y < 16) { reject.low++; return null; }
+      if (y > 290) { reject.high++; return null; }
+      const sx = (heightAt(x + 6, z) - heightAt(x - 6, z)) / 12, sz = (heightAt(x, z + 6) - heightAt(x, z - 6)) / 12;
+      if (Math.max(Math.abs(sx), Math.abs(sz)) > 0.42) { reject.slope++; return null; }
+      if (inRect(x, z, AFB, 450) || (Math.abs(x - RWY.x) < 450 && z > RWY.z0 - 3200 && z < RWY.z1 + 3200)) { reject.afb++; return null; }
+      if (inRect(x, z, TOWN, 60) || bSeg.some(s => segD(x, z, s) < 260)) { reject.built++; return null; }
+      for (const b of boxes) if (Math.abs(x - b.c.x) < Math.max(b.hx, b.hz) + 40 && Math.abs(z - b.c.z) < Math.max(b.hx, b.hz) + 40) { reject.built++; return null; }
+      for (const c of cyls) if (Math.hypot(x - c.x, z - c.z) < c.r0 + 30) { reject.built++; return null; }
+      return y;
+    }
+    const list = [];
+    const MAX = 3000;
+    // Groves: centres where the cluster noise is high (valleys, rolling hills, coast).
+    let groves = 0;
+    for (let g = 0; g < 12000 && groves < 160 && list.length < 1850; g++) {
+      const cx = WORLD.CX + (rnd() - 0.5) * WORLD.SIZE * 0.92, cz = WORLD.CZ + (rnd() - 0.5) * WORLD.SIZE * 0.92;
+      if (fbm(nVeg, cx * 0.0011, cz * 0.0011, 3) < 0.08 || ok(cx, cz) === null) continue;
+      groves++;
+      const R = 70 + rnd() * 200, n = Math.round(4 + R * 0.05 + rnd() * 8);
+      for (let i = 0; i < n * 2 && list.length < 1850; i++) {
+        const a = rnd() * Math.PI * 2, r = R * Math.sqrt(-2 * Math.log(1 - rnd() * 0.95)) * 0.5;
+        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        if (list.some(t => Math.abs(t[0] - x) < 7 && Math.abs(t[2] - z) < 7)) continue;
+        const y = ok(x, z);
+        if (y !== null) list.push([x, y, z, 0]);
+      }
+    }
+    const groveTrees = list.length;
+    // Tree lines on hedgerows of gentle farmland (some edges planted, most open).
+    for (let g = 0; g < 400000 && list.length < MAX; g++) {
+      const x = WORLD.CX + (rnd() - 0.5) * WORLD.SIZE * 0.92, z = WORLD.CZ + (rnd() - 0.5) * WORLD.SIZE * 0.92;
+      const e = FARM.edge(x, z);
+      if (e.hedge > 5 || e.road < 10 || e.plot > 0.5) continue;
+      const y = ok(x, z);
+      if (y === null || y > 280) continue;
+      list.push([x, y, z, 1]);
+    }
+    // Geometry: trunk (4-sided, 8 tris) + two stacked open cones (7 tris each) = 22 tris.
+    // Open cone as exactly `seg` triangles (THREE.ConeGeometry also emits a degenerate tri per segment).
+    const cone = (r, h, y0, seg) => {
+      const g = new THREE.BufferGeometry(), a = [];
+      for (let i = 0; i < seg; i++) {
+        const a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2;
+        a.push(0, y0 + h, 0, Math.sin(a0) * r, y0, Math.cos(a0) * r, Math.sin(a1) * r, y0, Math.cos(a1) * r);
+      }
+      g.setAttribute('position', new THREE.Float32BufferAttribute(a, 3));
+      return g;
+    };
+    const parts = [
+      [new THREE.CylinderGeometry(0.45, 0.6, 4.5, 4, 1, true).translate(0, 2.25, 0), [0.42, 0.33, 0.24]],
+      [cone(4.3, 10, 3, 7), [1, 1, 1]],
+      [cone(3.0, 9, 9, 7), [1.08, 1.1, 1.05]]
+    ];
+    const P = [], Nn = [], C = [];
+    for (const [g0, rgb] of parts) {
+      const g = g0.index ? g0.toNonIndexed() : g0; g.computeVertexNormals();
+      P.push(...g.attributes.position.array); Nn.push(...g.attributes.normal.array);
+      for (let i = 0; i < g.attributes.position.count; i++) C.push(...rgb);
+    }
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    tg.setAttribute('normal', new THREE.Float32BufferAttribute(Nn, 3));
+    tg.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+    const tm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, flatShading: true, fog: true });
+    // Distance melt: trees shrink into the ground over 6-9 km (each is ~2 px there) -> no pop.
+    tm.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vec3 tOrg = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          transformed *= 1.0 - smoothstep(6000.0, 9000.0, distance(tOrg, cameraPosition));
+        #endif`);
+    };
+    const im = new THREE.InstancedMesh(tg, tm, list.length);
+    const PAL = [0x243620, 0x2d4226, 0x354829, 0x1f2e1c].map(h => new THREE.Color(h));
+    const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), p4 = new THREE.Vector3(), s4 = new THREE.Vector3(), tc = new THREE.Color();
+    list.forEach(([x, y, z], k) => {
+      const s = 0.78 + rnd() * 0.67, w = s * (0.85 + rnd() * 0.4);
+      q4.setFromEuler(e4.set((rnd() - 0.5) * 0.06, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.06));
+      m4.compose(p4.set(x, y - 1.5, z), q4, s4.set(w, s, w));
+      im.setMatrixAt(k, m4);
+      im.setColorAt(k, tc.copy(PAL[Math.floor(rnd() * 4)]).multiplyScalar(0.9 + rnd() * 0.2));
+    });
+    im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true;
+    im.frustumCulled = false; im.matrixAutoUpdate = false; im.updateMatrix();
+    im.name = 'forest';
+    scene.add(im);
+    return { mesh: im, count: list.length, groves, groveTrees, lineTrees: list.length - groveTrees, tris: tg.attributes.position.count / 3, reject };
+  })();
+
   // ---- light-point renderer ---------------------------------------------------
   const lg = new THREE.BufferGeometry();
   lg.setAttribute('position', new THREE.Float32BufferAttribute(LP.pos, 3));
@@ -864,6 +1096,8 @@ export function createWorld(THREE, env) {
 
   return {
     terrain, props, heightAt, analyticHeight, collide, update,
+    forest: trees.mesh, farmEdge: FARM.edge,
+    get treeStats() { const { mesh, ...s } = trees; return s; },
     runway: RWY, bridges: bridgeInfo, obstacleCount: () => boxes.length + cyls.length,
     stacks, rigs: RIGS.map(([x, z]) => ({ x, z })), canyonHalf,
     sectors: SECTORS, sectorAt, isTerrainOccluded, fleetLane: FLEET_LANE, canyonCenter: CANYON_C,

@@ -1009,6 +1009,39 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     into a bank at 4,500 ft: mist 0.41 -> 0.99 over ~1 s, fog x23, CLOUD
     COVER // MISSILE LOST; frames 3-5 ms; cycling all 6 weathers and 7 times
     -> 99 programs before and after, 2.6-5.5 ms per switch.
+- [x] **Visual Pass 4: procedural patchwork farmland terrain shader + instanced forest groves** *(build `s49a`, `src/world.js`)*
+  - Terrain material (`onBeforeCompile` on the existing MeshStandardMaterial, so
+    sun / hemisphere / fog are unchanged; mesh, heights and collision untouched):
+    shore #3b3a34 below 14 m; raw striated rock #3c4349 -> #282d32 where
+    normal.y < 0.78 (cliffs, sea stacks, NW canyon walls); pale stone #6b706c
+    above 340 m; patchwork on 14-310 m gentle ground (normal.y >= 0.78).
+  - Patchwork (`farmField`): 2.4 km Voronoi macro-regions, each with one of 4
+    road axes (0 / 22 / -17 / 38 deg) and its own origin; 520 m columns split
+    0.3-0.7, staggered 460 m rows split 0.3-0.7 -> 140-380 m plots. Palette
+    olive pasture / wheat / meadow / plowed earth / fallow sage (x2.2 albedo
+    lift + per-plot 0.8-1.2 tone jitter: under the cloud-sea key light the raw
+    sRGB palette went to one near-black olive mass after ACES). 7 m plow furrows along each plot's axis
+    faded by `fwidth` (gone before they can alias); 6 m hedgerows #26331f on
+    plot edges and 5 m roads #5d5c57 on region borders, anti-aliased with
+    fractional coverage when thinner than a pixel; plot colours average out
+    7-16 km away. Masked off ARCHIPELAGO AFB (+450 m) and the port town.
+    Weather / night tone comes from the existing lights and fog.
+  - Forest: ONE InstancedMesh (+1 draw call), 2,705 conifers of 22 triangles
+    (4-sided trunk + two hand-built 7-tri cones; THREE.ConeGeometry emitted
+    degenerate tris), 77 noise-seeded groves (1,850 trees) + 855 hedgerow
+    tree-line trees placed by `FARM.edge`, a float32 JS twin of the shader's
+    plot maths. Rejected: < 16 m, > 290 m, slope > 0.42 (4 samples), airfield
+    + 450 m and both 3.2 km approach funnels, town, bridges (260 m), within
+    40 m of any collision box / 30 m of any cylinder. Trunks sunk 1.5 m;
+    scale 0.78-1.45 (14-26 m), colours #243620 / #2d4226 / #354829 / #1f2e1c
+    +/-10 %; scene fog plus a 6-9 km shrink into the ground (no pop).
+    `world.treeStats`, `world.farmEdge`.
+  - Verified (pane): 0 trees in the sea, on the airfield or off the ground
+    (all 2,705 instance bases = heightAt - 1.5); +59.5k triangles; programs
+    102 (warm-up still covers them). Headless (cloud sea): 600 ft AGL over
+    the main island -> rotated varied plots, hedges, groves + tree lines;
+    4,500 ft over the AFB window -> clean tarmac, bare rock cliffs, farmland
+    hazing out, no moire; zero page / shader errors.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 
