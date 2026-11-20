@@ -1374,6 +1374,13 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     `BAD_LINES=0`).
   - `CLAUDE.md` now has a mandatory Pre-push checklist step: bump the patch
     version and prepend a 2-4 bullet PATCH_NOTES entry before every commit/push.
+  - Follow-up: the cramped top-right dropdown was replaced with a briefing-footer
+    `[ PATCH NOTES v1.0.5 ]` button and a centered frosted modal (680 px / 75 vh,
+    z-index 100, 14 px / 1.5 type, `[ CLOSE / ESC ]`). `#patchBody` scrolls with
+    `overscroll-behavior: contain` and wheel/touchmove propagation stopped;
+    ESC handling was moved ahead of the MENU branch so it always dismisses.
+    Desktop briefing CSS was tightened and widened so the whole screen fits at
+    1280x720 and 1920x1080 without clipping; zero JS/WebGL errors at both sizes.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

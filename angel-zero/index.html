@@ -36,7 +36,7 @@
   }
 
   #menu .panel {
-    position:relative; width:min(940px, 100%); min-width:0; max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box;
+    position:relative; width:min(1180px, 100%); min-width:0; max-height:calc(100vh - 32px); overflow-y:auto; overflow-x:hidden; box-sizing:border-box;
     padding:20px 24px 18px; color:#d2ffea;
     background:
       repeating-linear-gradient(0deg, rgba(82,255,156,.025) 0 1px, transparent 1px 3px),
@@ -214,26 +214,91 @@
     #menu .btns { margin-left:0; width:100%; }
     #menu .launch, #menu .secondary-btn { width:100%; text-align:center; }
   }
+  /* Desktop briefing stays inside the viewport at 720p and 1080p. */
+  @media (min-width: 821px) {
+    #menu .panel { padding:10px 18px 8px; }
+    #menu .top-bar { padding-bottom:4px; margin-bottom:5px; }
+    #menu h1 { font-size:25px; letter-spacing:5px; }
+    #menu .eyebrow { font-size:10px; }
+    #menu .ac7-layout, #menu .hangar { gap:8px; margin-bottom:6px; }
+    #menu .sec-box { padding:5px 9px; }
+    #menu .sec-head { margin-bottom:4px; padding-bottom:3px; font-size:11px; }
+    #menu .brief { font-size:12px; line-height:1.28; margin-bottom:5px; }
+    #menu .preview-row { margin-bottom:5px; }
+    #menu .bind-grid { column-gap:10px; row-gap:0; }
+    #menu .bind { padding:0; font-size:11.5px; line-height:1.2; }
+    #menu .bind .k kbd { font-size:9.5px; padding:0 3px; }
+    #menu .bind .a { font-size:11px; }
+    #menu .hangar .sec-box { padding:5px 9px; }
+    #menu .liveries { gap:4px; }
+    #menu .liv { padding:3px 5px 2px; gap:1px; }
+    #menu .liv .sw { height:9px; }
+    #menu .liv .ln { font-size:10px; line-height:1.1; }
+    #menu .liv .ls { font-size:9px; min-height:0; line-height:1.1; }
+    #menu .action-bar { padding-top:6px; gap:6px; }
+    #menu .launch { padding:7px 18px; font-size:14px; }
+    #menu .mute { padding:4px 8px; font-size:11px; }
+    #menu .hint { display:none; }
+  }
+  @media (min-width: 821px) and (max-height: 820px) {
+    #menu .panel { padding:3px 12px; }
+    #menu .top-bar { padding-bottom:2px; margin-bottom:3px; }
+    #menu h1 { font-size:21px; letter-spacing:4px; }
+    #menu .eyebrow { display:none; }
+    #menu .tac-tags span { font-size:9px; padding:1px 5px; }
+    #menu .sec-head { font-size:10px; margin-bottom:2px; padding-bottom:2px; }
+    #menu .brief { font-size:10.5px; line-height:1.15; margin-bottom:2px; }
+    #menu .bind { font-size:10.5px; }
+    #menu .bind .a { font-size:10px; }
+    #menu .loadout-card { padding:4px 7px; }
+    #menu .station { padding:2px 5px; font-size:10px; }
+    #menu .liv { padding:2px 4px 1px; }
+    #menu .liv .sw { height:7px; }
+    #menu .liv .ln { font-size:9px; }
+    #menu .liv .ls { display:none; }
+    #menu .action-bar { padding-top:2px; }
+    #menu .launch { padding:4px 12px; font-size:12px; }
+    #menu .mute { padding:3px 6px; font-size:10px; }
+    #menu .station { padding:1px 4px; font-size:9.5px; }
+  }
+  @media (min-width: 821px) and (min-height: 900px) {
+    #menu .brief { font-size:13px; line-height:1.35; }
+    #menu .bind { font-size:12.5px; }
+    #menu .liv { padding:4px 6px 3px; }
+    #menu .liv .ln { font-size:10.5px; }
+  }
   @media (max-width: 480px) { #menu .stations { grid-template-columns:minmax(0, 1fr); } #menu .bind .k { white-space:normal; } }
 
-  /* Translucent glass pills (no opaque box) for the top-right HUD buttons. */
-  #hBadge, #patchButton { position:fixed; z-index:30; top:14px; padding:5px 14px; border-radius:999px; cursor:pointer;
+  /* Translucent glass pill for the top-right HUD controls button. */
+  #hBadge { position:fixed; z-index:30; top:14px; right:18px; padding:5px 14px; border-radius:999px; cursor:pointer; display:none;
     background:linear-gradient(180deg, rgba(200,255,228,.10), rgba(120,255,190,.03)); backdrop-filter:blur(5px) saturate(1.2);
     border:1px solid rgba(110,255,175,.28); box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 2px 10px rgba(0,0,0,.18);
     color:#c8ffe3; font:600 12px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:2px; text-shadow:0 0 6px rgba(60,255,150,.35);
     transition:background .15s, border-color .15s; }
-  #hBadge { right:18px; display:none; }
-  #patchButton { right:160px; color:#9dffcc; }
   #hBadge kbd { font:700 10px 'Share Tech Mono',monospace; color:#03140b; background:rgba(82,255,156,.85); padding:0 5px; margin-right:6px; border-radius:6px; }
-  #hBadge:hover, #patchButton:hover { background:linear-gradient(180deg, rgba(200,255,228,.2), rgba(120,255,190,.08)); border-color:rgba(130,255,190,.55); }
-  #patchPanel { position:fixed; z-index:45; top:52px; right:18px; width:min(360px, calc(100vw - 36px)); max-height:64vh; overflow-y:auto; display:none; box-sizing:border-box; background:rgba(4,14,22,.92); backdrop-filter:blur(8px); border:1px solid rgba(82,255,156,.45); color:#b4f7d4; font:500 13px 'Rajdhani','Share Tech Mono',monospace; line-height:1.5; padding:16px 18px; box-shadow:0 14px 44px rgba(0,0,0,.72); }
-  #patchPanel.open { display:block; }
+  #hBadge:hover { background:linear-gradient(180deg, rgba(200,255,228,.2), rgba(120,255,190,.08)); border-color:rgba(130,255,190,.55); }
+
+  /* Centered, high-contrast patch-notes modal (above menu + HUD layers). */
+  #patchOverlay { position:fixed; inset:0; z-index:100; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;
+    background:rgba(8,12,16,.94); backdrop-filter:blur(6px); pointer-events:auto; }
+  #patchOverlay.open { display:flex; }
+  #patchPanel { position:relative; display:flex; flex-direction:column; width:100%; max-width:680px; max-height:75vh; box-sizing:border-box;
+    background:rgba(8,16,22,.97); border:1px solid rgba(82,255,156,.6);
+    box-shadow:0 24px 80px rgba(0,0,0,.8), 0 0 0 1px rgba(82,255,156,.12) inset;
+    color:#d6ffe9; font:500 14px/1.5 'Rajdhani','Share Tech Mono',monospace; }
+  #patchPanel .patch-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex:none;
+    padding:14px 18px; border-bottom:1px solid rgba(82,255,156,.32); }
+  #patchPanel h2 { margin:0; font-size:15px; font-weight:700; letter-spacing:2.5px; color:#ecfff5; }
+  #patchBody { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; pointer-events:auto; padding:14px 18px 18px; }
+  #patchPanel h3 { margin:14px 0 5px; font-size:14px; font-weight:700; color:#6fffb2; letter-spacing:1.4px; }
+  #patchPanel h3:first-child { margin-top:0; }
+  #patchPanel ul { margin:0 0 8px; padding-left:20px; }
+  #patchPanel li { margin:0 0 4px; color:#d6ffe9; }
+  #patchPanel .patch-close { flex:none; padding:6px 12px; cursor:pointer; background:rgba(4,20,26,.8);
+    border:1px solid rgba(82,255,156,.55); color:#c8ffe3; font:700 12px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:1.8px; }
+  #patchPanel .patch-close:hover { border-color:#52ff9c; color:#ecfff5; background:rgba(16,48,38,.9); }
   .tod-btn { background:rgba(4,16,24,.6); border:1px solid rgba(82,255,156,.55); color:#9dffcc; font:600 11px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:1.6px; padding:3px 9px; cursor:pointer; }
   .tod-btn:hover { background:rgba(16,48,38,.88); color:#e6fff2; }
-  #patchPanel h2 { margin:0 0 10px; font-size:15px; font-weight:700; letter-spacing:2.5px; color:#ecfff5; }
-  #patchPanel h3 { margin:12px 0 4px; font-size:13px; font-weight:700; color:#52ff9c; letter-spacing:1.4px; }
-  #patchPanel ul { margin:0; padding-left:18px; }
-  #patchPanel .close { cursor:pointer; float:right; color:#52ff9c; font-weight:700; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -364,6 +429,7 @@
         </div>
         <div class="btns">
           <button class="secondary-btn" id="restartBtn" type="button">[ RESTART MISSION ]</button>
+          <button class="mute" id="patchButton" type="button">[ PATCH NOTES v1.0.5 ]</button>
           <button class="launch pulse" id="launchBtn" type="button">[ LAUNCH SORTIE ]</button>
         </div>
       </div>
@@ -388,11 +454,14 @@
     </div>
   </div>
   <button id="hBadge" type="button"><kbd>H</kbd>CONTROLS</button>
-  <button id="patchButton">PATCH NOTES v1.0.5</button>
-  <div id="patchPanel">
-    <span class="close" id="patchClose">[X]</span>
-    <h2>ANGELS ZERO // PATCH NOTES</h2>
-    <div id="patchList"></div>
+  <div id="patchOverlay">
+    <div id="patchPanel" role="dialog" aria-modal="true" aria-labelledby="patchTitle">
+      <div class="patch-head">
+        <h2 id="patchTitle">ANGELS ZERO // PATCH NOTES</h2>
+        <button class="patch-close" id="patchClose" type="button">[ CLOSE / ESC ]</button>
+      </div>
+      <div id="patchBody"><div id="patchList"></div></div>
+    </div>
   </div>
 
 <script type="module">
@@ -1327,6 +1396,7 @@ const keyOf = e => (e.altKey && /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLo
 addEventListener('keydown', e => {
   if (freeLook.onKey(e, true)) return;
   const k = keyOf(e);
+  if (k === 'escape' && patchOverlay.classList.contains('open')) { setPatchOpen(false); return; }
   if (e.altKey && appMode === 'PLAY') e.preventDefault();
   if (appMode === 'DEBRIEF') {                         // debrief: Enter = primary action, B = briefing; no flight input
     if (k === 'enter' && !['dbBrief', 'dbReplay', 'dbEquip'].includes(document.activeElement?.id)) { e.preventDefault(); replaySortie(dbEquipId); }
@@ -1345,10 +1415,7 @@ addEventListener('keydown', e => {
     if (e.code === 'Space') e.preventDefault();
     return;
   }
-  if ((k === 'h' || k === 'escape') && !e.repeat) {
-    if (k === 'escape' && patchPanel.classList.contains('open')) { setPatchOpen(false); return; }
-    pauseSim(); return;
-  }
+  if ((k === 'h' || k === 'escape') && !e.repeat) { pauseSim(); return; }
   if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setView(!firstPerson); return; }
   // (A / D are rudder only: the old double-tap AA / DD barrel-roll macro is gone; Q rolls.)
   if (k === 'w') keys.w = true;
@@ -1414,15 +1481,24 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mcam.held = false; freeLook.release(); });
 
 const patchButton = document.getElementById('patchButton');
-const patchPanel = document.getElementById('patchPanel');
+const patchOverlay = document.getElementById('patchOverlay');
+const patchBody = document.getElementById('patchBody');
 const BUILD_VERSION = PATCH_NOTES[0].version;
 renderPatchNotes(document.getElementById('patchList'));
-patchButton.textContent = 'PATCH NOTES ' + BUILD_VERSION;
+patchButton.textContent = '[ PATCH NOTES ' + BUILD_VERSION + ' ]';
 document.getElementById('buildChip').textContent = BUILD_VERSION;
-function setPatchOpen(open) { patchPanel.classList.toggle('open', open); uiModal = open; if (open) keys.fire = false; }
-for (const el of [patchButton, patchPanel]) el.addEventListener('mousedown', e => e.stopPropagation());
-patchButton.addEventListener('click', e => { e.stopPropagation(); setPatchOpen(!patchPanel.classList.contains('open')); });
+function setPatchOpen(open) { patchOverlay.classList.toggle('open', open); uiModal = open; if (open) keys.fire = false; }
+if (DEBUG && Q.has('patchopen')) setPatchOpen(true);                // screenshot hook: open the modal at boot
+for (const el of [patchButton, patchOverlay]) el.addEventListener('mousedown', e => e.stopPropagation());
+patchButton.addEventListener('click', e => { e.stopPropagation(); setPatchOpen(!patchOverlay.classList.contains('open')); });
 document.getElementById('patchClose').addEventListener('click', e => { e.stopPropagation(); setPatchOpen(false); });
+patchOverlay.addEventListener('click', e => { if (e.target === patchOverlay) setPatchOpen(false); });
+// Modal scrolling must never reach a global wheel / touch handler. Non-passive
+// defaults are untouched, so the body still scrolls normally.
+for (const ev of ['wheel', 'touchmove']) {
+  patchOverlay.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+  patchBody.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+}
 
 const AX_X = new THREE.Vector3(1, 0, 0), AX_Y = new THREE.Vector3(0, 1, 0), AX_Z = new THREE.Vector3(0, 0, 1);
 const _dq = new THREE.Quaternion(), _fwd = new THREE.Vector3(), _up = new THREE.Vector3(), _right = new THREE.Vector3();
