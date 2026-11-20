@@ -513,7 +513,15 @@ export function createVFX(THREE, env) {
   const runway = env.runway || null;
   const cr = rng(31337);
   const ARENA = { x: 0, z: -3000, r: 12500 };
-  const DECK_BASE = 9000 * FT, DECK_THICK = 4000 * FT, DECK_SCALE = 9000;
+  // Deck slab: 9,000-13,000 ft normally; in DAYLIGHT // CLOUD SEA it drops to the
+  // 3,500-5,800 ft cloud-sea band and opens a soft hole over the arena (where the
+  // instanced cloud-sea banks take over), so the sea runs on to the horizon haze.
+  const DECK_HI = [9000 * FT, 4000 * FT], DECK_SEA = [3500 * FT, 2300 * FT];
+  let deckBase = DECK_HI[0], deckThick = DECK_HI[1];
+  const DECK_SCALE = 9000;
+  // Sea mode: the deck fills the whole band, with feathered sky windows (list set below).
+  const deckWin = { k: 0, list: [] };
+  let cloudSea = false;
   const NEAR0 = 40, NEAR1 = 180;
   const sunCol = new THREE.Color(1, 1, 1);
   let sunK = 1;
@@ -574,8 +582,11 @@ export function createVFX(THREE, env) {
   let deckThr = 0.4;                                     // coverage threshold (weather)
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   function deckDensity(x, y, z) {
-    const h = (y - DECK_BASE) / DECK_THICK;
+    const h = (y - deckBase) / deckThick;
     if (h <= 0 || h >= 1) return 0;
+    let hole = 1;
+    if (deckWin.k > 0) for (const w of deckWin.list) hole = Math.min(hole, ss(w.r - 700, w.r + 1400, Math.hypot(x - w.x, z - w.z)));
+    if (hole <= 0) return 0;
     const u = (x + windOff.x) / DECK_SCALE, v = (z + windOff.z) / DECK_SCALE;
     // Coverage field + pseudo-3-D billows / erosion (2-D slices blended by height:
     // features change with altitude in no fixed direction -> no extruded columns,
@@ -587,7 +598,7 @@ export function createVFX(THREE, env) {
     if (cov <= 0) return 0;
     let d = cov * ss(0, 0.2, h);
     d -= slice3(nB, u * 13, v * 13, h * 9.0) * 0.3 * (1 - 0.4 * h);
-    return Math.min(1, Math.max(0, d * 1.6));
+    return Math.min(1, Math.max(0, d * 1.6)) * hole;
   }
   // Pseudo-3-D noise: blend two 2-D slices (hashed offsets) by the fractional depth z.
   function slice3(arr, u, v, z) {
@@ -601,6 +612,9 @@ export function createVFX(THREE, env) {
   }
   const DECK_GLSL = `
     uniform sampler2D uNoise; uniform float uThr; uniform vec3 uWind;
+    uniform vec2 uDeckY;                                   // base, thickness (m)
+    uniform vec3 uWin[3];                                  // sky windows: centre xz, radius (sea mode)
+    uniform float uHoleK;
     // Explicit mip level (set per ray step from distance): implicit derivatives are
     // meaningless inside a dithered raymarch loop and picked streaky, blurry mips.
     float gLod = 0.0;
@@ -614,8 +628,11 @@ export function createVFX(THREE, env) {
       return clamp(0.5 + (m - 0.5) * inversesqrt(1.0 - 2.0 * w + 2.0 * w * w), 0.0, 1.0);
     }
     float deckDensity(vec3 p) {
-      float h = (p.y - ${DECK_BASE.toFixed(1)}) / ${DECK_THICK.toFixed(1)};
+      float h = (p.y - uDeckY.x) / uDeckY.y;
       if (h <= 0.0 || h >= 1.0) return 0.0;
+      float hole = 1.0;
+      if (uHoleK > 0.0) for (int i = 0; i < 3; i++) hole = min(hole, ssf(uWin[i].z - 700.0, uWin[i].z + 1400.0, length(p.xz - uWin[i].xy)));
+      if (hole <= 0.0) return 0.0;
       vec2 uv = (p.xz + uWind.xz) / ${DECK_SCALE.toFixed(1)};
       float s = 0.55 * NOISE(uv).r + 0.3 * slice3(uv * 2.7 + vec2(0.37, 0.61), h * 3.6).g
         + 0.15 * (slice3(uv * 6.1, h * 6.5).g - 0.5);
@@ -624,13 +641,15 @@ export function createVFX(THREE, env) {
       if (cov <= 0.0) return 0.0;
       float d = cov * ssf(0.0, 0.2, h);
       d -= slice3(uv * 13.0, h * 9.0).b * 0.3 * (1.0 - 0.4 * h);
-      return clamp(d * 1.6, 0.0, 1.0);
+      return clamp(d * 1.6, 0.0, 1.0) * hole;
     }`;
 
   // --- (1) raymarched sky deck -------------------------------------------
   const deckMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uNoise: { value: null }, uThr: { value: deckThr }, uWind: { value: new THREE.Vector3() },
+      uDeckY: { value: new THREE.Vector2(DECK_HI[0], DECK_HI[1]) }, uWin: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, uHoleK: { value: 0 },
+      uCap: { value: 8 },
       uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
       uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1 }, uFlash: { value: 0 },
       uCamFwd: { value: new THREE.Vector3(0, 0, -1) }, uFrame: { value: 0 }
@@ -654,12 +673,12 @@ export function createVFX(THREE, env) {
       #include <logdepthbuf_pars_fragment>
       ${DECK_GLSL}
       uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain; uniform float uFlash;
-      uniform vec3 uCamFwd; uniform float uFrame;
+      uniform vec3 uCamFwd; uniform float uFrame; uniform float uCap;
       varying vec3 vWorld;
       float hg(float c, float g) { float g2 = g * g; return (1.0 - g2) / (12.566 * pow(1.0 + g2 - 2.0 * g * c, 1.5)); }
       void main() {
         vec3 ro = cameraPosition, rd = normalize(vWorld - cameraPosition);
-        float y0 = ${DECK_BASE.toFixed(1)}, y1 = ${(DECK_BASE + DECK_THICK).toFixed(1)};
+        float y0 = uDeckY.x, y1 = uDeckY.x + uDeckY.y;
         float t0, t1;
         if (abs(rd.y) < 1e-4) {
           if (ro.y < y0 || ro.y > y1) discard;
@@ -714,6 +733,8 @@ export function createVFX(THREE, env) {
         float alpha = 1.0 - T;
         if (alpha < 0.004) discard;
         col = col / alpha * uGain;
+        float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        if (lum > uCap) col *= uCap / lum;                               // tops never reach the bloom threshold
         float dist = tHit > 0.0 ? tHit : t0;
         #ifdef USE_FOG
           float af = 1.0 - exp(-fogDensity * fogDensity * dist * dist * 0.55);   // aerial perspective
@@ -765,6 +786,64 @@ export function createVFX(THREE, env) {
         str: low ? 1.35 + cr() * 0.35 : 1.0 + cr() * 0.2, al: 1, bi });
     }
   }
+  // --- (2b) DAYLIGHT // CLOUD SEA: 34 broad overlapping cumulus decks, 3,500-5,800 ft.
+  // Clustered into sweeping fields around 6 field centres; every deck is 3-5x wider
+  // than tall; three sky "windows" stay open over ARCHIPELAGO AFB, the Bridge Strait
+  // and the NW Canyon. Pre-built at load (hidden) so switching presets only flips flags.
+  const SEA_LO = 3500 * FT, SEA_HI = 5800 * FT;
+  const SEA_WINDOWS = [
+    { x: runway ? runway.x : 900, z: runway ? (runway.z0 + runway.z1) / 2 : 100, r: 2600 },   // ARCHIPELAGO AFB
+    { x: -4350, z: -3880, r: 2000 },                                                         // Bridge Strait (bridge A)
+    { x: -5500, z: -7200, r: 2300 }                                                          // NW Canyon
+  ];
+  deckWin.list = SEA_WINDOWS;
+  const seaStart = banks.length;
+  {
+    const sr = rng(90210);
+    const fields = [];
+    for (let g = 0; fields.length < 6 && g < 4000; g++) {
+      const a = sr() * Math.PI * 2, rr = ARENA.r * 0.85 * Math.sqrt(sr());
+      const fx = ARENA.x + Math.cos(a) * rr, fz = ARENA.z + Math.sin(a) * rr;
+      if (SEA_WINDOWS.some(w => Math.hypot(fx - w.x, fz - w.z) < w.r + 1800)) continue;
+      if (fields.some(f => Math.hypot(f.x - fx, f.z - fz) < 6500)) continue;
+      fields.push({ x: fx, z: fz, yaw: sr() * Math.PI });
+    }
+    const sea = [];
+    for (let g = 0; sea.length < 34 && g < 20000; g++) {
+      const f = fields[Math.floor(sr() * fields.length)];
+      // Elongated field: banks spread along the field's sweep direction.
+      const u = (sr() + sr() + sr() - 1.5) * 5200, v = (sr() + sr() - 1) * 2600;
+      const x = f.x + u * Math.cos(f.yaw) - v * Math.sin(f.yaw), z = f.z + u * Math.sin(f.yaw) + v * Math.cos(f.yaw);
+      if (Math.hypot(x - ARENA.x, z - ARENA.z) > ARENA.r) continue;
+      const W = 1400 + sr() * 1800;
+      const H = Math.min(680, Math.max(380, W / (3 + sr() * 2)));              // 3-5x wider than tall
+      const D = W * (0.5 + sr() * 0.35);
+      if (SEA_WINDOWS.some(w => Math.hypot(x - w.x, z - w.z) < w.r + W * 0.5)) continue;
+      if (sea.some(b => Math.hypot(b.x - x, b.z - z) < (b.W + W) * 0.28)) continue;   // overlap, but no stacking
+      const base = SEA_LO + sr() * Math.max(0, SEA_HI - SEA_LO - H);
+      const yaw = f.yaw + (sr() - 0.5) * 0.9;
+      sea.push({ x, z, W, D, H, base, yaw, c: Math.cos(yaw), s: Math.sin(yaw), rank: sr(), on: false, sea: true });
+    }
+    for (const b of sea) {
+      banks.push(b);
+      const bi = banks.length - 1;
+      const n = Math.max(22, Math.min(46, Math.round(b.W * b.D / 150000)));
+      for (let i = 0; i < n; i++) {
+        // 45 % flat base sheet, the rest billowing crowns pulled inward as they rise.
+        const low = i < n * 0.45;
+        const h = low ? 0.1 + sr() * 0.25 : 0.38 + Math.pow(sr(), 0.85) * 0.5;
+        const shrink = low ? 0.95 : 1 - 0.5 * (h - 0.3);
+        const ang = sr() * Math.PI * 2, rad = Math.sqrt(sr()) * shrink;
+        const lx = Math.cos(ang) * rad * b.W * 0.44, lz = Math.sin(ang) * rad * b.D * 0.44;
+        const size = b.H * (low ? 0.95 + sr() * 0.35 : 0.7 + sr() * 0.4) + 140;
+        // Keep the visible card (~0.36 x size below centre) above the deck base: flat bellies, open air below.
+        const y = Math.max(b.base + h * b.H, b.base + size * 0.36);
+        puffs.push({ x: b.x + lx * b.c - lz * b.s, y: Math.min(y, SEA_HI + 120), z: b.z + lx * b.s + lz * b.c, s: size, h,
+          rot: sr() * Math.PI * 2, tile: Math.floor(sr() * 4), str: low ? 1.5 + sr() * 0.4 : 1.1 + sr() * 0.25, al: 1, bi });
+      }
+    }
+  }
+  const seaCount = banks.length - seaStart;
   // Debug slot: a reserved bank (hidden until placed) for deterministic tests.
   const DBG_N = 36, dbgStart = puffs.length, dbgBank = { x: 0, z: 0, W: 1, D: 1, H: 1, base: -1e5, yaw: 0, c: 1, s: 0, rank: 0, on: false, dbg: true };
   banks.push(dbgBank);
@@ -819,7 +898,8 @@ export function createVFX(THREE, env) {
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uAtlas: { value: null }, uWind: { value: new THREE.Vector3() }, uOpacity: { value: 0.96 },
       uTop: { value: new THREE.Color(0xffffff) }, uBelly: { value: new THREE.Color(0x6e89a8) }, uGain: { value: 1 }, uFlash: { value: 0 },
-      uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uNear: { value: new THREE.Vector2(NEAR0, NEAR1) }
+      uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uNear: { value: new THREE.Vector2(NEAR0, NEAR1) },
+      uCap: { value: 8 }
     }]),
     vertexShader: `
       #include <common>
@@ -848,7 +928,7 @@ export function createVFX(THREE, env) {
       #include <logdepthbuf_pars_fragment>
       uniform sampler2D uAtlas; uniform float uOpacity;
       uniform vec3 uTop; uniform vec3 uBelly; uniform float uGain; uniform float uFlash;
-      uniform vec3 uSunV; uniform vec3 uSunCol; uniform vec2 uNear;
+      uniform vec3 uSunV; uniform vec3 uSunCol; uniform vec2 uNear; uniform float uCap;
       varying vec2 vUv; varying vec2 vQ; varying float vH; varying float vAlpha; varying vec3 vView;
       float hg(float c, float g) { float g2 = g * g; return (1.0 - g2) / (12.566 * pow(1.0 + g2 - 2.0 * g * c, 1.5)); }
       void main() {
@@ -870,6 +950,8 @@ export function createVFX(THREE, env) {
         float rim = hg(cosT, 0.6) * 4.0 * (1.0 - smoothstep(0.12, 0.6, a)) * (0.5 + 0.5 * vH);
         vec3 col = (amb * 0.6 + sun * 0.62 + uSunCol * rim * 0.9) * mix(1.06, 0.92, smoothstep(0.3, 0.95, a));
         col = col * uGain + vec3(0.75, 0.8, 1.0) * uFlash * (0.45 + 0.55 * (1.0 - vH));
+        float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        if (lum > uCap) col *= uCap / lum;                               // crisp white, never blooms
         gl_FragColor = vec4(col, a * uOpacity * vAlpha * near);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -906,10 +988,30 @@ export function createVFX(THREE, env) {
   let coverage = 1;
   function setCoverage(k) {
     coverage = k;
-    for (const b of banks) if (!b.dbg) b.on = b.rank < 0.5 + 0.5 * k;    // CLEAR ~65 %, SCATTERED ~86 %, overcast all
-    deckThr = 0.6 - 0.4 * k;                                              // CLEAR 0.48 (fair-weather cumulus) / SCATTERED 0.31 / OVERCAST 0.20 (near-solid)
-    deckMat.uniforms.uThr.value = deckThr;
+    applyCloudLayout();
+  }
+  // Cloud layout for the current coverage + mode. Flags / uniforms only: no geometry or
+  // shader rebuilds, so cycling presets never stalls.
+  function applyCloudLayout() {
+    const k = coverage;
+    for (const b of banks) {
+      if (b.dbg) continue;
+      b.on = cloudSea ? !!b.sea : !b.sea && b.rank < 0.5 + 0.5 * k;    // CLEAR ~65 %, SCATTERED ~86 %, overcast all
+    }
+    // Sea mode: the deck drops to 3,500-5,800 ft beyond the arena with a broken-cumulus threshold.
+    deckThr = cloudSea ? 0.36 : 0.6 - 0.4 * k;                          // CLEAR 0.48 / SCATTERED 0.31 / OVERCAST 0.20
+    [deckBase, deckThick] = cloudSea ? DECK_SEA : DECK_HI;
+    deckWin.k = cloudSea ? 1 : 0;
+    const u = deckMat.uniforms;
+    u.uThr.value = deckThr; u.uDeckY.value.set(deckBase, deckThick); u.uHoleK.value = deckWin.k;
+    deckWin.list.forEach((w, i) => u.uWin.value[i].set(w.x, w.z, w.r));
+    u.uCap.value = cloudMat.uniforms.uCap.value = cloudSea ? 0.86 : 8;
     sortClouds(0, true);
+  }
+  function setCloudSea(on) {
+    if (cloudSea === !!on) return;
+    cloudSea = !!on;
+    applyCloudLayout();
   }
   // 0 outside .. 1 deep inside a bank or the deck (wind-drifted).
   function cloudDensity(p) {
@@ -923,7 +1025,7 @@ export function createVFX(THREE, env) {
       const d2 = lx * lx + ly * ly + lz * lz;
       if (d2 < 1) best = Math.max(best, smooth(1 - Math.sqrt(d2), 0, 0.45));
     }
-    if (p.y > DECK_BASE && p.y < DECK_BASE + DECK_THICK) best = Math.max(best, Math.min(1, deckDensity(p.x, p.y, p.z) * 1.4));
+    if (p.y > deckBase && p.y < deckBase + deckThick) best = Math.max(best, Math.min(1, deckDensity(p.x, p.y, p.z) * 1.4));
     return best;
   }
   let mist = 0, cloudTime = 0, frame = 0;
@@ -944,7 +1046,7 @@ export function createVFX(THREE, env) {
     deckMat.uniforms.uFrame.value = (frame++ % 64);
     cloudMat.uniforms.uSunV.value.copy(_sv.copy(SUN).normalize().transformDirection(camera.matrixWorldInverse));
     // Draw order: below the deck it is behind the banks; above it, the banks are under it.
-    const above = camera.position.y > DECK_BASE + DECK_THICK * 0.5;
+    const above = camera.position.y > deckBase + deckThick * 0.5;
     deck.renderOrder = above ? 3 : 1; clouds.renderOrder = 2;
   }
 
@@ -1016,6 +1118,18 @@ export function createVFX(THREE, env) {
     get mist() { return mist; },
     cloudDensity, placeDebugCloud,
     get cloudCount() { return banks.filter(b => b.on && !b.dbg).length; },
+    setCloudSea, get cloudSea() { return cloudSea; },
+    // Cloud-sea layout stats: bank count, size ranges (m), base / top ft, min clearance from the windows.
+    get seaStats() {
+      const s = banks.filter(b => b.sea);
+      const win = SEA_WINDOWS.map(w => Math.round(Math.min(...s.map(b => Math.hypot(b.x - w.x, b.z - w.z) - b.W * 0.5)) - w.r));
+      return { banks: seaCount, on: s.filter(b => b.on).length, W: [Math.round(Math.min(...s.map(b => b.W))), Math.round(Math.max(...s.map(b => b.W)))],
+        H: [Math.round(Math.min(...s.map(b => b.H))), Math.round(Math.max(...s.map(b => b.H)))],
+        aspect: [+Math.min(...s.map(b => b.W / b.H)).toFixed(2), +Math.max(...s.map(b => b.W / b.H)).toFixed(2)],
+        baseFt: Math.round(Math.min(...s.map(b => b.base)) / FT), topFt: Math.round(Math.max(...s.map(b => b.base + b.H)) / FT),
+        puffLowFt: Math.round(Math.min(...puffs.filter(q => banks[q.bi].sea).map(q => q.y - q.s * 0.36)) / FT), windowClear: win,
+        deck: { base: Math.round(deckBase / FT), top: Math.round((deckBase + deckThick) / FT), windows: deckWin.k, thr: deckThr } };
+    },
     // Debug: bank layout (centre, width x depth x height, base, yaw) and the deck threshold.
     get cloudBanks() { return banks.filter(b => !b.dbg).map(b => ({ x: Math.round(b.x), z: Math.round(b.z), W: Math.round(b.W), D: Math.round(b.D), H: Math.round(b.H), base: Math.round(b.base), on: b.on })); },
     get deckThreshold() { return deckThr; },
@@ -1028,7 +1142,7 @@ export function createVFX(THREE, env) {
     // low = (unused), mid = cumulus banks shown, high = deck coverage % (sampled).
     get cloudLayers() {
       let n = 0, hit = 0;
-      for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) { n++; if (deckDensity(ARENA.x + (i - 12) * 1500, DECK_BASE + DECK_THICK * 0.3, ARENA.z + (j - 12) * 1500) > 0.2) hit++; }
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) { n++; if (deckDensity(ARENA.x + (i - 12) * 1500, deckBase + deckThick * 0.3, ARENA.z + (j - 12) * 1500) > 0.2) hit++; }
       return { low: 0, mid: banks.filter(b => b.on && !b.dbg).length, high: Math.round(100 * hit / n) };
     },
     // Preset colours from src/atmosphere.js: cloud top / belly + sun colour and strength.

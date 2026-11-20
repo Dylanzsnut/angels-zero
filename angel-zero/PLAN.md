@@ -975,6 +975,40 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     over 2 s with the trail fading out; +4 km teleport -> buffer reset. Frame
     ~6-7 ms. Headless: smooth unkinked arcs from both tips (side orbit and
     chase), day / night / overcast, zero page errors.
+- [x] **Visual Pass 3: `DAYLIGHT // CLOUD SEA` theatre preset + cohesive cumulus cloud sea** *(build `s48a`, `src/atmosphere.js`, `src/weather.js`, `src/vfx.js`, `index.html`)*
+  - Theatre = atmosphere preset `CLOUD_SEA` + weather `CLOUD_SEA`, selected
+    together: first entry of both `[ CYCLE TIME ]` (`CLOUD SEA`) and
+    `[ CYCLE WEATHER ]` (`DAYLIGHT // CLOUD SEA`) and the opening default.
+    Picking another weather leaves the theatre (time -> RANDOM) and vice
+    versa; random rolls never pick it. All other presets unchanged.
+    `?tod=CLOUD_SEA` / `?wx=CLOUD_SEA` (a pinned `?wx=` keeps its weather).
+  - Lighting: exact (un-desaturated, `exact: 1`) cobalt zenith #2f5b8f ->
+    azure #5180b3 -> pale mist #95b1cc; that same horizon colour is the
+    lower dome, `FogExp2` and the ocean far fade (one shared Color). Fixed
+    sun 48 deg el / az 332 (forward-left of the opening north heading), key
+    #fff6e6 x 2.85, cool fill hemi #6f94bc / #2a343b x 1.05, ambient 0.2.
+    Switching is uniforms / light values only.
+  - Cloud sea: 34 pre-built (hidden until the theatre) broad cumulus decks in
+    6 elongated fields, W 1.41-3.18 km, H 380-680 m, aspect 3.1-5.0, bases /
+    tops 3,504-5,799 ft, overlapping but never stacked, 22-46 puffs each
+    (flat 45 % base sheet + billowing crowns; card bottoms kept above the
+    base so the air below 2,800 ft stays open). Three sky windows: ARCHIPELAGO
+    AFB (r 2.6 km), Bridge Strait (bridge A, r 2.0 km), NW Canyon (r 2.3 km).
+  - The raymarched deck drops to the same 3,500-5,800 ft band (uniforms
+    `uDeckY`, broken-cumulus threshold 0.36, ~34 % coverage at mid-height)
+    and fills it to the horizon with feathered holes at the three windows
+    (`uWin[3]`), so the sea is continuous out to the haze; its JS density
+    twin matches (inCloud, fog ramp, canopy moisture, missile lock break).
+  - Shading: tops #e6ebf0, bellies #64778c shading to ~#4a5d73 in the bank
+    shadow, HG silver rim toward the sun, existing 180 -> 40 m proximity
+    fade; both cloud shaders now cap luminance at 0.86 in this theatre
+    (`uCap`, 8 = off elsewhere) so tops never reach the 0.92 bloom threshold.
+  - Verified (pane, 1280x720): seaStats 34 banks / aspect 3.08-4.96 / 3,504-
+    5,799 ft / windows clear; fog exactly #95b1cc; 6,800 ft: continuous
+    sunlit sea with breaks; 2,000 ft: bellies + blue breaks overhead; flying
+    into a bank at 4,500 ft: mist 0.41 -> 0.99 over ~1 s, fog x23, CLOUD
+    COVER // MISSILE LOST; frames 3-5 ms; cycling all 6 weathers and 7 times
+    -> 99 programs before and after, 2.6-5.5 ms per switch.
 - Note: weapons live in `src/combat.js` (no separate `weapons.js`); no
   functional gap.
 

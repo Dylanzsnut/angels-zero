@@ -19,6 +19,18 @@ const D2R = Math.PI / 180;
 
 // Colours are sRGB hex; scalars are linear multipliers.
 export const PRESETS = {
+  // Flagship theatre: high-contrast midday over a cumulus cloud sea. Fixed sun ~48 deg,
+  // forward-left of the opening heading; exact (un-desaturated) cobalt -> azure -> pale
+  // mist gradient, the same #95b1cc in the lower dome, the fog and the ocean far fade.
+  // Warm-white key below the bloom threshold, cool low fill so undersides stay shadowed.
+  CLOUD_SEA: {
+    label: 'DAYLIGHT // CLOUD SEA', sunEl: 48, lightEl: 48, az: 332, moon: false, window: [10 * 60 + 30, 13 * 60 + 30],
+    horizon: 0x95b1cc, mid: 0x5180b3, zenith: 0x2f5b8f, mie: 0xffe6c2, mieK: 0.55, disc: 0xfff6e6, discK: 1.0, discSize: 0.99990,
+    light: 0xfff6e6, lightI: 2.85, hemiSky: 0x6f94bc, hemiGround: 0x2a343b, hemiI: 1.05, amb: 0x7f95ad, ambI: 0.2,
+    exposure: 1.0, fogK: 0.92, stars: 0, corona: 1.0,
+    oceanSun: 0xffe8c4, oceanSunK: 1.0, oceanSky: 0x4f74a0, oceanLevel: 1.0, glitter: 1.0,
+    cloudTop: 0xe6ebf0, cloudBelly: 0x64778c, env: 1.0, nvgGain: 2.1, nav: 0.0, exact: 1
+  },
   DAWN: {
     label: 'DAWN BREAK', sunEl: 6, lightEl: 6, moon: false, window: [5 * 60 + 35, 6 * 60 + 25],
     horizon: 0xf5b895, mid: 0x7d86b8, zenith: 0x1f3f73, mie: 0xff9f78, mieK: 1.25, disc: 0xffd2a8, discK: 1.0, discSize: 0.99990,
@@ -60,9 +72,11 @@ export const PRESETS = {
     cloudTop: 0x2a3447, cloudBelly: 0x111927, env: 0.12, nvgGain: 15, nav: 1.0
   }
 };
+// Random sortie rolls (CLOUD_SEA is picked explicitly as a theatre, with its weather).
 export const PRESET_ORDER = ['DAWN', 'DAYLIGHT', 'GOLDEN_HOUR', 'DUSK', 'NIGHT'];
 const COLOR_KEYS = ['horizon', 'mid', 'zenith', 'mie', 'disc', 'light', 'hemiSky', 'hemiGround', 'amb', 'oceanSun', 'oceanSky', 'cloudTop', 'cloudBelly'];
-const NUM_KEYS = ['mieK', 'discK', 'discSize', 'lightI', 'hemiI', 'ambI', 'exposure', 'fogK', 'stars', 'corona', 'oceanSunK', 'oceanLevel', 'glitter', 'env', 'nvgGain', 'nav'];
+// exact: 1 = use the preset sky / horizon colours as authored (no colour-discipline desaturation).
+const NUM_KEYS = ['mieK', 'discK', 'discSize', 'lightI', 'hemiI', 'ambI', 'exposure', 'fogK', 'stars', 'corona', 'oceanSunK', 'oceanLevel', 'glitter', 'env', 'nvgGain', 'nav', 'exact'];
 
 export function createAtmosphere(THREE, env) {
   const { scene, camera, sunDir, terrainHeight } = env;    // sunDir: shared light direction (sun or moon)
@@ -227,7 +241,7 @@ export function createAtmosphere(THREE, env) {
   function fillTarget(name, az) {
     const p = PRESETS[name];
     for (const k of COLOR_KEYS) tgt[k].setHex(p[k]);
-    for (const k of NUM_KEYS) tgt[k] = p[k];
+    for (const k of NUM_KEYS) tgt[k] = p[k] ?? 0;
     dirFrom(p.sunEl, az, tgt.skyDir);
     dirFrom(p.lightEl, az, tgt.lightDir);
   }
@@ -239,7 +253,7 @@ export function createAtmosphere(THREE, env) {
   // Configure a preset. instant: snap (load / restart) instead of the ~1.5 s blend.
   function applyTimeOfDay(name, opts = {}) {
     if (!PRESETS[name]) name = 'DAYLIGHT';
-    const az = opts.az ?? Math.random() * 360;
+    const az = opts.az ?? PRESETS[name].az ?? Math.random() * 360;
     active = { name, az, clock: opts.clock || clockFor(name), mode: opts.mode || active.mode, label: PRESETS[name].label };
     fillTarget(name, az);
     skyUniforms.uMoon.value = PRESETS[name].moon ? 1 : 0;
@@ -264,8 +278,9 @@ export function createAtmosphere(THREE, env) {
     const oc = wx.overcast, fl = wx.flash;
     slate.copy(SLATE_DAY).lerp(SLATE_NIGHT, Math.min(1, cur.nav));
     const grey = Math.min(1, oc * 1.12);
-    skyUniforms.uMid.value.copy(cur.mid); desat(skyUniforms.uMid.value, 0.18).lerp(slate.clone().multiplyScalar(1.15), grey).lerp(FLASH, fl * 0.35);
-    skyUniforms.uZenith.value.copy(cur.zenith); desat(skyUniforms.uZenith.value, 0.12).lerp(slate.clone().multiplyScalar(0.85), grey).lerp(FLASH, fl * 0.25);
+    const dk = 1 - cur.exact;                            // colour-discipline desaturation (off for exact presets)
+    skyUniforms.uMid.value.copy(cur.mid); desat(skyUniforms.uMid.value, 0.18 * dk).lerp(slate.clone().multiplyScalar(1.15), grey).lerp(FLASH, fl * 0.35);
+    skyUniforms.uZenith.value.copy(cur.zenith); desat(skyUniforms.uZenith.value, 0.12 * dk).lerp(slate.clone().multiplyScalar(0.85), grey).lerp(FLASH, fl * 0.25);
     skyUniforms.uMieK.value = cur.mieK * (1 - 0.85 * oc); skyUniforms.uDiscK.value = cur.discK * (1 - 0.95 * oc);
     skyUniforms.uDiscSize.value = cur.discSize; skyUniforms.uStars.value = cur.stars * (1 - oc);
     const L = bound;
@@ -326,7 +341,7 @@ export function createAtmosphere(THREE, env) {
     // Colour discipline: the horizon haze (fog = sky horizon band = ocean far colour) is
     // held ~22 % desaturated so HUD green, afterburners, trails and explosions pop.
     fogColor.copy(cur.horizon);
-    desat(fogColor, 0.22);
+    desat(fogColor, 0.22 * (1 - cur.exact));
     fogColor.lerp(slate.clone().multiplyScalar(1.3), Math.min(1, wx.overcast * 1.05))
       .lerp(cloudWhite.clone().multiplyScalar(Math.max(0.12, cur.exposure * cur.oceanLevel * (1 - 0.5 * wx.overcast))), Math.min(1, mist * 1.15))
       .lerp(FLASH, wx.flash * 0.3);

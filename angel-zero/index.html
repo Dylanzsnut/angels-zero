@@ -431,24 +431,24 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s47a';
-import { createHUD } from './src/hud.js?v=s47a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s47a';
-import { createCombat } from './src/combat.js?v=s47a';
-import { createEjection } from './src/eject.js?v=s47a';
-import { createAudio } from './src/audio.js?v=s47a';
-import { createRadio } from './src/radio.js?v=s47a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s47a';
-import { createLivery } from './src/livery.js?v=s47a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s47a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s47a';
-import { createCanopyFX } from './src/canopy.js?v=s47a';
-import { createNVG } from './src/nvg.js?v=s47a';
-import { createWorld, WORLD } from './src/world.js?v=s47a';
-import { createSurfaces } from './src/surfaces.js?v=s47a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s47a';
-import { createFreeLook } from './src/freelook.js?v=s47a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s47a';
+import { createVFX } from './src/vfx.js?v=s48a';
+import { createHUD } from './src/hud.js?v=s48a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s48a';
+import { createCombat } from './src/combat.js?v=s48a';
+import { createEjection } from './src/eject.js?v=s48a';
+import { createAudio } from './src/audio.js?v=s48a';
+import { createRadio } from './src/radio.js?v=s48a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s48a';
+import { createLivery } from './src/livery.js?v=s48a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s48a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s48a';
+import { createCanopyFX } from './src/canopy.js?v=s48a';
+import { createNVG } from './src/nvg.js?v=s48a';
+import { createWorld, WORLD } from './src/world.js?v=s48a';
+import { createSurfaces } from './src/surfaces.js?v=s48a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s48a';
+import { createFreeLook } from './src/freelook.js?v=s48a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s48a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -2056,14 +2056,32 @@ atmosphere.bind({
 });
 /* ---- weather: CLEAR / SCATTERED / OVERCAST_RAIN / THUNDERSTORM, rolled every sortie ---- */
 const wxChip = document.getElementById('wxChip'), wxBtn = document.getElementById('wxBtn');
-let wxMode = 'RANDOM';
+// DAYLIGHT // CLOUD SEA is a theatre: its weather (cloud-sea deck) and its lighting preset
+// are selected together (first entry of both cycles, and the opening default).
+let wxMode = 'CLOUD_SEA';
+let todMode = 'CLOUD SEA';
+const TOD_MODES = [['RANDOM', null], ['CLOUD SEA', 'CLOUD_SEA'], ['DAWN', 'DAWN'], ['DAY', 'DAYLIGHT'], ['SUNSET', 'GOLDEN_HOUR'], ['DUSK', 'DUSK'], ['NIGHT', 'NIGHT']];
+function theatreFromWx() {
+  if (wxMode === 'CLOUD_SEA') { if (todMode !== 'CLOUD SEA') { todMode = 'CLOUD SEA'; return true; } }
+  else if (todMode === 'CLOUD SEA') { todMode = 'RANDOM'; return true; }
+  return false;
+}
+function theatreFromTod() {
+  if (todMode === 'CLOUD SEA') { if (wxMode !== 'CLOUD_SEA') { wxMode = 'CLOUD_SEA'; return true; } }
+  else if (wxMode === 'CLOUD_SEA') { wxMode = 'RANDOM'; return true; }
+  return false;
+}
+function applyTod(instant) {
+  const fixed = TOD_MODES.find(m => m[0] === todMode)[1];
+  return fixed ? atmosphere.applyTimeOfDay(fixed, { instant, mode: todMode }) : atmosphere.randomize({ instant });
+}
 function syncWeatherUI(w) {
   wxChip.textContent = `WX: ${w.chip}`;
   wxChip.classList.toggle('hot', w.rain > 0);
   wxBtn.textContent = `[ CYCLE WEATHER: ${wxMode === 'RANDOM' ? 'RANDOM' : w.label} ]`;
 }
 const weather = createWeather(THREE, { scene, camera,
-  onChange: w => { vfx.setCloudCoverage(w.coverage); syncWeatherUI(w); },
+  onChange: w => { vfx.setCloudSea(!!w.sea); vfx.setCloudCoverage(w.coverage); syncWeatherUI(w); },
   onThunder: k => audio.thunder(k) });
 function rollWeather(instant) { return wxMode === 'RANDOM' ? weather.roll({ instant }) : weather.set(wxMode, { instant }); }
 wxBtn.addEventListener('click', e => {
@@ -2071,15 +2089,14 @@ wxBtn.addEventListener('click', e => {
   const modes = ['RANDOM', ...WEATHER_ORDER];
   wxMode = modes[(modes.indexOf(wxMode) + 1) % modes.length];
   rollWeather(false);
+  if (theatreFromWx()) applyTod(false);                // entering / leaving the cloud-sea theatre re-lights the sky
 });
+const WX_FORCED = DEBUG && Q.has('wx') ? Q.get('wx').toUpperCase() : null;   // ?wx=CLOUD_SEA|CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM
 {
-  const forced = DEBUG && Q.has('wx') ? Q.get('wx').toUpperCase() : null;   // ?wx=CLEAR|SCATTERED|OVERCAST_RAIN|THUNDERSTORM
-  if (forced && WEATHER[forced]) { wxMode = forced; weather.set(forced, { instant: true }); }
+  if (WX_FORCED && WEATHER[WX_FORCED]) { wxMode = WX_FORCED; theatreFromWx(); weather.set(WX_FORCED, { instant: true }); }
   else rollWeather(true);
 }
 
-const TOD_MODES = [['RANDOM', null], ['DAWN', 'DAWN'], ['DAY', 'DAYLIGHT'], ['SUNSET', 'GOLDEN_HOUR'], ['DUSK', 'DUSK'], ['NIGHT', 'NIGHT']];
-let todMode = 'RANDOM';
 const todChip = document.getElementById('todChip'), todBtn = document.getElementById('todBtn');
 function syncTimeUI(a) {
   const night = a.name === 'NIGHT';
@@ -2091,20 +2108,22 @@ function syncTimeUI(a) {
 function rollSortieConditions(instant) {
   vfx.reseedClouds();
   rollWeather(instant);
-  const fixed = TOD_MODES.find(m => m[0] === todMode)[1];
-  return fixed ? atmosphere.applyTimeOfDay(fixed, { instant, mode: todMode }) : atmosphere.randomize({ instant });
+  return applyTod(instant);
 }
 todBtn.addEventListener('click', e => {
   e.stopPropagation();
   const i = TOD_MODES.findIndex(m => m[0] === todMode);
   todMode = TOD_MODES[(i + 1) % TOD_MODES.length][0];
+  theatreFromTod();                                   // CLOUD SEA lighting brings its cloud-sea weather (and back)
   rollSortieConditions(false);                        // smooth ~1.5 s blend so the briefing backdrop shows it
 });
 {
-  // Debug: ?tod=NIGHT|DAWN|DAYLIGHT|GOLDEN_HOUR|DUSK (&az=deg) forces the opening conditions.
+  // Debug: ?tod=CLOUD_SEA|NIGHT|DAWN|DAYLIGHT|GOLDEN_HOUR|DUSK (&az=deg) forces the opening conditions.
   const forced = DEBUG && Q.has('tod') ? Q.get('tod').toUpperCase() : null;
   if (forced && PRESETS[forced]) {
     todMode = (TOD_MODES.find(m => m[1] === forced) || ['RANDOM'])[0];   // (no cloud reseed: deterministic stills)
+    // Keep the theatre consistent unless ?wx= pinned the weather explicitly.
+    if (!(WX_FORCED && WEATHER[WX_FORCED]) && theatreFromTod()) rollWeather(true);
     atmosphere.applyTimeOfDay(forced, { instant: true, mode: todMode, az: Q.has('az') ? Number(Q.get('az')) : undefined });
   } else rollSortieConditions(true);
 }
