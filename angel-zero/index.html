@@ -109,6 +109,7 @@
   @keyframes launchPulse { 0%,100% { box-shadow:0 0 14px rgba(82,255,156,.45); } 50% { box-shadow:0 0 28px rgba(82,255,156,.85); } }
   #menu .hint { font-size:11px; font-weight:600; letter-spacing:2.4px; color:#6fd6a0; margin-top:8px; text-align:right; }
 
+  #spwRow { margin-bottom: 10px; }
   /* Hangar row: PILOT RECORD strip + AIRFRAME LIVERY selector (src/profile.js, src/livery.js). */
   #menu .hangar { display:grid; grid-template-columns:minmax(0, .82fr) minmax(0, 1.28fr); gap:14px; margin-bottom:14px; }
   #menu .hangar .sec-box { padding:9px 12px; }
@@ -269,6 +270,7 @@
           <button class="tod-btn" id="wxBtn" type="button">[ CYCLE WEATHER: RANDOM ]</button>
           <span id="diffChip">THREAT: NORMAL</span>
           <button class="tod-btn" id="diffBtn" type="button">[ DIFFICULTY: NORMAL ]</button>
+          <span id="loadoutChip">LOADOUT: MSL + 4AAM // GHOST</span>
           <span>ROE: WEAPONS FREE</span>
         </div>
       </div>
@@ -342,7 +344,11 @@
           </div>
         </div>
         <div class="sec-box">
-          <div class="sec-head"><span>AIRFRAME LIVERY</span><span id="livName">EAGLE GREY</span></div>
+          <div class="sec-head"><span>SPECIAL WEAPON</span><span id="spwName">4AAM</span></div>
+          <div class="liveries" id="spwRow" role="radiogroup" aria-label="Special weapon"></div>
+        </div>
+        <div class="sec-box">
+          <div class="sec-head"><span>AIRFRAME LIVERY</span><span id="livName">GHOST</span></div>
           <div class="liveries" id="liveryRow" role="radiogroup" aria-label="Airframe livery"></div>
         </div>
       </div>
@@ -441,32 +447,36 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s60a';
-import { createBlastFX } from './src/blastfx.js?v=s60a';
-import { createHUD } from './src/hud.js?v=s60a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s60a';
-import { createCombat } from './src/combat.js?v=s60a';
-import { createEjection } from './src/eject.js?v=s60a';
-import { createAudio } from './src/audio.js?v=s60a';
-import { createRadio } from './src/radio.js?v=s60a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s60a';
-import { createLivery } from './src/livery.js?v=s60a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s60a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s60a';
-import { createCanopyFX } from './src/canopy.js?v=s60a';
-import { createNVG } from './src/nvg.js?v=s60a';
-import { createWorld, WORLD } from './src/world.js?v=s60a';
-import { createSurfaces } from './src/surfaces.js?v=s60a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s60a';
-import { createFreeLook } from './src/freelook.js?v=s60a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s60a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s60a';
+import { createVFX } from './src/vfx.js?v=s61a';
+import { createBlastFX } from './src/blastfx.js?v=s61a';
+import { createHUD } from './src/hud.js?v=s61a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s61a';
+import { createCombat } from './src/combat.js?v=s61a';
+import { createEjection } from './src/eject.js?v=s61a';
+import { createAudio } from './src/audio.js?v=s61a';
+import { createRadio } from './src/radio.js?v=s61a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s61a';
+import { createLivery } from './src/livery.js?v=s61a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s61a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s61a';
+import { createCanopyFX } from './src/canopy.js?v=s61a';
+import { createNVG } from './src/nvg.js?v=s61a';
+import { createWorld, WORLD } from './src/world.js?v=s61a';
+import { createSurfaces } from './src/surfaces.js?v=s61a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s61a';
+import { createFreeLook } from './src/freelook.js?v=s61a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s61a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s61a';
+import { SPW, SQUADRON, loadSPW, saveSPW, loadLivery, saveLivery } from './src/loadout.js?v=s61a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
 const profile = createProfile();
 let livery = null;
 const DEBUG = Q.has('debug');
+// Hangar selection: persisted values, optionally overridden by ?spw= / ?livery= without saving.
+let selectedSPW = DEBUG && Q.has('spw') && SPW[Q.get('spw')] ? Q.get('spw') : loadSPW();
+let selectedLivery = DEBUG && Q.has('livery') && SQUADRON[Q.get('livery')] ? Q.get('livery') : loadLivery();
 
 /* ============================================================================
    0. RENDERER / SCENE / CAMERA / LIGHTS
@@ -1250,9 +1260,21 @@ debriefEl.addEventListener('mousedown', e => e.stopPropagation());
 /* Hangar: PILOT RECORD strip + AIRFRAME LIVERY selector ---------------------- */
 const liveryRow = document.getElementById('liveryRow');
 function setLivery(id) {
-  if (livery) livery.applyF15Livery(id);
+  if (!livery) return;
+  if (SQUADRON[id]) livery.applySquadron(id); else livery.applyF15Livery(id);
 }
-window.applyF15Livery = id => { const L = liveryById(id); if (livery) livery.applyF15Livery(L.id); return L.id; };
+window.applyF15Livery = id => {
+  const use = SQUADRON[id] ? id : liveryById(id).id;
+  if (livery) setLivery(use);
+  return use;
+};
+function syncLoadoutUI() {
+  const chip = document.getElementById('loadoutChip');
+  if (chip) chip.textContent = `LOADOUT: MSL + ${selectedSPW} // ${selectedLivery}`;
+  const sn = document.getElementById('spwName'); if (sn) sn.textContent = selectedSPW;
+  document.getElementById('livName').textContent = selectedLivery;
+}
+const SPW_LABEL = { '4AAM': '4AAM // MULTI-LOCK', UGB: 'UGB // HEAVY BOMBS + CCIP', QAAM: 'QAAM // HIGH-OFF-BORESIGHT' };
 function renderHangar() {
   const p = profile.data;
   const rr = document.getElementById('recRank');
@@ -1261,20 +1283,36 @@ function renderHangar() {
   document.getElementById('recKills').textContent = String(p.totalKills);
   document.getElementById('recWings').textContent = String(p.wingsSevered);
   document.getElementById('recSorties').textContent = `${p.sortiesCleared} SORTIE${p.sortiesCleared === 1 ? '' : 'S'} CLEARED`;
-  document.getElementById('livName').textContent = liveryById(p.selectedLivery).name;
+  const spwRow = document.getElementById('spwRow');
+  spwRow.innerHTML = '';
+  for (const id of Object.keys(SPW)) {
+    const eq = selectedSPW === id, b = document.createElement('button');
+    b.type = 'button'; b.className = 'liv' + (eq ? ' equipped' : '');
+    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', eq ? 'true' : 'false');
+    b.setAttribute('aria-label', SPW_LABEL[id] + (eq ? ', equipped' : ''));
+    b.innerHTML = `<span class="ln">${SPW_LABEL[id]}</span><span class="ls">${eq ? '[ EQUIPPED ]' : 'SELECT'}</span>`;
+    b.addEventListener('click', e => {
+      e.stopPropagation(); if (appMode !== 'MENU') return;
+      selectedSPW = id; saveSPW(id); combatSys.setSPW(id); renderHangar();
+    });
+    spwRow.appendChild(b);
+  }
   liveryRow.innerHTML = '';
-  for (const L of LIVERIES) {
-    const un = p.unlockedLiveries.includes(L.id), eq = p.selectedLivery === L.id;
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'liv' + (eq ? ' equipped' : '') + (un ? '' : ' locked');
-    b.disabled = !un; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', eq ? 'true' : 'false');
-    b.title = un ? `${L.name} — ${L.desc}` : `LOCKED — ${L.unlock}`;
-    b.innerHTML = `<span class="sw" style="background:${swatchCss(L)}"></span><span class="ln">${L.name}</span>` +
-      `<span class="ls">${eq ? '[ EQUIPPED ]' : un ? 'SELECT' : '&#128274; ' + L.short}</span>`;
-    b.setAttribute('aria-label', un ? `${L.name}${eq ? ', equipped' : ''}` : `${L.name}, locked: ${L.unlock}`);
-    if (un) b.addEventListener('click', e => { e.stopPropagation(); if (profile.select(L.id)) { setLivery(L.id); renderHangar(); } });
+  for (const id of Object.keys(SQUADRON)) {
+    const L = SQUADRON[id], eq = selectedLivery === id, b = document.createElement('button');
+    b.type = 'button'; b.className = 'liv' + (eq ? ' equipped' : '');
+    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', eq ? 'true' : 'false');
+    b.setAttribute('aria-label', `${id}${eq ? ', equipped' : ''}`);
+    b.innerHTML = `<span class="sw" style="background:linear-gradient(90deg, ${L.body} 0 62%, ${L.trim} 62% 100%)"></span>` +
+      `<span class="ln">${id}</span><span class="ls">${eq ? '[ EQUIPPED ]' : 'SELECT'}</span>`;
+    b.addEventListener('click', e => {
+      e.stopPropagation(); if (appMode !== 'MENU') return;
+      selectedLivery = id; saveLivery(id); profile.data.selectedLivery = id;   // mirror: old unlock code stays quiet
+      setLivery(id); renderHangar();
+    });
     liveryRow.appendChild(b);
   }
+  syncLoadoutUI();
 }
 renderHangar();
 function pauseSim() {
@@ -1365,8 +1403,8 @@ addEventListener('keydown', e => {
   if (k === 'm') { if (!e.repeat) { combatSys.fireSelected(); mcam.held = true; } }
   if (k === 'r' && !e.repeat) combatSys.toggleWeapon();
   if (k === '1' && !e.repeat) combatSys.setWeapon('MSL');
-  if (k === '2' && !e.repeat) combatSys.setWeapon('BOMB');
-  if (k === '3' && !e.repeat) combatSys.setWeapon('AAM4');
+  if (k === '2' && !e.repeat) combatSys.setWeapon(SPW[selectedSPW].wpn);   // special weapon
+  if (k === '3' && !e.repeat) combatSys.setWeapon(SPW[selectedSPW].wpn);
   if (k === 'z' && !e.repeat) combatSys.dispenseChaff();
   if (k === 'j' && !e.repeat) combatSys.activateECM();
   if (k === 'x' && !e.repeat) combatSys.dispenseFlares();
@@ -2303,7 +2341,10 @@ const combatSys = createCombat(THREE, { scene, camera, renderer, state, combat, 
   sectorAt: world.sectorAt, isTerrainOccluded: world.isTerrainOccluded, fleetLane: world.fleetLane, canyonCenter: world.canyonCenter,
   isReady: () => modelReady && flightMode === 'FLY', onPlayerDown: reason => triggerEject(reason), onSfx, onFlyby, onWing,
   onSlowMo: triggerSlowMo, getWingmen: () => wingmen, addBox: world.addBox,
-  getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }) });
+  getCarrierStats: () => ({ phase: carrier.phase, wire: carrier.wire, t: +carrier.t.toFixed(2), localZ: +_lp.z.toFixed(1) }),
+  getLivery: () => livery ? livery.current : null });
+combatSys.setSPW(selectedSPW);
+if (DEBUG && Q.has('spw')) combatSys.setWeapon(SPW[selectedSPW].wpn);   // debug override also flies the selected SPW
 const missiles = combatSys.missiles;
 radioSys = createRadio({ combat, state, audio, getEnemies: () => combatSys.enemies });
 const eject = createEjection(THREE, { scene, camera, jet, state, mouse, keys, groundLevel, terrainHeight, say: combatSys.say,
@@ -2579,8 +2620,9 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
   model.updateMatrixWorld(true);
   surfaces = createSurfaces(THREE, model);              // Ctrl_* hinges + Nozzle_L/R (after the fleet clone)
   landingGear = createGear(THREE, model);               // procedural tricycle gear (after the fleet clone)
-  livery = createLivery(THREE, model, LIVERIES);        // after the fleet clone: bandits keep their own paint
-  livery.applyF15Livery(profile.data.selectedLivery);
+  livery = createLivery(THREE, model, LIVERIES, wingmen.map(w => w.mesh));  // after the fleet clone: bandits keep their own paint
+  livery.applySquadron(selectedLivery);
+  profile.data.selectedLivery = selectedLivery;        // keep the old save format in sync
   if (DEBUG) console.log('[ANGELS_ZERO] livery', JSON.stringify(livery.stats()), 'profile', profile.persistent ? 'persistent' : 'memory-only');
   if (DEBUG) console.log('[ANGELS_ZERO] articulated:', surfaces.names.join(', '));               // aggressor fleet clones materials before clipping is attached
   const clipped = new Set();
@@ -2875,7 +2917,7 @@ addEventListener('resize', () => {
   hud.resize();
 });
 if (DEBUG) {
-  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, flyShake, onFlyby, onWing, wingmen, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, mcam, slowMo, get timeScale() { return timeScale; }, triggerSlowMo, get firstPerson() { return firstPerson; },
+  window.__az = { scene, camera, renderer, state, combat, combatSys, eject, audio, mouse, keys, vfx, blast, get blastShake() { return blastShake; }, flyShake, onFlyby, onWing, wingmen, hud, cockpit, perf, jet, cockpitHidden, terrainHeight, setView, freeLook, world, nvg, setNVG, gpuWarm, mcam, slowMo, get timeScale() { return timeScale; }, triggerSlowMo, get selectedSPW() { return selectedSPW; }, get selectedLivery() { return selectedLivery; }, loadSPW, loadLivery, saveSPW, saveLivery, SQUADRON, SPW, get firstPerson() { return firstPerson; },
     get appMode() { return appMode; },
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };

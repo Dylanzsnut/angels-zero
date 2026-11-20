@@ -1310,6 +1310,31 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     0 alive, score +4800, 4 slow-mo pulses; zero JS/WebGL errors (in-app + Edge
     `BAD_LINES=0` on all three URLs); 90-frame jammed sample avg 4.05 ms /
     max 15 ms / 0 frames over 16.6 ms. All 21 `?v=` tags bumped to s60a.
+- [x] **Hangar SPW loadout + squadron liveries** *(build `s61a`, new `src/loadout.js`,
+  `src/livery.js`, `src/combat.js`, `src/hud.js`, `index.html`)*
+  - Two validated localStorage keys (`angelsZero_spw`, `angelsZero_livery`) hold the
+    SPW choice (4AAM / UGB / QAAM) and the squadron paint (GHOST / ARCTIC /
+    GRIMDARK / ACE_GOLD). The briefing replaces the unlock-gated profile row with
+    the four unlocked squadrons and mirrors the pick into `profile.selectedLivery`.
+  - Livery painter mutates existing body materials only: paint colour / roughness
+    plus permanent vertex colours (ARCTIC splinter hash with skewed cell edges,
+    ACE_GOLD fin / wingtip crimson accent). One pooled 128 px dice decal texture
+    and `MeshBasicMaterial` on each outer tail face (opacity 1 only for GRIMDARK),
+    cloned to both wingmen; `gpuWarm` compiles it at startup (+1 program).
+  - QAAM: 12 rounds / 10 s reload, 60 deg off-nose, 2.6 NM, 0.6 s lock; high-turn
+    `MSL_QAAM` quality fired from alternating rails at 0.35 s. Weapon cycle is
+    MSL + the selected SPW (keys 1 / 2 / 3, R); one HUD stores row shows the SPW
+    and its ammo. `pitStop()` / `resetPlayer()` refill QAAM; `stats().loadout`
+    reports `{spw, wpn, qaam, livery}`. Debug `?spw=QAAM&livery=ARCTIC` overrides
+    at boot without saving (and flies the selected SPW).
+  - Verified headless: `?debug&spw=UGB` selects UGB in the briefing and key 3 gives
+    `loadout.wpn=BOMB`; two-run reload with one profile dir restores UGB / GRIMDARK
+    from localStorage; `?nointro&debug&spw=QAAM&cat=0.5&warp=2&logat=1.2` gives
+    `lock.state=LOCK` at 44.5 deg off-nose; GRIMDARK screenshot shows the matte
+    airframe with 2 dice decals on the lead and 2 on each wingman (111 programs
+    warm); zero JS/WebGL errors (in-app + Edge `BAD_LINES=0` on five URLs);
+    120-frame sample avg 7.06 ms / max 14.7 ms / 0 frames over 16.6 ms.
+    All 21 `?v=` tags bumped to s61a (+ the new `loadout.js?v=s61a` imports).
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

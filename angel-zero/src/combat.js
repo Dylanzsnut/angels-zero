@@ -8,7 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s60a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s61a';
+import { SPW } from './loadout.js?v=s61a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -37,6 +38,7 @@ export function createCombat(THREE, env) {
   const MSL_SOFT = { turn: 14 * D2R, fov: 18 * D2R, N: 3.0, noise: 0.35, err: 5 * D2R, tag: 'SOFT' };
   const BANDIT_FULL = { turn: 30 * D2R, fov: 45 * D2R, N: 3.6, noise: 0.05, tag: 'B-FULL' };
   const BANDIT_SOFT = { turn: 13 * D2R, fov: 14 * D2R, N: 2.6, noise: 0.6, err: 9 * D2R, tag: 'B-SOFT' };
+  const MSL_QAAM = { turn: 52 * D2R, fov: 120 * D2R, N: 4.8, noise: 0, tag: 'QAAM' };
 
   // Active difficulty (src/difficulty.js). Angles are pre-converted to radians.
   const DIFF = {};
@@ -1615,13 +1617,15 @@ export function createCombat(THREE, env) {
   const SIGHT_HALF = 11 * D2R;
   const RADAR_HALF = 30 * D2R, RADAR_RANGE = 8 * NM;
   const AAM4_RANGE = 4.5 * NM, AAM4_MAX = 20, AAM4_RELOAD = 12, AAM4_RACK = 3.5, AAM4_STAGGER = 0.09;
+  const QAAM_MAX = 12, QAAM_RELOAD = 10, QAAM_HALF = 60 * D2R, QAAM_LOCK = 0.6, QAAM_RANGE = 2.6 * NM, QAAM_INTERVAL = 0.35;
   const SEEKER_GIVEUP = 5;
   // Cloud cover: IR seekers and radar lose their picture through thick cloud.
   const CLOUD_T = 0.35;                                      // cloudDensity above this = "in cloud"
   const cloudAt = p => (env.cloudDensity ? env.cloudDensity(p) : 0);
   let cloudClear = 0;                                        // s: suppress the RWR alert after a cloud break
   Object.assign(C, { seekerArmed: false, multi: [], multiProg: [], multiState: [], multiLocked: 0,
-    aam4: AAM4_MAX, aam4Max: AAM4_MAX, aam4Reload: 0, aam4ReloadMax: AAM4_RELOAD });
+    aam4: AAM4_MAX, aam4Max: AAM4_MAX, aam4Reload: 0, aam4ReloadMax: AAM4_RELOAD,
+    spw: '4AAM', qaam: QAAM_MAX, qaamMax: QAAM_MAX, qaamReload: 0, qaamReloadMax: QAAM_RELOAD });
   let seekerT = 0, seekerHadLock = false;
   const fwdOf = () => new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
 
@@ -1666,7 +1670,7 @@ export function createCombat(THREE, env) {
   // Passive radar track(s): keep the current track unless it left the cone or a
   // bandit is clearly better placed (15 % score hysteresis).
   function autoDesignate() {
-    const cands = radarCandidates();
+    const cands = radarCandidates(C.weapon === 'QAAM' ? QAAM_HALF : RADAR_HALF, C.weapon === 'QAAM' ? QAAM_RANGE : RADAR_RANGE);
     if (C.weapon === 'AAM4') {
       const keep = C.multi.filter(e => cands.some(c => c.e === e));
       for (const c of cands) { if (keep.length >= 4) break; if (!keep.includes(c.e)) keep.push(c.e); }
@@ -1686,7 +1690,8 @@ export function createCombat(THREE, env) {
   function designateInSight() {
     C.designateT = performance.now();
     if (C.weapon === 'BOMB') { const t = cycleGroundTarget(); C.designateOk = !!t; if (env.onSfx) env.onSfx('designate', null, t ? 1 : 0); return t; }
-    const ammoOk = C.weapon === 'AAM4' ? C.aam4 > 0 && C.aam4Reload <= 0 : C.missiles > 0 && C.missileReload <= 0;
+    const ammoOk = C.weapon === 'AAM4' ? C.aam4 > 0 && C.aam4Reload <= 0
+      : C.weapon === 'QAAM' ? C.qaam > 0 && C.qaamReload <= 0 : C.missiles > 0 && C.missileReload <= 0;
     if (!C.seekerArmed) {
       if (!C.designated) autoDesignate();
       const n = C.weapon === 'AAM4' ? C.multi.length : C.designated ? 1 : 0;
@@ -1705,7 +1710,7 @@ export function createCombat(THREE, env) {
       if (env.onSfx) env.onSfx('designate', null, 1);
       return C.designated;
     }
-    const cands = radarCandidates();
+    const cands = radarCandidates(C.weapon === 'QAAM' ? QAAM_HALF : RADAR_HALF, C.weapon === 'QAAM' ? QAAM_RANGE : RADAR_RANGE);
     C.designateOk = true;
     if (C.weapon === 'AAM4') {
       // Re-scan from the bandit after the current primary: a fresh set of up to 4.
@@ -1743,8 +1748,10 @@ export function createCombat(THREE, env) {
     C.targetObscured = obscured; C.seekerOff = off; C.targetRange = d;
     if (!C.seekerArmed) { C.lockProgress = 0; C.lockState = 'NONE'; C.lockTarget = null; return; }
     // Progressive IR seeker: build while inside the 14 deg circle and 3.5 NM, decay when it leaves.
-    const inSeeker = C.jamming <= 0.5 && d < LOCK_RANGE && off < DIFF.seekerHalf && C.missiles > 0 && C.missileReload <= 0;
-    C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / DIFF.lockTime : -LOCK_DECAY * dt), 0, 1);
+    const qaam = C.weapon === 'QAAM';
+    const inSeeker = C.jamming <= 0.5 && d < (qaam ? QAAM_RANGE : LOCK_RANGE) && off < (qaam ? QAAM_HALF : DIFF.seekerHalf) &&
+      (qaam ? C.qaam > 0 && C.qaamReload <= 0 : C.missiles > 0 && C.missileReload <= 0);
+    C.lockProgress = clamp(C.lockProgress + (obscured ? -1.0 * dt : inSeeker ? dt / (qaam ? QAAM_LOCK : DIFF.lockTime) : -LOCK_DECAY * dt), 0, 1);
     const prev = C.lockState;
     if (obscured && !wasObscured) {
       say('CLOUD OBSCURED — ' + t.label, 1.4, '#ffbf3f');
@@ -1824,7 +1831,20 @@ export function createCombat(THREE, env) {
     C.aam4--; C.aamFired = (C.aamFired || 0) + 1;
     if (C.aam4 <= 0) C.aam4Reload = AAM4_RELOAD;
   }
+  function fireQAAM() {
+    if (!env.isReady() || C.dead || C.qaam <= 0 || C.qaamReload > 0 || mslCooldown > 0) return false;
+    const tgt = C.lockState === 'LOCK' ? C.designated : null;
+    const rail = RAILS[railNext]; railNext = 1 - railNext;
+    const pos = rail.clone().applyQuaternion(S.quaternion).add(S.position);
+    const m = launch(pos, S.quaternion, S.velocity, tgt, false, MSL_QAAM, null, 'IR');
+    if (!m) return false;
+    C.qaam--; mslCooldown = QAAM_INTERVAL; C.lastLaunch = C.lockState;
+    if (C.qaam <= 0) C.qaamReload = QAAM_RELOAD;
+    say(tgt ? 'FOX TWO — QAAM' : 'QAAM — NO LOCK, DUMB FIRE', 1.2, tgt ? '#4dff91' : '#ffbf3f');
+    return true;
+  }
   function updateRipple(dt) {
+    if (C.qaamReload > 0) { C.qaamReload -= dt; if (C.qaamReload <= 0) { C.qaam = QAAM_MAX; say('QAAM RELOADED', 1.0); } }
     for (let i = ripple.length - 1; i >= 0; i--) {
       const r = ripple[i]; r.t -= dt;
       if (r.t <= 0) { ripple.splice(i, 1); launchAAM(r.target && r.target.alive ? r.target : null); }
@@ -2172,17 +2192,25 @@ export function createCombat(THREE, env) {
   function setWeapon(w) {
     w = String(w).toUpperCase();
     if (w === '4AAM') w = 'AAM4';
-    if (!['MSL', 'AAM4', 'BOMB'].includes(w)) w = 'MSL';
+    const spwWpn = (SPW[C.spw] || SPW['4AAM']).wpn;
+    if (!['MSL', spwWpn].includes(w)) w = 'MSL';                  // only AIM-9 + the selected special weapon
     if (w === 'BOMB' && !stores.bomb.length) w = 'MSL';
     if (C.weapon !== w) {
       disarmSeeker(null);
       C.weapon = w;
       if (w !== 'AAM4') setMulti([]);
-      say(w === 'BOMB' ? 'UGB SELECTED — CCIP' : w === 'AAM4' ? '4AAM SELECTED — TRACK-WHILE-SCAN' : 'AIM-9 SELECTED', 1.0);
+      say(w === 'BOMB' ? 'UGB SELECTED — CCIP' : w === 'AAM4' ? '4AAM SELECTED — TRACK-WHILE-SCAN'
+        : w === 'QAAM' ? 'QAAM SELECTED — HIGH OFF-BORESIGHT' : 'AIM-9 SELECTED', 1.0);
     }
     return C.weapon;
   }
-  function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? 'AAM4' : C.weapon === 'AAM4' ? (stores.bomb.length ? 'BOMB' : 'MSL') : 'MSL'); }
+  function toggleWeapon() { return setWeapon(C.weapon === 'MSL' ? (SPW[C.spw] || SPW['4AAM']).wpn : 'MSL'); }
+  // Hangar selection: AIM-9 + one special weapon only; an obsolete selection is dropped.
+  function setSPW(id) {
+    C.spw = SPW[id] ? id : '4AAM';
+    if (C.weapon !== 'MSL' && C.weapon !== SPW[C.spw].wpn) setWeapon('MSL');
+    return C.spw;
+  }
   // >UGB with a CCRP solution: holding the pickle arms the automatic release;
   // otherwise it is a CCIP drop now.
   function fireSelected() {
@@ -2193,7 +2221,9 @@ export function createCombat(THREE, env) {
       }
       return dropBomb();
     }
-    return C.weapon === 'AAM4' ? fireAAM4() : fireMissile();
+    if (C.weapon === 'AAM4') return fireAAM4();
+    if (C.weapon === 'QAAM') return fireQAAM();
+    return fireMissile();
   }
   function pickleUp() { if (C.ccrpArmed) { C.ccrpArmed = false; say('CCRP SAFE', 0.9, '#ffbf3f'); } }
   function dropBomb() {
@@ -3430,7 +3460,7 @@ export function createCombat(THREE, env) {
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; flareRecharge = 0;
     chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
-    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
+    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, aam4: AAM4_MAX, aam4Reload: 0, qaam: QAAM_MAX, qaamReload: 0, ammo: GUN_MAX, missiles: MSL_MAX,
       reload: 0, missileReload: 0, gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, health: 100, hitFlash: 0 });
     resetEngines();                                         // both F100s back to HEALTHY
     director.reset();
@@ -3439,7 +3469,7 @@ export function createCombat(THREE, env) {
     aceFlightDone = false;
     rearm('msl'); rearm('bomb');
     Object.assign(C, { comboMult: 1, comboTimer: 0, dangerClose: false, dangerMult: 1, styleFeed: [] });
-    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, ecmState: 'READY', ecmT: 0 });
+    Object.assign(C, { bombs: stores.bomb.length, bombReload: 0, flares: FLR_MAX, ccip: null, aam4: AAM4_MAX, aam4Reload: 0, qaam: QAAM_MAX, qaamReload: 0, ecmState: 'READY', ecmT: 0 });
     for (const st of stores.msl) st.aamHidden = false;
     ripple.length = 0; aamRack = 0; disarmSeeker(null); setMulti([]);
     Object.assign(C, { gunHeat: 0, gunOverheat: false, engineOut: null, engineFire: false, hydraulic: false, ccrpArmed: false });
@@ -3631,6 +3661,7 @@ export function createCombat(THREE, env) {
   return {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
+    setSPW,
     get difficulty() { return C.difficulty; },
     fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder, spawnAceFlight,
     repairEngines() { resetEngines(); return C.engState; },
@@ -3738,6 +3769,7 @@ export function createCombat(THREE, env) {
     stats() {
       return { difficulty: C.difficulty,
         carrier: env.getCarrierStats ? env.getCarrierStats() : null,
+        loadout: { spw: C.spw, wpn: C.weapon, qaam: C.qaam, livery: env.getLivery ? env.getLivery() : null },
         strike: { alive: strikeAlive() ? strikeTargets.filter(t => t.alive).length : 0,
           labels: strikeTargets.filter(t => t.alive).map(t => t.label).join(','),
           jamming: +(C.jamming || 0).toFixed(2), sectorLow: !!C.sectorLow },

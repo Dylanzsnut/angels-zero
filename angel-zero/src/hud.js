@@ -6,6 +6,7 @@
 // clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
 // list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
 // open-corner target brackets, edge pointers, minimal top-left telemetry.
+import { SPW } from './loadout.js?v=s61a';
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -1150,8 +1151,9 @@ export function createHUD(THREE, A) {
       ['  GUN', C.gunOverheat ? 'HOT' : C.reload > 0 ? 'RLD ' + C.reload.toFixed(1) : String(C.ammo), C.gunOverheat ? WARN : G],
       [(C.weapon === 'MSL' ? '> ' : '  ') + 'MSL', reloadMsl ? 'RLD ' + C.missileReload.toFixed(1) : String(C.missiles), C.weapon === 'MSL' ? GB : G]
     ];
-    if (C.aam4Max) rows.push([(C.weapon === 'AAM4' ? '> ' : '  ') + '4AAM', C.aam4Reload > 0 ? 'RLD ' + C.aam4Reload.toFixed(1) : String(C.aam4), C.weapon === 'AAM4' ? GB : G]);
-    if (C.bombMax) rows.push([(C.weapon === 'BOMB' ? '> ' : '  ') + 'UGB', reloadBomb ? 'RLD ' + C.bombReload.toFixed(1) : String(C.bombs), C.weapon === 'BOMB' ? GB : G]);
+    const spw = SPW[C.spw] || SPW['4AAM'];
+    const spwAmmo = spw.wpn === 'AAM4' ? { n: C.aam4, r: C.aam4Reload } : spw.wpn === 'BOMB' ? { n: C.bombs, r: C.bombReload } : { n: C.qaam, r: C.qaamReload };
+    rows.push([(C.weapon !== 'MSL' ? '> ' : '  ') + spw.hud, spwAmmo.r > 0 ? 'RLD ' + spwAmmo.r.toFixed(1) : String(spwAmmo.n), C.weapon === spw.wpn ? GB : G]);
     rows.push(null);                                        // dashed separator
     if (C.flares !== undefined) rows.push(['  FLR', String(C.flares), C.flares > 0 ? G : AMBER]);
     if (C.chaff !== undefined) rows.push(['  CHF', String(C.chaff), C.chaff > 0 ? G : AMBER]);
