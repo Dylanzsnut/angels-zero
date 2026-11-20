@@ -8,7 +8,7 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s55a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s56a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 const LOG_V = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
@@ -50,7 +50,8 @@ export function createCombat(THREE, env) {
   Object.assign(C, { gunMax: GUN_MAX, mslMax: MSL_MAX, missileReloadMax: MSL_RELOAD, bombReloadMax: BOMB_RELOAD,
     bulletSpeed: BULLET_SPEED, score: C.score || 0, comms: [], events: [], wave: 0, gunFiring: false, hitMarker: 0 });
   // Stores: weapon select (>MSL / >BOMB), bombs, CCIP solution, flares.
-  Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX, chaff: 0, chaffMax: 0, notchT: 0 });
+  Object.assign(C, { weapon: 'MSL', bombs: 0, bombMax: 0, bombReload: 0, ccip: null, ccipTof: 0, flares: FLR_MAX, flareMax: FLR_MAX, chaff: 0, chaffMax: 0, notchT: 0,
+    wingOrder: 'FORM', wingOrderT: 0 });
 
   const say = (text, secs = 2.5, color = '#4dff91') => {
     C.comms = C.comms.filter(c => c.text !== text);
@@ -287,6 +288,7 @@ export function createCombat(THREE, env) {
   const plumeGeo = new THREE.ConeGeometry(0.12, 1.6, 10, 1, true); plumeGeo.rotateX(-Math.PI / 2); plumeGeo.translate(0, 0, 2.25);
   const missiles = [];
   const _flyRel = new THREE.Vector3(), _flyRight = new THREE.Vector3();   // flyby side test (no per-frame allocation)
+  const _wmTarget = new THREE.Vector3(), _wmFwd = new THREE.Vector3(), _wmRel = new THREE.Vector3(), _wmInv = new THREE.Quaternion();
   for (let i = 0; i < 16; i++) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(mslBody, mslMat), new THREE.Mesh(mslNose, mslDark), new THREE.Mesh(finGeo, mslDark), new THREE.Mesh(canardGeo, mslDark));
@@ -1155,16 +1157,18 @@ export function createCombat(THREE, env) {
     e.alive = false;
     explosion(e.pos, 1.7, { vel: e.vel, kind: 'air' });
     e.wreck = { vel: e.vel.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -15, 0)), spin: new THREE.Vector3((rand() - 0.5) * 3, (rand() - 0.5) * 2, (rand() - 0.5) * 5), t: 0 };
-    if (how === 'BASE') {                                          // ARCHIPELAGO AFB air defence kill: no player credit
+    if (how === 'BASE' || how === 'WINGMAN') {                     // no player credit
       if (C.lockTarget === e) C.lockTarget = null;
       if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
       C.baseKills = (C.baseKills || 0) + 1;
       if (e.ace && C.ace) { C.ace.alive = false; C.ace.hp = 0; }
-      pushEvent('DESTROYED', `BASE AIR DEFENCE — ${e.type || e.label} DOWN`, 0, '#5fe8ff');
-      say(`BASE AIR DEFENCE — SPLASH ${e.label}!`, 2.0, '#5fe8ff');
+      const src = how === 'WINGMAN' ? 'WARDEN FLIGHT' : 'BASE AIR DEFENCE';
+      pushEvent('DESTROYED', `${src} — ${e.type || e.label} DOWN`, 0, '#5fe8ff');
+      say(`${src} — SPLASH ${e.label}!`, 2.0, '#5fe8ff');
       return;
     }
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
+    if (env.onWing) env.onWing('Splash one, Lead!', 'WARDEN');
     pushEvent('DESTROYED', `${e.type || e.label} DESTROYED`, 1500, '#52ff9c');
     if (C.lockTarget === e) C.lockTarget = null;
     if (C.designated === e) { C.designated = null; C.lockProgress = 0; C.lockState = 'NONE'; }
@@ -1759,6 +1763,9 @@ export function createCombat(THREE, env) {
         if (!e.alive) continue;
         const d = e.pos.distanceTo(S.position);
         const kind = e.bLock >= 1 ? 'lock' : e.bLock > 0.05 ? 'acq' : e.tac === 'ENGAGE' && d < B_LOCK_RANGE * 1.5 ? 'paint' : null;
+        if (e.bLock > 0.45 && env.onWing && performance.now() - (C.wingWarnT || 0) > 4000) {
+          C.wingWarnT = performance.now(); env.onWing('Clear your six, Lead!', 'WARDEN');
+        }
         if (!kind) continue;
         list.push({ b: relBearing(e.pos), kind, d, id: e.id, g: d > 2500 ? 'RADAR' : 'IR' });
         level = Math.max(level, kind === 'lock' ? 2 : 1);
@@ -1808,6 +1815,47 @@ export function createCombat(THREE, env) {
   }
 
   /* ======================================================= missile flight */
+  // WARDEN flight: G toggles formation / engage. Friendly shots never touch the
+  // hostile director budget, and wingman kills award no player score.
+  function setWingOrder() {
+    C.wingOrder = C.wingOrder === 'ENGAGE' ? 'FORM' : 'ENGAGE';
+    C.wingOrderT = performance.now();
+    if (env.onWing) env.onWing(C.wingOrder === 'ENGAGE' ? 'Engaging at will, Lead.' : 'Reforming echelon, Lead.', 'WARDEN');
+    return C.wingOrder;
+  }
+  function updateWingmen(dt) {
+    const ws = env.getWingmen ? env.getWingmen() : null;
+    if (!ws || !ws.length) return;
+    for (const w of ws) {
+      if (!w || !w.alive) continue;
+      w.cd -= dt;
+      if (C.wingOrder !== 'ENGAGE' || !env.isReady()) continue;
+      let best = null, bestD = Infinity;
+      _wmFwd.set(0, 0, -1).applyQuaternion(w.quat);
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const d = e.pos.distanceTo(w.pos);
+        if (d > 3 * NM || d >= bestD) continue;
+        _wmRel.copy(e.pos).sub(w.pos).normalize();
+        if (Math.acos(clamp(_wmFwd.dot(_wmRel), -1, 1)) > 35 * D2R) continue;
+        best = e; bestD = d;
+      }
+      if (!best) continue;
+      // Formation slot: 600 m behind the bandit, clamped to 1,500 m from the player.
+      _wmTarget.copy(best.pos).addScaledVector(best.fwd, -600);
+      _wmRel.copy(_wmTarget).sub(S.position);
+      if (_wmRel.length() > 1500) _wmTarget.copy(S.position).add(_wmRel.setLength(1500));
+      w.off.copy(_wmTarget).sub(S.position).applyQuaternion(_wmInv.copy(S.quaternion).invert());
+      if (w.cd > 0) continue;
+      let inFlight = 0;
+      for (const m of missiles) if (m.active && m.wingman === w.id) inFlight++;
+      if (inFlight) continue;
+      const m = launch(w.pos, w.quat, w.vel, best, false, MSL_FULL, null);
+      if (!m) continue;
+      m.friendly = true; m.wingman = w.id; w.cd = 7 + 4 * rand();
+      if (env.onWing) env.onWing(`${w.call}, fox two!`, w.call);
+    }
+  }
   function updateMissiles(dt, playerActive) {
     for (const m of missiles) {
       if (!m.active) continue;
@@ -1907,7 +1955,7 @@ export function createCombat(THREE, env) {
               else if (tgt.isChaff) { explosion(pos, 0.5); }
               else if (tgt.isFlare) { explosion(pos, 0.6); tgt.alive = false; }
               else if (tgt.fleet) { explosion(pos, 1.3, { kind: 'ship' }); damageSurface(tgt, 90); }          // ship: multi-hit
-              else { explosion(pos, 0.8, { vel: tgt.vel }); heavyHit(tgt, m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
+              else { explosion(pos, 0.8, { vel: tgt.vel }); heavyHit(tgt, m.wingman ? 'WINGMAN' : m.aam ? 'AAM4' : m.friendly ? 'BASE' : undefined); }
               logShot(m, tgt.isChaff ? 'CHAFF' : tgt.isFlare ? 'FLARE' : 'HIT');
               m.active = false; m.mesh.visible = false; continue;
             }
@@ -3340,6 +3388,7 @@ export function createCombat(THREE, env) {
       return false;
     });
     director.tick(dt);
+    updateWingmen(dt);
     updateMissiles(dt, playerActive);
     updateBombs(dt); updateRings(dt); updateChaff(dt); updateFlares(dt);
     updateRipple(dt); updateECM(dt); updateRWR(playerActive && !C.playerSafe);   // safe: RWR scope clears
@@ -3355,7 +3404,7 @@ export function createCombat(THREE, env) {
     init, update, resetPlayer, pitStop, fireMissile, designateInSight, designate, explosion, splash, say,
     setDifficulty(id) { applyDifficulty(id); director.reset(); return C.difficulty; },
     get difficulty() { return C.difficulty; },
-    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM,
+    fireSelected, pickleUp, dropBomb, setWeapon, toggleWeapon, dispenseFlares, dispenseChaff, fireAAM4, activateECM, setWingOrder,
     get surface() { return surface; }, awardStyle,
     get lockables() { return lockables(); },               // bandits + live task-force ships (HUD target boxes)
     // GPU warm-up: force the normally-hidden HDR muzzle flash and one bolt per tracer
@@ -3474,7 +3523,8 @@ export function createCombat(THREE, env) {
         style: { mult: C.comboMult, timer: +C.comboTimer.toFixed(1), bonus: C.comboBonus, danger: C.dangerClose, counts: C.styleCounts,
           feed: C.styleFeed.map(s => s.text).join('|'), score: C.score, flr: C.flares,
           chf: C.chaff, chfMax: C.chaffMax, chaffClouds: chaff.length,
-          notch: C.notchT > 0 ? +(performance.now() - C.notchT).toFixed(0) : null },
+          notch: C.notchT > 0 ? +(performance.now() - C.notchT).toFixed(0) : null,
+          wingOrder: C.wingOrder, wingOrderAge: C.wingOrderT ? +(performance.now() - C.wingOrderT).toFixed(0) : null },
         phase: { phase: C.phase, wave: C.wave, ace: C.ace, aceDowns: C.aceDowns,
           aceE: (() => { const a = enemies.find(x => x.ace); return a ? { tac: a.tac, hp: Math.round(a.hp), wingL: a.wingL, wingR: a.wingR, kt: Math.round(a.speed / KT), g: +a.gNow.toFixed(1), flr: a.flaresLeft, alive: a.alive } : null; })() },
         ground: { tgts: surface.map(t => t.id + (t.alive ? '' : 'x')).join(' '), tgt: C.groundTgt ? C.groundTgt.label : null,

@@ -29,6 +29,7 @@ export function createHUD(THREE, A) {
   let lockSnapT = 0, prevLockState = 'NONE';
   const inertia = { x: 0, y: 0, vx: 0, vy: 0 };
   const fpvDir = new THREE.Vector3(0, 0, -1);
+  const _wv = new THREE.Vector3();
 
   function resize() {
     DPR = Math.min(devicePixelRatio || 1, 3);
@@ -1285,6 +1286,11 @@ export function createHUD(THREE, A) {
       const age = now - C.notchT;
       drawBanner(ctx, cx, upperY + (alertOn() ? 36 : 0), '[ NOTCHED // RADAR LOCK BROKEN ]', '#00ff66', 360, 1 - age / 1600);
     }
+    if (C.wingOrderT && now - C.wingOrderT < 1600) {
+      const age = now - C.wingOrderT;
+      const label = C.wingOrder === 'ENGAGE' ? '[ WINGMEN // ENGAGE AT WILL ]' : '[ WINGMEN // REFORM ECHELON ]';
+      drawBanner(ctx, cx, upperY + 72, label, '#5fe8ff', 340, 1 - age / 1600);
+    }
 
     if (alertOn()) {
       drawBanner(ctx, cx, upperY, 'MISSILE ALERT', WARN, 210, pulseAlpha(160));
@@ -1461,6 +1467,26 @@ export function createHUD(THREE, A) {
   }
 
   let lastT = performance.now();
+  function drawWingmen(ctx) {
+    const ws = A.getWingmen ? A.getWingmen() : null;
+    if (!ws || !ws.length) return;
+    for (const w of ws) {
+      if (!w || !w.alive) continue;
+      _wv.copy(w.pos).project(cam);
+      if (_wv.z > 1 || _wv.z < -1 || Math.abs(_wv.x) > 1 || Math.abs(_wv.y) > 1) continue;
+      const x = (_wv.x * 0.5 + 0.5) * HW, y = (-_wv.y * 0.5 + 0.5) * HH;
+      const range = w.pos.distanceTo(S.position);
+      ctx.save();
+      glow(ctx, '#5fe8ff', 4); ctx.strokeStyle = '#5fe8ff'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath();
+      ctx.stroke();
+      ctx.font = f(11, true); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const label = `[ ${w.id} ]` + (range > 1852 ? `  ${(range / 1852).toFixed(1)}NM` : '');
+      labelText(ctx, label, x, y + 12, '#5fe8ff', 3);
+      ctx.restore();
+    }
+  }
   function draw() {
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastT) / 1000);
@@ -1514,7 +1540,7 @@ export function createHUD(THREE, A) {
       }
     }
 
-    if (!C.dead) drawTargets(hctx);
+    if (!C.dead) { drawTargets(hctx); drawWingmen(hctx); }
     drawRadio(hctx);
     drawTopLeft(hctx);
     if (!C.dead) drawKillFlash(hctx, g);

@@ -1196,6 +1196,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     consumes a cartridge and spawns a cloud with 90 pooled sparks; notch break
     and chaff decoy paths exercised via the debug API; program count unchanged.
     All 21 `?v=` tags bumped to s55a.
+- [x] **WARDEN wingmen + CRT radio portraits** *(build `s56a`, `index.html`,
+  `src/combat.js`, `src/hud.js`)*
+  - Two F-15C clones (`WARDEN-2/3`) share the loaded GLB geometry/materials;
+    cockpit/canopy meshes hidden. Echelon offsets ±55 m / −8 m / +45 m, smoothed
+    with pooled scratch vectors (no per-frame `new THREE.*`).
+  - `G` toggles FORM / ENGAGE (gear moved to `L`; briefing keybinds updated).
+    ENGAGE steers to 600 m behind the nearest bandit within 3 NM / 35°, clamped
+    to 1,500 m from the player, and fires at most one AIM-9 per wingman per
+    7–11 s. Friendly shots bypass the hostile director; wingman kills give no
+    player score and route through the BASE-style no-credit branch.
+  - Cyan HUD diamonds with `[ WDN-2/3 ]` + range when beyond 1 NM; wing-order
+    banner for 1.6 s. CRT portrait is a plain 2D canvas (no WebGL texture):
+    180 ms static, 2.6 s helmet/visor/mask with 20 fps flicker, then off.
+    Callouts (fox two / splash one / clear your six) capped at one per 4 s with
+    `audio.radioSquelch()` on the existing bus.
+  - Verified headless (`?nointro&debug&warp=5`): 2 wingman meshes visible at
+    ±55 m, `G` -> `ENGAGE`, CRT opens, `__perfDebug.frameMs` 3.2 ms, program
+    count unchanged (106), zero JS/WebGL errors (in-app browser and Edge).
+    All 21 `?v=` tags bumped to s56a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
