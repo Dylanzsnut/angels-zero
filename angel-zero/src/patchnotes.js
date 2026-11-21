@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.2', title: 'POST-STALL MANEUVERING', bullets: [
+    'Decoupled AoA and post-stall aero: Cobra, Kulbit and Hammerhead with full over-the-top control authority.',
+    'Flat spins with rudder/opposite-roll entry and neutral-stick recovery; apex pivot keeps slow vertical noses flying.',
+    'Maneuver callouts and style awards, denser high-AoA vapor, buffet camera shake and CRIMSON post-stall reversals.'
+  ] },
   { version: 'v1.1.1', title: 'BORDERLESS STANDBY HANGAR', bullets: [
     'Ace-Combat-style STANDBY menu floats over the full-viewport 3D F-15: launch, mode, difficulty, SPW, livery, weather, controls and patch notes.',
     'FLIGHT roster, MISSION BENCHMARK bars and PC key hints frame the jet; arrow keys or mouse drive every row.',

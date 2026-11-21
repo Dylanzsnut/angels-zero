@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s69a';
-import { SPW } from './loadout.js?v=s69a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s70a';
+import { SPW } from './loadout.js?v=s70a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -731,6 +731,7 @@ export function createCombat(THREE, env) {
       e.aceFlight = true; e.label = calls[i]; e.type = 'ACE';
       e.hpMax = e.hp = Math.round(100 * ACE_FLIGHT_HP);
       e.decoys = ACE_DECOY_N; e.chaffN = ACE_DECOY_N; e.decoyCD = 0;
+      e.psmCD = 0; e.psm = null; e.psmPitch = 0;                     // CRIMSON post-stall reversal state
       orient(e);
     });
     aceFlightDone = true;
@@ -853,10 +854,15 @@ export function createCombat(THREE, env) {
   const _t = new THREE.Vector3(), _a = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
   const _rt = new THREE.Vector3(), _u0 = new THREE.Vector3(), _p = new THREE.Vector3(), _lr = new THREE.Vector3(), _L = new THREE.Vector3();
   const _fh = new THREE.Vector3(), _s = new THREE.Vector3(), _w = new THREE.Vector3(), _mv = new THREE.Vector3(), _d = new THREE.Vector3();
-  const Z_AXIS = new THREE.Vector3(0, 0, 1);
+  const Z_AXIS = new THREE.Vector3(0, 0, 1), X_AXIS = new THREE.Vector3(1, 0, 0), ORIGIN = new THREE.Vector3();
+  // Reusable scratch for the per-frame AI vectors (no `new THREE.*` inside updateEnemy).
+  const _toPn = new THREE.Vector3(), _pFwd = new THREE.Vector3(), _wn = new THREE.Vector3(), _md = new THREE.Vector3(), _psmQ = new THREE.Quaternion();
   function orient(e) {
-    _m4.lookAt(new THREE.Vector3(), e.fwd, UP);
+    _m4.lookAt(ORIGIN, e.fwd, UP);
     e.quat.setFromRotationMatrix(_m4).multiply(_q.setFromAxisAngle(Z_AXIS, e.bank));
+    // Ace PSM reversal is a *visual* pitch offset on top of the flight quaternion;
+    // e.vel direction (and therefore the intercept) is deliberately unchanged.
+    if (e.psmPitch) e.quat.multiply(_psmQ.setFromAxisAngle(X_AXIS, e.psmPitch));
     e.heading = (Math.atan2(e.fwd.x, -e.fwd.z) / D2R + 360) % 360;
   }
   const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -1067,8 +1073,8 @@ export function createCombat(THREE, env) {
       const tca = w2 > 1 ? clamp(-rel.dot(w) / w2, 0, 2) : 0;
       const miss = _mv.copy(rel).addScaledVector(w, tca), missD = miss.length();
       if (e.merge <= 0 && (dist < MERGE_R || (tca < 1.6 && missD < MERGE_R && dist < 1100))) {
-        const wn = w2 > 1 ? w.clone().normalize() : e.fwd.clone();
-        const dir = miss.clone().addScaledVector(wn, -miss.dot(wn));
+        const wn = w2 > 1 ? _wn.copy(w).normalize() : _wn.copy(e.fwd);
+        const dir = _md.copy(miss).addScaledVector(wn, -miss.dot(wn));
         if (dir.lengthSq() < 4) dir.crossVectors(wn, UP).multiplyScalar(rand() < 0.5 ? -1 : 1).addScaledVector(UP, 0.6);
         if (dir.lengthSq() < 1e-4) dir.copy(UP);
         e.mergeDir.copy(dir.normalize());
@@ -1161,6 +1167,27 @@ export function createCombat(THREE, env) {
     e.speed = clamp(e.speed, V_FLOOR, Math.max(345, e.abSpeed * 1.05) * e.speedCap);
     ai.minKt = Math.min(ai.minKt || Infinity, e.speed / KT);
 
+    // ---- CRIMSON post-stall reversal: with the player on the six and slow, the ace
+    // yanks the nose through vertical (visual only — e.vel stays on its intercept)
+    // and bleeds speed so the pursuer overshoots.
+    e.psmCD = Math.max(0, (e.psmCD || 0) - dt);
+    if (e.aceFlight && playerActive && !e.psm && dist < 900 && e.speed < 210 && e.psmCD <= 0) {
+      const toPdir0 = _toPn.copy(toP).normalize();
+      if (e.fwd.dot(toPdir0) < -0.85) {
+        const kind = rand() < 0.6 ? 'COBRA' : 'KULBIT';
+        e.psm = { kind, t: 0, dur: kind === 'COBRA' ? 2.2 : 3.0 };
+        e.psmCD = 12;
+        if (env.onWing) env.onWing('CRIMSON-1: post-stall reversal — come on, ghost!', 'CRIMSON-1', '#ff3b5c');
+      }
+    }
+    if (e.psm) {
+      e.psm.t += dt;
+      const f = Math.min(1, e.psm.t / e.psm.dur);
+      e.psmPitch = e.psm.kind === 'COBRA' ? 1.45 * Math.sin(Math.PI * f) : 2 * Math.PI * f;
+      e.speed *= 1 - 0.28 * dt; e.vel.multiplyScalar(1 - 0.28 * dt);
+      if (e.psm.t >= e.psm.dur) { e.psm = null; e.psmPitch = 0; }
+    } else e.psmPitch = 0;
+
     // Smoothed turn acceleration feeds the HUD's LCOS lead computation.
     const nv = _mv.copy(e.fwd).multiplyScalar(e.speed);
     if (dt > 0) e.acc.lerp(_w.copy(nv).sub(e.vel).divideScalar(dt), Math.min(1, dt * 5));
@@ -1193,9 +1220,9 @@ export function createCombat(THREE, env) {
 
     // Guns, progressive seeker lock and missiles while engaging (same model as the player's).
     e.burstCD -= dt; e.mslCD -= dt;
-    const toPdir = toP.clone().normalize();
+    const toPdir = _toPn.copy(toP).normalize();
     const aligned = e.fwd.dot(toPdir);
-    const pFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
+    const pFwd = _pFwd.set(0, 0, -1).applyQuaternion(S.quaternion);
     const onSix = pFwd.dot(toPdir) > 0;                              // bandit is behind the player
     const engaging = e.tac === 'ENGAGE' && playerActive;
     const inCone = engaging && dist < B_LOCK_RANGE && Math.acos(clamp(aligned, -1, 1)) < B_CONE && onSix;
@@ -1334,7 +1361,8 @@ export function createCombat(THREE, env) {
     SWEEP:         { text: '4AAM SWEEP',    pts: 500, mult: 0.75, color: '#ffd45a' },
     CLOSE_CALL:    { text: 'CLOSE CALL',    pts: 250, mult: 0.5,  color: '#58ff9a' },
     BRIDGE_THREAD: { text: 'BRIDGE THREAD', pts: 600, mult: 1.0,  color: '#ffd45a' },
-    DANGER_CLOSE:  { text: 'DANGER CLOSE',  pts: 0,   mult: 0,    color: '#ffb838' }
+    DANGER_CLOSE:  { text: 'DANGER CLOSE',  pts: 0,   mult: 0,    color: '#ffb838' },
+    PSM:           { text: 'POST-STALL',    pts: 400, mult: 0.5,  color: '#00ff66' }
   };
   Object.assign(C, { comboMult: 1, comboTimer: 0, comboMax: COMBO_MAX, comboWindow: COMBO_T, comboBonus: 0,
     styleFeed: [], styleCounts: {}, dangerClose: false, dangerMult: 1 });
@@ -3911,6 +3939,7 @@ export function createCombat(THREE, env) {
         furball: { mode: C.mode, alive: waveAlive() + enemies.filter(e => e.alive && e.aceFlight).length,
           kills: C.furballKills || 0, nextAce: FURBALL_ACE_EVERY - (C.furballKills || 0) % FURBALL_ACE_EVERY },
         loadout: { spw: C.spw, wpn: C.weapon, qaam: C.qaam, livery: env.getLivery ? env.getLivery() : null },
+        psm: { active: !!S.psm, alphaPk: +(S.alphaPk * D2R).toFixed(1), spin: S.spin || 0, lastMan: C.manLabel || '—' },
         strike: { alive: strikeAlive() ? strikeTargets.filter(t => t.alive).length : 0,
           labels: strikeTargets.filter(t => t.alive).map(t => t.label).join(','),
           jamming: +(C.jamming || 0).toFixed(2), sectorLow: !!C.sectorLow },

@@ -6,7 +6,7 @@
 // clipped to the 3D combiner glass. Square tactical radar (bottom-left), stores
 // list + F-15C silhouette with per-pylon AIM-9 reload icons (bottom-right),
 // open-corner target brackets, edge pointers, minimal top-left telemetry.
-import { SPW } from './loadout.js?v=s69a';
+import { SPW } from './loadout.js?v=s70a';
 
 export function createHUD(THREE, A) {
   const canvas = A.canvas;
@@ -41,7 +41,9 @@ export function createHUD(THREE, A) {
     ['Z', 'Chaff'], ['J', 'ECM'], ['G', 'Wingmen'],
     ['L', 'Gear'], ['B', 'Brake'], ['Q', 'Roll'],
     ['SPACE', 'View'], ['[ ]', 'MFD'], ['ALT', 'Free look'],
-    ['TABx2', 'Debrief'], ['F1', 'This sheet']
+    ['TABx2', 'Debrief'], ['F1', 'This sheet'],
+    ['B+SHIFT <290KT', 'PSM: Cobra / Kulbit'],
+    ['RUDDER+OPP ROLL @STALL', 'Flat spin (neutral+opp rudder recovers)']
   ];
   let promptKey = '', promptT = 0;
 
@@ -1362,6 +1364,10 @@ export function createHUD(THREE, A) {
     if (C.aceFlightT && now - C.aceFlightT < 3000) {
       const age = now - C.aceFlightT;
       drawBanner(ctx, cx, upperY + 36, '[ WARNING // ACE SQUADRON INBOUND ]', WARN, 380, pulseAlpha(200) * (1 - age / 3000));
+    }
+    if (C.manT && now - C.manT < 1800) {
+      const age = now - C.manT;
+      drawBanner(ctx, cx, upperY + 108, C.manLabel, '#00ff66', 340, 1 - age / 1800);
     }
     if (C.trapT && now - C.trapT < 2600)
       drawBanner(ctx, cx, upperY, '[ WIRE #' + C.trapWire + ' // CARRIER TRAP ]', G, 340, 1);

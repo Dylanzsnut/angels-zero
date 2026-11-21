@@ -1107,11 +1107,13 @@ export function createVFX(THREE, env) {
     const dry = 1 - smooth(altFt, 18000, 26000);
     let vT = opts.visible ? Math.min(1, pull * (0.72 + 0.28 * (s.highG ? 1 : 0))) * smooth(kts, 160, 200) * (1 + 0.4 * humid) * (0.25 + 0.75 * dry) : 0;
     if (force.vapor && opts.visible) vT = 1;
+    if (aoaDeg > 35 && opts.visible) vT = 1;                 // post-stall: dense wingtip vapor
     vT = Math.min(1, vT);
     vaporTarget += (vT - vaporTarget) * Math.min(1, dt * (vT > vaporTarget ? 6.0 : 2.5));
     // LEX / root sheet: > 4.8 G or AoA > 14 deg, thick air only.
     let lT = opts.visible ? Math.max(smooth(s.gLoad, 4.8, 7.5), smooth(aoaDeg, 14, 24)) * smooth(kts, 140, 190) * (1 + 0.4 * humid) * (1 - smooth(altFt, 14000, 20000)) : 0;
     if (force.vapor && opts.visible) lT = 1;
+    if (aoaDeg > 35 && opts.visible) lT = 1;                 // post-stall: dense LEX sheet
     lT = Math.min(1, lT);
     lexTarget += (lT - lexTarget) * Math.min(1, dt * (lT > lexTarget ? 6.0 : 2.5));
     _ribCol.copy(RIB_DAY).lerp(RIB_OVC, humid).multiply(vaporTint);

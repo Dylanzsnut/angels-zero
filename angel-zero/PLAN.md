@@ -1497,6 +1497,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     headless Edge clamps a 375 px window to a 496 px CSS viewport, so the 375 px
     screenshot is cropped by the harness, not by page overflow. Every `?v=` tag
     bumped to s69a.
+- [x] **Post-stall maneuvering** *(build `s70a`, `index.html`, `src/combat.js`,
+  `src/hud.js`, `src/vfx.js`)*
+  - Velocity direction is now rate-limited toward the nose (`AOA_COUPLE` 3.4,
+    `AOA_COUPLE_PSM` 0.32) instead of being force-integrated onto it; AoA is
+    recomputed from body-frame velocity with no clamp. Attitude stays a pure
+    quaternion — Euler angles feed the HUD only, so loops pass vertical cleanly.
+  - PSM (`B+SHIFT` under 290 kt, or high-G + full pull, or `?psm`) frees the nose:
+    no AoA/G limiter, pitch authority x1.85 (cap 3.6 rad/s), yaw x1.7 with weak
+    weathercock, induced drag x2.4 and post-stall flat-plate aero. Cobra, Kulbit
+    and Hammerhead are detected with allocation-free accumulators, call out on the
+    HUD and award 400 style points.
+  - Apex authority keeps yaw/pitch alive with the nose vertical (Hammerhead /
+    Ranversman); sustained stall + opposite rudder/roll enters a flat spin that
+    holds ~120 deg/s yaw and recovers on neutral stick + opposite rudder or 180 kt.
+    `?spintest` forces entry at t = 1. CRIMSON ace flights can fly visual PSM
+    reversals (COBRA / KULBIT) that bleed speed without changing their intercept.
+  - High-AoA vapor is dense, camera buffet is rotation-only, and `stats()` /
+    warp log report `psm: { active, alphaPk, spin, lastMan }`. Debug `?psm`,
+    `?spintest`, `?rudder=a|d`. No per-frame `new THREE.*` in the new code.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
