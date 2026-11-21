@@ -9,7 +9,7 @@
 [![Three.js](https://img.shields.io/badge/Three.js-r160%20WebGL2-black?style=for-the-badge&logo=threedotjs)](https://threejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)](LICENSE)
 
-<h3><a href="https://angels-zero.pages.dev/">▶ PLAY NOW IN BROWSER</a></h3>
+<h3><a href="https://angels-zero.pages.dev/">PLAY IN BROWSER</a></h3>
 
 ![ANGELS ZERO Chase Dogfight](docs/screenshots/chase-combat.png)
 
@@ -17,16 +17,16 @@
 
 ---
 
-## Why Fly ANGELS ZERO?
+## Core Systems
 
-| | Feature | What You Get |
-| :---: | :--- | :--- |
-| 🎯 | **2 Game Modes** | 4-phase campaign (*Sweep → Canyon Strike → Crimson Ace → Carrier Trap*) + endless **FURBALL** instant dogfights |
-| 🌀 | **Post-Stall Maneuvering** | Decoupled AoA for **Cobra**, **Kulbit**, **Hammerhead**, flat spins, Mach-1 shock cones & pilot G-LOC |
-| 🛩️ | **Full 3D F-15C Cockpit** | Live 16-dial analog panel, animated HOTAS, bubble canopy rain/glare & cyclable VSD MFDs (`[` / `]`) |
-| 📻 | **Voiced Radio & CRT Portraits** | 45 radio-filtered voice lines across **AWACS Overlord**, **Warden** wingmen & **Crimson** aces |
-| 🚀 | **Full Arsenal & Countermeasures** | M61A1 Vulcan, AIM-9M, 4AAM, QAAM, CCIP/CCRP bombs, flares, chaff, ECM jammer, missile cam & ejection |
-| 🌩️ | **Dynamic Weather, NVG & Debrief** | Dawn-to-night skies, thunderstorms, AN/AVS-9 night vision (`N`) & animated **S/A/B/C** flight trace replay |
+| System | Capabilities |
+| :--- | :--- |
+| **Game Modes** | 4-phase campaign (*Sweep -> Canyon Strike -> Crimson Ace -> Carrier Trap*) + endless **FURBALL** instant dogfights |
+| **Post-Stall Maneuvering** | Decoupled AoA for **Cobra**, **Kulbit**, **Hammerhead**, flat spins, Mach-1 shock cones & pilot G-LOC |
+| **3D F-15C Cockpit** | Live 16-dial analog panel, animated HOTAS, bubble canopy rain/glare & cyclable VSD MFDs (`[` / `]`) |
+| **Voiced Radio & CRT Portraits** | 45 radio-filtered voice lines across **AWACS Overlord**, **Warden** wingmen & **Crimson** aces |
+| **Arsenal & Countermeasures** | M61A1 Vulcan, AIM-9M, 4AAM, QAAM, CCIP/CCRP bombs, flares, chaff, ECM jammer, missile cam & ejection |
+| **Weather, NVG & Debrief** | Dawn-to-night skies, thunderstorms, AN/AVS-9 night vision (`N`) & animated **S/A/B/C** flight trace replay |
 
 ---
 
