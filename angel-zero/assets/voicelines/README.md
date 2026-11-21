@@ -4,6 +4,17 @@ Home for generated radio voice clips (made locally with Voicebox in
 `D:\voicebox`, which lives outside this repository). Nothing here is wired
 into the game yet; `src/audio.js` will pick these up in a later step.
 
+## radio/ (generated 2026-11-21)
+
+45 clips listed in `src/radioScript.js` (`RADIO_LINES`, `file` field), made with
+Voicebox + Kokoro-82M presets: AWACS = `bm_george`, WARDEN-2 = `am_puck`,
+WARDEN-3 = `am_onyx`, CRIMSON-1 = `bm_fable`. Radio treatment is baked in
+(high-pass 300 Hz, low-pass 3.2 kHz, 4:1 compression, light drive, squelch
+burst head/tail), mono MP3 48 kbps at 22.05 kHz, peak -3 dBFS, 0.92 MB total.
+Regenerate with `scripts/radio_voice_pass.py` (Voicebox backend on :17493,
+see the script header). The planned cues below predate this pass and are
+not generated yet.
+
 ## Format
 
 - WAV, mono, 22.05–24 kHz, 16-bit PCM, trimmed, peak around -3 dBFS.

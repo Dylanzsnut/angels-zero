@@ -493,29 +493,30 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s67a';
-import { createBlastFX } from './src/blastfx.js?v=s67a';
-import { createHUD } from './src/hud.js?v=s67a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s67a';
-import { createCombat } from './src/combat.js?v=s67a';
-import { createEjection } from './src/eject.js?v=s67a';
-import { createAudio } from './src/audio.js?v=s67a';
-import { createRadio } from './src/radio.js?v=s67a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s67a';
-import { createLivery } from './src/livery.js?v=s67a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s67a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s67a';
-import { createCanopyFX } from './src/canopy.js?v=s67a';
-import { createNVG } from './src/nvg.js?v=s67a';
-import { createWorld, WORLD } from './src/world.js?v=s67a';
-import { createSurfaces } from './src/surfaces.js?v=s67a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s67a';
-import { createFreeLook } from './src/freelook.js?v=s67a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s67a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s67a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s67a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s67a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s67a';
+import { createVFX } from './src/vfx.js?v=s68a';
+import { createBlastFX } from './src/blastfx.js?v=s68a';
+import { createHUD } from './src/hud.js?v=s68a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s68a';
+import { createCombat } from './src/combat.js?v=s68a';
+import { createEjection } from './src/eject.js?v=s68a';
+import { createAudio } from './src/audio.js?v=s68a';
+import { createRadio } from './src/radio.js?v=s68a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s68a';
+import { createLivery } from './src/livery.js?v=s68a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s68a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s68a';
+import { createCanopyFX } from './src/canopy.js?v=s68a';
+import { createNVG } from './src/nvg.js?v=s68a';
+import { createWorld, WORLD } from './src/world.js?v=s68a';
+import { createSurfaces } from './src/surfaces.js?v=s68a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s68a';
+import { createFreeLook } from './src/freelook.js?v=s68a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s68a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s68a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s68a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s68a';
+import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s68a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s68a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -922,6 +923,7 @@ let prevMach = 0, machArmed = true, machShake = null;
 function onMach1() {
   machShake = { t: 0, T: 0.25, k: 1 };
   combat.mach1T = performance.now();
+  radioEvent('ON_MACH_1');
   onSfx('sonicboom');
 }
 const flybyPulse = document.getElementById('flybyPulse');
@@ -930,7 +932,7 @@ function onFlyby({ dist, k, side }) {
   wakeRoll = side * (12 + 16 * k) * D2R; wakeT = 0.25; // wake turbulence rolls the jet away
   flybyPulse.style.boxShadow = `inset 0 0 65px rgba(255,220,170,${0.22 * k})`;
   flybyPulse.animate([{ opacity: 1 }, { opacity: 0 }], 220);
-  if (dist < 75) combat.nearMissT = performance.now();
+  if (dist < 75) { combat.nearMissT = performance.now(); radioEvent('ON_NEAR_MISS'); }
   onSfx('flyby', null, k);
 }
 const camFrame = new THREE.Quaternion(), _camQ = new THREE.Quaternion(), _camAlign = new THREE.Quaternion(), _camNose = new THREE.Vector3();
@@ -1215,6 +1217,7 @@ function launchSortie() {
 const sortie = { active: false, t0: 0, ace0: 0, endAt: null, failReason: '' };
 function startSortie() {
   tele.reset();
+  radioReset(); preloadRadioOnce(); radioEvent('ON_TAKEOFF');
   combat.styleCounts = {}; combat.comboPeak = 1;
   Object.assign(sortie, { active: true, t0: simTime, ace0: combat.aceDowns || 0, endAt: null, failReason: '' });
   if (combat.mode === 'FURBALL') {
@@ -1246,6 +1249,7 @@ function watchSortie() {
 function endSortie(outcome) {
   if (!sortie.active) return;
   sortie.active = false;
+  if (outcome === 'CLEARED') radioEvent('ON_MISSION_CLEAR');
   const st = sortieStats();
   st.rankInfo = computeRank(st, outcome);
   const res = profile.recordSortie({ outcome, ...st, rankOverride: st.rankInfo.rank });
@@ -1767,9 +1771,7 @@ function updateCarrierOp(dt) {
       combat.health = 100;
       if (combat.chaff !== undefined) combat.chaff = combat.chaffMax;
       if (combat.engSide) combatSys.repairEngines();
-      combatSys.say('WARDEN-2: "Good trap, Lead! Deck crew is turning your bird."', 3, '#00ff66');
-      if (onWing) onWing('Good trap, Lead! Deck crew is turning your bird.', 'WARDEN-2');
-      carrier.pitDone = true;
+      carrier.pitDone = true;                               // voice: ON_CARRIER_TRAP caption replaces the old text callout
     }
     const targetZ = -ally.len / 2 + 45;
     _lp.x += (8 - _lp.x) * Math.min(1, dt * 3);
@@ -1782,6 +1784,7 @@ function updateCarrierOp(dt) {
     place(); state.onGround = true; state.afterburner = 0;
     if (state.throttle >= 0.95) {
       carrier.phase = 'LAUNCH'; carrier.t = 0;
+      radioEvent('ON_CATAPULT');
       onSfx('catapult'); blastShake = Math.max(blastShake, 0.5);
       for (let i = 0; i < 26; i++) {
         const localZ = -60 - i * 2.2, side = i % 2 ? 8 : -8;
@@ -1835,6 +1838,7 @@ function updatePhysics(dt) {
         if (Math.abs(_lp.z - wireZ3) < best) { wire = 3; }
         carrier.phase = 'ARREST'; carrier.t = 0; carrier.v0 = Math.max(10, vAlong); carrier.wire = wire;
         carrier.pitDone = false;
+        radioEvent('ON_CARRIER_TRAP');
         combat.trapT = performance.now(); combat.trapWire = wire;
         combat.traps = (combat.traps || 0) + 1;
         tele.event(EV.CARRIER_TRAP, state.position.x, state.position.z, simTime);
@@ -2450,13 +2454,14 @@ const audio = createAudio();
 /* ---- WARDEN CRT radio portrait (plain 2D canvas, no WebGL texture cost) ---- */
 const crtCanvas = document.getElementById('crt'), crtCap = document.getElementById('crtCap');
 const crtCtx = crtCanvas.getContext('2d', { willReadFrequently: true });
-let crtT = 0, crtVis = false, crtPaintT = 0, calloutT = -1e4;
-function paintCrt(caption) {
+let crtT = 0, crtVis = false, crtPaintT = 0, calloutT = -1e4, crtHold = 2780, crtCaption = '', crtTint = '#00ff66';
+function paintCrt(caption, tint = '#00ff66') {
   const x = crtCtx;
   x.fillStyle = '#010a05'; x.fillRect(0, 0, 96, 96);
-  x.strokeStyle = '#00ff66'; x.lineWidth = 2;
+  x.strokeStyle = tint; x.lineWidth = 2;
   x.beginPath(); x.arc(48, 43, 27, Math.PI, 0); x.stroke();               // helmet arc
-  x.fillStyle = 'rgba(0,255,102,0.20)'; x.fillRect(23, 38, 50, 13);       // visor band
+  x.fillStyle = tint === '#ff3b5c' ? 'rgba(255,59,92,0.20)' : 'rgba(0,255,102,0.20)';
+  x.fillRect(23, 38, 50, 13);                                              // visor band
   x.beginPath(); x.moveTo(38, 60); x.lineTo(58, 60); x.lineTo(54, 73); x.lineTo(42, 73); x.closePath(); x.stroke(); // oxygen mask
   x.fillStyle = 'rgba(0,0,0,0.35)';
   for (let y = 0; y < 96; y += 2) x.fillRect(0, y, 96, 1);               // scanlines
@@ -2468,27 +2473,93 @@ function updateCrt(now) {
   if (age < 180) {
     crtCtx.fillStyle = 'rgba(190,255,215,0.4)';
     for (let i = 0; i < 40; i++) crtCtx.fillRect((Math.random() * 96) | 0, (Math.random() * 96) | 0, 1, 1);
-  } else if (age < 2780) {
-    if (now - crtPaintT > 50) { paintCrt(); crtPaintT = now; }             // 20 fps max
+  } else if (age < crtHold) {
+    if (now - crtPaintT > 50) { paintCrt(crtCaption, crtTint); crtPaintT = now; } // 20 fps max
     crtCanvas.style.filter = `brightness(${(1 + Math.random() * 0.12 - 0.06).toFixed(3)})`;
   } else {
     crtVis = false; crtCanvas.style.opacity = '0'; crtCap.style.opacity = '0'; crtCanvas.style.filter = '';
   }
 }
-function onWing(text, caption, tint) {
+function onWing(text, caption, tint, force = false, hold = 2780) {
   const now = performance.now();
-  if (now - calloutT < 4000) return;                                      // at most 1 / 4 s
-  calloutT = now; crtT = now; crtVis = true; crtPaintT = 0;
+  if (!force && now - calloutT < 4000) return;                            // at most 1 / 4 s
+  calloutT = now; crtT = now; crtVis = true; crtPaintT = 0; crtHold = hold;
   crtCanvas.style.opacity = '1'; crtCap.style.opacity = '1';
-  crtCap.style.color = tint || '#00ff66';
-  paintCrt(caption);
+  crtCaption = caption || ''; crtTint = tint || '#00ff66';
+  crtCap.style.color = crtTint;
+  paintCrt(crtCaption, crtTint);
   if (audio.ready) audio.radioSquelch();
 }
+
+// ---- voiced radio dispatcher: one channel, priority + cooldown rules ----
+const radioCh = { until: 0, banter: 0, queue: [], last: Object.create(null), cd: Object.create(null), once: Object.create(null) };
+const RADIO_CD = { ON_NEAR_MISS: 20, ON_CANYON_LOW: 20 };
+const RADIO_ONCE = { ON_TAKEOFF: 1, ON_ACE_INBOUND: 1, ON_ACE_KILL: 1, ON_MISSION_CLEAR: 1 };
+function radioPlay(line) {
+  const info = RADIO_SPEAKERS[line.speaker] || { callsign: line.speaker, tint: '#00ff66' };
+  const dur = audio.playRadio(line.id);
+  radioCh.until = performance.now() + dur * 1000;
+  radioCh.last[line.event] = line.id;
+  onWing(line.text, info.callsign, info.tint, true, Math.max(2780, dur * 1000 + 300));
+}
+function radioEvent(ev) {
+  if (!RADIO_BY_EVENT[ev]) return false;
+  const now = performance.now();
+  if (RADIO_ONCE[ev] && radioCh.once[ev]) return false;
+  const cd = RADIO_CD[ev] || 8;
+  if (now < (radioCh.cd[ev] || 0)) return false;
+  radioCh.cd[ev] = now + cd * 1000;
+  if (RADIO_ONCE[ev]) radioCh.once[ev] = 1;
+  const pool = RADIO_BY_EVENT[ev];
+  let pick = null;
+  for (let tries = 0; tries < 8; tries++) {
+    const c = pool[(Math.random() * pool.length) | 0];
+    if (c.id !== radioCh.last[ev]) { pick = c; break; }
+  }
+  if (!pick) pick = pool[0];
+  const busy = now < radioCh.until;
+  if (pick.priority === 1) {
+    if (busy) audio.stopRadio();                                // CRITICAL interrupts
+    radioCh.queue.length = 0;
+    radioPlay(pick);
+  } else if (pick.priority === 2) {
+    if (busy) { if (radioCh.queue.length < 2) radioCh.queue.push(pick); }
+    else radioPlay(pick);
+  } else {
+    // BANTER: only after the channel has been idle for 3 s, and never within 5 s of the last one.
+    if (!busy && now - radioCh.until >= 3000 && now >= (radioCh.banter || 0)) {
+      radioCh.banter = now + 5000;
+      radioPlay(pick);
+    }
+  }
+  return true;
+}
+function radioPump() {
+  if (!radioCh.queue.length || performance.now() < radioCh.until) return;
+  radioPlay(radioCh.queue.shift());
+}
+function radioReset() { radioCh.until = 0; radioCh.banter = 0; radioCh.queue.length = 0; radioCh.last = Object.create(null); radioCh.cd = Object.create(null); radioCh.once = Object.create(null); }
+let radioPreloaded = false;
+function preloadRadioOnce() {
+  if (radioPreloaded || !audio.ready) return;
+  radioPreloaded = true; audio.preloadRadio(RADIO_LINES);
+}
+if (DEBUG && Q.has('radiohero')) {
+  audio.init(); radioPreloaded = true;
+  audio.preloadRadio(RADIO_LINES).then(() => {
+    RADIO_HERO.forEach((line, i) => setTimeout(() => radioPlay(line), 400 + i * (Math.max(3, line.text.length * 0.06) * 1000 + 400)));
+  });
+}
+window.__playTrailerLine = key => {
+  const line = RADIO_HERO.find(l => l.id === key || l.event === key) || RADIO_HERO[0];
+  if (line) radioPlay(line);
+  return line ? line.id : null;
+};
 // Recorded SFX (assets/sfx/): fetch + decode now so they are ready at LAUNCH; failures fall back to procedural DSP.
 audio.preload().then(st => console.log('[ANGELS_ZERO] sfx', JSON.stringify(st)));
 // Unlock / resume the AudioContext inside every user gesture (browsers keep it
 // suspended until one); the LAUNCH click still creates it as well.
-for (const ev of ['pointerdown', 'mousedown', 'keydown', 'touchstart']) addEventListener(ev, () => { audio.init(); audio.resume(); }, { capture: true, passive: true });
+for (const ev of ['pointerdown', 'mousedown', 'keydown', 'touchstart']) addEventListener(ev, () => { audio.init(); audio.resume(); preloadRadioOnce(); }, { capture: true, passive: true });
 if (DEBUG) window.__dbgInput = (nx, ny, k = {}) => { mouse.nx = nx; mouse.ny = ny; Object.assign(keys, k); };   // debug: hold stick / keys
 // debug: advance the sim + audio mix n frames (for checks in a throttled / hidden tab)
 // debug: one complete synchronous frame (sim + camera + render + HUD), GPU-finished, returns ms.
@@ -2504,7 +2575,8 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
 if (DEBUG) window.__step = (n = 30) => { for (let i = 0; i < n; i++) { simTime += 1 / 60; stepSim(1 / 60); updateCameraAndVisuals(1 / 60, simTime); if (appMode === 'PLAY') updateAudio(); } };
 window.__audioDebug = () => ({ state: audio.state, rms: +audio.rms.toFixed(4), muted: audio.muted, volume: audio.volume, layers: audio.layers,
   canopyRain: audio.canopyRain, wind: audio.wind, blast: audio.blast, blastFx: blast ? blast.stats : null, shake: +blastShake.toFixed(3), ribbons: vfx.ribbons, canopyGlass: canopyGlass.stats, rainCulled: weather.rainCulled,
-  music: audio.music, slowMo: audio.slowMoDebug, mist: audio.mist, radio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
+  music: audio.music, slowMo: audio.slowMoDebug, mist: audio.mist, radio: audio.radio,
+  crtRadio: combat.radio ? { call: combat.radio.call, text: combat.radio.text, age: +combat.radio.age.toFixed(2) } : null,
   gLoad: +state.gLoad.toFixed(2), gStrain: +state.gStrain.toFixed(2), throttle: +state.throttle.toFixed(2), afterburner: +state.afterburner.toFixed(2) });
 // Seeker / alert / gun state -> procedural audio mix, once per frame.
 const _audioFwd = new THREE.Vector3();
@@ -2608,7 +2680,10 @@ function setNVG(on, silent) {
 }
 // Reactive AWACS / enemy radio comms (src/radio.js), fed by combat events.
 let radioSys = null;
-function onRadio(kind, d) { if (radioSys) radioSys.event(kind, d); }
+function onRadio(kind, d) {
+  if (RADIO_BY_EVENT[kind]) radioEvent(kind);                   // voiced radio
+  else if (radioSys) radioSys.event(kind, d);                  // legacy CRT chatter
+}
 // Pooled impact detonations (Visual Pass 5): fireballs, rings, sparks, debris, hanging smoke, geysers.
 blast = createBlastFX(THREE, { scene, camera, terrainHeight, sunDir: SUN_DIR, wind: vfx.wind, sunLight, hemiLight });
 const DIFF_FORCED = DEBUG && Q.has('difficulty') && DIFFICULTY_PRESETS[Q.get('difficulty').toUpperCase()] ? Q.get('difficulty').toUpperCase() : null;
@@ -3024,6 +3099,7 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
     const debriefAt = Q.has('debriefat') ? Number(Q.get('debriefat')) : -1;
     const mphaseAt = Q.has('mphaseat') ? Q.get('mphaseat').split(',').map(Number) : null;
     const radarShotAt = Q.has('radarshot') ? Number(Q.get('radarshot')) : -1;
+    const radioAt = Q.has('radioat') ? Q.get('radioat').split(',') : null;
     const nearAt = Q.has('nearat') ? Number(Q.get('nearat')) : -1;
     const killAts = Q.has('killat') ? Q.get('killat').split(',').map(Number) : [];
     for (let i = 0, n = Number(Q.get('warp')) * 60; i < n; i++) {
@@ -3040,6 +3116,10 @@ loader.load('assets/angels_zero_jet.glb', gltf => {
       updateMissileCamState(h);
       if (strikeKillAt >= t0 && strikeKillAt < t1) { combatSys.killStrikes(); console.log('[ANGELS_ZERO] strike kill @', t1.toFixed(2), JSON.stringify(combatSys.stats().strike), 'score', combat.score); }
       if (nearAt >= t0 && nearAt < t1) { tele.event(EV.NEAR_MISS, state.position.x, state.position.z, simTime); console.log('[ANGELS_ZERO] near miss @', t1.toFixed(2)); }
+      if (radioAt && Number(radioAt[0]) >= t0 && Number(radioAt[0]) < t1) {
+        radioCh.once[radioAt[1]] = 0; radioCh.cd[radioAt[1]] = 0; radioCh.banter = 0; radioCh.until = 0;
+        console.log('[ANGELS_ZERO] radio @', t1.toFixed(2), radioAt[1], radioEvent(radioAt[1]));
+      }
       if (radarShotAt >= t0 && radarShotAt < t1) { combatSys.banditShot(0, false, true, 'RADAR'); console.log('[ANGELS_ZERO] radar shot @', t1.toFixed(2)); }
       if (mphaseAt && t1 >= mphaseAt[0] && t0 < mphaseAt[0]) { console.log('[ANGELS_ZERO] mphase @', t1.toFixed(2), combatSys.setMissionPhase(mphaseAt[1])); }
       if (t1 >= debriefAt && t0 < debriefAt) { console.log('[ANGELS_ZERO] debrief @', t1.toFixed(2), JSON.stringify(combatSys.stats().tele)); endSortie('CLEARED'); }
@@ -3228,6 +3308,7 @@ function animate() {
   hud.draw();
   if (dt > 0) perf.fps += ((1 / Math.max(dt, 1e-3)) - perf.fps) * 0.05;
   perf.frames++;
+  radioPump();
 }
 const perf = { fps: 60, frames: 0 };
 addEventListener('resize', () => {

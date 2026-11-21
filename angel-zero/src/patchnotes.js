@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.0', title: 'FULL RADIO VOICE CAST', bullets: [
+    '45 radio-filtered lines across AWACS, Warden-2, Warden-3 and Crimson-1, cached on demand with clean CRT-text fallback.',
+    'Priority dispatcher interrupts banter for critical calls, spaces tactical lines and drives tinted CRT portraits + subtitles.',
+    'Squelch clicks and combat/music ducking make every transmission read clearly; trailer-hero lines are capture-ready.'
+  ] },
   { version: 'v1.0.9', title: 'FOUR-PHASE MISSION + TACTICAL HUD', bullets: [
     'Missions now flow through four objectives: sweep, strike, ace intercept and carrier recovery.',
     'An objective card and off-screen chevron keep the next target in view, with a contextual prompt pill for threats and recovery.',

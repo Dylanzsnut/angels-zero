@@ -1452,6 +1452,30 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     gates visible (opacity 0.26); `?radarshot` produces a RADAR `msl` RWR entry;
     F1 toggles the sheet; zero JS/WebGL errors across four Edge CLI URLs.
     Debug `?mphaseat=s,n`, `?radarshot=s`. Every `?v=` tag bumped to s67a.
+- [x] **Voiced radio cast** *(build `s68a`, `src/radioScript.js`, `src/audio.js`,
+  `src/combat.js`, `index.html`)*
+  - 45 radio-filtered MP3 lines (0.92 MB) for AWACS, WARDEN-2/3 and CRIMSON-1,
+    lazily decoded into a fixed clip cache (four concurrent fetches); missing
+    clips fall back to CRT text. Squelch clicks (45 ms / 1800 Hz) bracket each
+    transmission; music ducks to 0.35 and combat SFX to 0.63 while a line plays.
+  - One-channel dispatcher: CRITICAL interrupts, TACTICAL queues (max 2), BANTER
+    needs 3 s channel idle + a 5 s cooldown (else dropped); per-event cooldowns
+    (8 s, 20 s for near-miss / canyon-low) and once-per-sortie mission events.
+    Captions drive speaker-tinted CRT
+    portraits and subtitles. `window.__playTrailerLine()` exposes the 6 hero
+    lines for Trailer Director capture.
+  - All 12 events wired from combat / sortie flow; duplicate text callouts
+    (trap, canyon-low, wingman fox two / clear-six, CRIMSON entry taunt) removed.
+    Debug `?radioat=s,EVENT`, `?radiohero`.
+  - Verified headless: `?radioat=1,ON_TAKEOFF&warp=4` fires the hook and shows the
+    tinted CRT caption (caption-only fallback while the synchronous warp beats
+    async decode); `?radiohero` plays all 6 hero lines, restores the duck buses
+    and holds the speaker-tinted caption for the clip. BANTER rules exercised
+    directly: the 5 s cooldown and busy / <3 s-idle gates drop, a >3 s idle
+    channel plays. MP3 requests 200 with 0.92 MB total; deployable build 13.1 MB
+    (< 25 MB); render cost 3.4-7.2 ms/frame (3.5-7.0 ms with radio active), well
+    inside the 16.7 ms 60 FPS budget; zero JS/WebGL errors across three Edge CLI
+    URLs. Every `?v=` tag bumped to s68a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

@@ -18,6 +18,8 @@ export function createAudio() {
   try { const v = parseFloat(localStorage.getItem('az_volume')); if (!Number.isNaN(v) && v >= 0.05) volume = Math.min(1, v); localStorage.removeItem('az_muted'); } catch (e) { /* storage unavailable */ }
 
   const N = {};                                            // live nodes
+  const radioBufs = Object.create(null);                   // decoded voice clips, cached by line id
+  const radioState = { plays: 0, lastId: '', loaded: 0, playing: false };
   const tc = 0.06;                                         // param smoothing time-constant
 
   function noiseBuffer(kind, seconds = 4) {
@@ -86,6 +88,8 @@ export function createAudio() {
     cockpitLP.connect(master); master.connect(N.slowLP).connect(N.slowShelf).connect(N.duck); N.duck.connect(N.tunnel); N.tunnel.connect(comp); comp.connect(N.analyser); N.analyser.connect(ctx.destination);
     // Body bus: the pilot's own breathing / heartbeat and the headset chime skip the tunnel.
     N.body = gain(muted ? 0 : volume); N.body.connect(comp);
+    // Voiced radio: headset bus (skips cockpit LP + G-LOC tunnel).
+    N.radioBus = gain(0.95); N.radioBus.connect(N.body);
     const white = noiseBuffer('white'), pink = noiseBuffer('pink'), brown = noiseBuffer('brown');
     N.whiteBuf = white;
     initMusic();
@@ -1004,8 +1008,62 @@ export function createAudio() {
     if (N.music) set(N.music.gain, musicOn ? 1 : 0, 0.25);
     if (musicOn) mNext = 0;
   }
-  // Radio transmission: duck the music bus -35 % while it is keyed.
-  function setRadio(active) { if (N.musicDuck) set(N.musicDuck.gain, active ? 0.65 : 1, 0.15); }
+  // Voiced radio: duck music -9 dB and combat SFX about -4 dB while a line plays.
+  function setRadio(active) {
+    if (N.musicDuck) set(N.musicDuck.gain, active ? 0.35 : 1, 0.08);
+    if (N.duck) set(N.duck.gain, active ? 0.63 : 1, 0.08);
+  }
+  // 45 ms static squelch click at 1800 Hz on transmission start / end.
+  function radioClick() {
+    if (!ready || !N.whiteBuf) return;
+    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = N.whiteBuf;
+    const bp = filt('bandpass', 1800, 2), g = gain(0);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+    s.connect(bp).connect(g).connect(N.radioBus || N.body); s.start(t, Math.random() * 3); s.stop(t + 0.047);
+  }
+  // Lazy clip cache: fetch + decode at most four at a time; never blocks the first sortie.
+  function preloadRadio(lines) {
+    if (!ready || !ctx || !Array.isArray(lines)) return Promise.resolve(0);
+    let next = 0;
+    const worker = async () => {
+      while (next < lines.length) {
+        const line = lines[next++];
+        if (!line || radioBufs[line.id]) continue;
+        try {
+          const res = await fetch(line.file);
+          if (!res.ok) continue;
+          const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+          if (buf) { radioBufs[line.id] = buf; radioState.loaded++; }
+        } catch (e) { console.warn('[ANGELS_ZERO] radio decode failed', line.id, e && e.name, e && e.message); }
+      }
+    };
+    return Promise.all([worker(), worker(), worker(), worker()]).then(() => radioState.loaded);
+  }
+  // One-shot source per clip; returns duration in seconds (0 when uncached / unavailable).
+  function playRadio(id) {
+    if (!ready || !ctx) return 0;
+    const buf = radioBufs[id];
+    if (!buf) return 0;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    src.connect(N.radioBus || N.body);
+    if (N.radioSrc) { try { N.radioSrc.onended = null; N.radioSrc.stop(); } catch (e) { /* already ended */ } }
+    N.radioSrc = src;
+    radioClick(); setRadio(true);
+    radioState.playing = true; radioState.plays++; radioState.lastId = id;
+    src.onended = () => {
+      if (N.radioSrc === src) N.radioSrc = null;
+      setRadio(false); radioClick(); radioState.playing = false; src.disconnect();
+    };
+    src.start();
+    return buf.duration;
+  }
+  function stopRadio() {
+    if (!N.radioSrc) return;
+    try { N.radioSrc.onended = null; N.radioSrc.stop(); } catch (e) { /* already ended */ }
+    N.radioSrc.disconnect(); N.radioSrc = null;
+    setRadio(false); radioState.playing = false;
+  }
   // VHF squelch: high-passed static burst + a 1,850 Hz roger-beep click, on key-up and key-down.
   function radioSquelch(open = true) {
     if (!ready || !N.whiteBuf) return;
@@ -1268,7 +1326,7 @@ export function createAudio() {
   }
 
   return {
-    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, mfdClick, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preload,
+    init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, mfdClick, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preloadRadio, playRadio, stopRadio, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
     get musicOn() { return musicOn; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.
@@ -1276,7 +1334,7 @@ export function createAudio() {
       return { on: musicOn, layer: mLvl, gains: N.mL ? N.mL.map(g => +g.gain.value.toFixed(2)) : [0, 0, 0],
         bar: (mStep >> 4) + 1, step: mStep, notes: mNotes, duck: N.musicDuck ? +N.musicDuck.gain.value.toFixed(2) : 1,
         bus: N.music ? +N.music.gain.value.toFixed(2) : 0, ahead: mNext && ctx ? +(mNext - ctx.currentTime).toFixed(3) : 0 };
-    }, setVolume, setMuted,
+    }, get radio() { return { ...radioState, duck: N.duck ? +N.duck.gain.value.toFixed(2) : 1 }; }, setVolume, setMuted,
     get sfxStatus() { return { ...sfxState }; },
     toggleMute() { setMuted(!muted); return muted; },
     get volume() { return volume; }, get muted() { return muted; },

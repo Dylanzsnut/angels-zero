@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s67a';
-import { SPW } from './loadout.js?v=s67a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s68a';
+import { SPW } from './loadout.js?v=s68a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.
@@ -737,8 +737,7 @@ export function createCombat(THREE, env) {
     C.aceFlightT = performance.now();
     tintFleet(); writeFleet();
     if (env.onSfx) env.onSfx('aceWarn');
-    say('CRIMSON-1: "You fly well for a ghost. Let\'s fix that."', 3.2, '#ff3b5c');
-    if (env.onWing) env.onWing('Crimson-1: You fly well for a ghost.', 'CRIMSON-1', '#ff3b5c');
+    if (env.onRadio) env.onRadio('ON_ACE_INBOUND');          // voice: replaces the old CRIMSON entry text
     return true;
   }
   // Missiles / bombs: one-shot kills on ordinary bandits; the Ace soaks 150 HP per hit.
@@ -1285,6 +1284,7 @@ export function createCombat(THREE, env) {
     }
     if (env.onTele) env.onTele(e.aceFlight || e.ace ? 'ACE_KILL' : 'KILL', e.pos);
     C.kills++; C.score += 1500; C.hitFlash = 0.3;
+    if ((e.aceFlight || e.ace) && env.onRadio) env.onRadio('ON_ACE_KILL');
     if (C.mode === 'FURBALL') {
       C.furballKills++;
       if (C.furballKills % FURBALL_ACE_EVERY === 0 && !enemies.some(x => x.aceFlight && x.alive)) {
@@ -1665,7 +1665,7 @@ export function createCombat(THREE, env) {
   let cloudClear = 0;                                        // s: suppress the RWR alert after a cloud break
   Object.assign(C, { seekerArmed: false, multi: [], multiProg: [], multiState: [], multiLocked: 0,
     aam4: AAM4_MAX, aam4Max: AAM4_MAX, aam4Reload: 0, aam4ReloadMax: AAM4_RELOAD,
-    spw: '4AAM', qaam: QAAM_MAX, qaamMax: QAAM_MAX, qaamReload: 0, qaamReloadMax: QAAM_RELOAD });
+    spw: '4AAM', qaam: QAAM_MAX, qaamMax: QAAM_MAX, qaamReload: 0, qaamReloadMax: QAAM_RELOAD, lowHpSaid: false });
   let seekerT = 0, seekerHadLock = false;
   const fwdOf = () => new THREE.Vector3(0, 0, -1).applyQuaternion(S.quaternion);
 
@@ -1927,6 +1927,7 @@ export function createCombat(THREE, env) {
     const label = MP[p].label;
     say('[ OBJECTIVE ] ' + label, 3, '#00ff66');
     if (env.onWing) env.onWing(label + ', Lead. WARDEN-2 copies.', 'WARDEN-2');
+    if (p === 2 && env.onRadio) env.onRadio('ON_PHASE_2_CANYON');
     if (p === 3) { aceFlightDone = false; spawnAceFlight(); }
   }
   function updateMissionPhase() {
@@ -1956,9 +1957,6 @@ export function createCombat(THREE, env) {
         if (!e.alive) continue;
         const d = e.pos.distanceTo(S.position);
         const kind = e.bLock >= 1 ? 'lock' : e.bLock > 0.05 ? 'acq' : e.tac === 'ENGAGE' && d < B_LOCK_RANGE * 1.5 ? 'paint' : null;
-        if (e.bLock > 0.45 && env.onWing && performance.now() - (C.wingWarnT || 0) > 4000) {
-          C.wingWarnT = performance.now(); env.onWing('Clear your six, Lead!', 'WARDEN');
-        }
         if (!kind) continue;
         list.push({ b: relBearing(e.pos), kind, d, id: e.id, g: d > 2500 ? 'RADAR' : 'IR', ace: !!(e.aceFlight || e.ace) });
         level = Math.max(level, kind === 'lock' ? 2 : 1);
@@ -2026,7 +2024,8 @@ export function createCombat(THREE, env) {
   function setWingOrder(order) {
     C.wingOrder = order || (C.wingOrder === 'ENGAGE' ? 'FORM' : 'ENGAGE');
     C.wingOrderT = performance.now();
-    if (env.onWing) env.onWing(C.wingOrder === 'ENGAGE' ? 'Engaging at will, Lead.' : 'Reforming echelon, Lead.', 'WARDEN');
+    if (C.wingOrder === 'ENGAGE' && env.onRadio) env.onRadio('ON_WINGMAN_ENGAGE');
+    else if (env.onWing) env.onWing('Reforming echelon, Lead.', 'WARDEN');
     return C.wingOrder;
   }
   function updateWingmen(dt) {
@@ -2059,7 +2058,7 @@ export function createCombat(THREE, env) {
       const m = launch(w.pos, w.quat, w.vel, best, false, MSL_FULL, null);
       if (!m) continue;
       m.friendly = true; m.wingman = w.id; w.cd = 7 + 4 * rand();
-      if (env.onWing) env.onWing(`${w.call}, fox two!`, w.call);
+      if (env.onRadio) env.onRadio('ON_WINGMAN_ENGAGE');      // voice: deduped by the radio cooldown
     }
   }
   function updateMissiles(dt, playerActive) {
@@ -2223,6 +2222,8 @@ export function createCombat(THREE, env) {
     if (C.dead) return;
     C.health = Math.max(0, C.health - n);
     C.maxDmg = Math.max(C.maxDmg || 0, 100 - C.health);
+    if (C.health <= 45 && !C.lowHpSaid) { C.lowHpSaid = true; if (env.onRadio) env.onRadio('ON_LOW_HP'); }
+    else if (C.health > 70) C.lowHpSaid = false;
     C.hitFlash = 0.3;
     if (C.health <= 0) env.onPlayerDown('damage');
   }
@@ -3598,7 +3599,7 @@ export function createCombat(THREE, env) {
     chaff.length = 0; chaffCD = 0; chaffRecharge = 0; C.chaff = C.chaffMax; C.notchT = 0;
     Object.assign(C, { ammo: GUN_MAX, missiles: MSL_MAX, reload: 0, missileReload: 0, lockTarget: null, nextTarget: null, designated: null, health: 100, dead: false, hitFlash: 0, missileWarning: 0,
       lockProgress: 0, lockState: 'NONE', rwrTrack: false, banditLock: 0, events: [],
-      gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0, furballKills: 0 });
+      gunRounds: 0, gunHitsP: 0, mslFiredP: 0, mslHitsP: 0, maxDmg: 0, traps: 0, furballKills: 0, lowHpSaid: false });
     furT = 0;
     for (const e of enemies) e.bLock = 0;
     playerTracers.clear(); enemyTracers.clear();
@@ -3731,8 +3732,7 @@ export function createCombat(THREE, env) {
     C.sectorLow = !!inSector && S.radalt <= JAM_ALT;
     if (C.sectorLow && !sectorLowPrev && nowMs - sectorLowT > 20000) {
       sectorLowT = nowMs;
-      say('WARDEN-2: "Watch your altitude, Lead—threading the canyon!"', 3, '#00ff66');
-      if (env.onWing) env.onWing('Watch your altitude, Lead—threading the canyon!', 'WARDEN-2');
+      if (env.onRadio) env.onRadio('ON_CANYON_LOW');          // voice: replaces the old text callout
     }
     sectorLowPrev = C.sectorLow;
     if (playerActive) {

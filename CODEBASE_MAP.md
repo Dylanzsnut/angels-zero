@@ -14,6 +14,8 @@ angel-zero/src/audio.js:654 -> mfdClick(); angel-zero/src/hud.js:1363 -> MFD ban
 angel-zero/src/combat.js:26 -> MP phase labels; :1909 -> primaryTargets(); :1932 -> updateMissionPhase(); :3010 -> instanced approach gates; :3796 -> onCarrierTrap()
 angel-zero/index.html:1585 -> F1 cheat key; :1841 -> trap → mission complete; :3025 -> ?mphaseat debug; :2827 -> HUD getPrimary
 angel-zero/src/hud.js:1576 -> objective card + chevron; :1630 -> prompt pill; :1669 -> F1 sheet
+angel-zero/src/audio.js:92 -> radioBus; :1026 -> preloadRadio(); :1044 -> playRadio() / stopRadio(); :1013 -> radioClick()
+angel-zero/index.html:2497 -> radioPlay(); :2504 -> radioEvent() ; :2548 -> window.__playTrailerLine; :2573 -> __audioDebug().radio; :3097 -> ?radioat / ?radiohero
 angel-zero/index.html:2914 -> animate(); :841 -> advanceTimeScale(realDt); :847 -> triggerSlowMo(); :1962 -> updateMissileCamState(realDt); :1984 -> updateCameraAndVisuals(dt, now)
 angel-zero/src/vfx.js:24 -> createVFX(THREE, env)
 angel-zero/src/vfx.js:209 -> class Ribbon({w0,w1,life,alpha,wisp,step,minDt,far}); :186 -> RIB_V uFar uniform

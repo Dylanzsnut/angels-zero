@@ -1,0 +1,105 @@
+// ANGELS ZERO — radio voice script (data only; wired into the game in a later step).
+//
+// Four speakers:
+//   AWACS      "OVERLORD" — calm, clipped tactical command
+//   WARDEN-2   energetic young wingman
+//   WARDEN-3   seasoned veteran wingman, dry humour
+//   CRIMSON-1  rival ace leading the CRIMSON flight — theatrical, cold
+//
+// Every entry: { id, speaker, text, event, priority, file, trailerHero }
+//   priority     1 = CRITICAL (interrupts), 2 = TACTICAL, 3 = BANTER (drops if the channel is busy)
+//   file         clip path relative to angel-zero/ (mono MP3, 48 kbps, radio band-pass baked in)
+//   trailerHero  six flagship lines for trailers / the briefing reel
+//
+// Lines are original writing for ANGELS ZERO.
+
+export const RADIO_SPEAKERS = {
+  'AWACS':     { callsign: 'OVERLORD',  tint: '#5fe8ff', role: 'airborne command' },
+  'WARDEN-2':  { callsign: 'WARDEN-2',  tint: '#00ff66', role: 'wingman' },
+  'WARDEN-3':  { callsign: 'WARDEN-3',  tint: '#00ff66', role: 'wingman' },
+  'CRIMSON-1': { callsign: 'CRIMSON-1', tint: '#ff3b5c', role: 'enemy ace' }
+};
+
+export const RADIO_EVENTS = [
+  'ON_TAKEOFF', 'ON_CATAPULT', 'ON_MACH_1', 'ON_NEAR_MISS', 'ON_PHASE_2_CANYON', 'ON_CANYON_LOW',
+  'ON_ACE_INBOUND', 'ON_ACE_KILL', 'ON_CARRIER_TRAP', 'ON_WINGMAN_ENGAGE', 'ON_LOW_HP', 'ON_MISSION_CLEAR'
+];
+
+const DIR = 'assets/voicelines/radio/';
+const L = (id, speaker, event, priority, text, trailerHero = false) =>
+  ({ id, speaker, text, event, priority, file: DIR + id + '.mp3', trailerHero });
+
+export const RADIO_LINES = [
+  // ON_TAKEOFF
+  L('takeoff_awacs_01',   'AWACS',     'ON_TAKEOFF', 2, 'Overlord to Warden flight. Skies over the archipelago are contested. You are cleared hot.', true),
+  L('takeoff_w2_01',      'WARDEN-2',  'ON_TAKEOFF', 3, 'Warden Two, wheels up! Right on your wing, Lead.'),
+  L('takeoff_w3_01',      'WARDEN-3',  'ON_TAKEOFF', 3, 'Warden Three airborne. Let\'s keep this one boring, shall we?'),
+  L('takeoff_awacs_02',   'AWACS',     'ON_TAKEOFF', 2, 'Bandits massing over the strait. Climb to angels twenty and hold formation.'),
+
+  // ON_CATAPULT
+  L('cat_awacs_01',       'AWACS',     'ON_CATAPULT', 2, 'Deck is clear. Catapult armed. Go when ready, Lead.'),
+  L('cat_w2_01',          'WARDEN-2',  'ON_CATAPULT', 3, 'Whoa, what a shot! Off the deck and climbing!'),
+  L('cat_w3_01',          'WARDEN-3',  'ON_CATAPULT', 3, 'Nice clean stroke. The deck crew earned their coffee.'),
+
+  // ON_MACH_1
+  L('mach_w2_01',         'WARDEN-2',  'ON_MACH_1', 3, 'Supersonic! Lead, you just rattled every window on the island!'),
+  L('mach_w3_01',         'WARDEN-3',  'ON_MACH_1', 3, 'Mach one. Easy on the fuel, hotshot.'),
+  L('mach_awacs_01',      'AWACS',     'ON_MACH_1', 3, 'Overlord copies, Warden One is supersonic.'),
+
+  // ON_NEAR_MISS
+  L('nearmiss_w2_01',     'WARDEN-2',  'ON_NEAR_MISS', 2, 'That was too close! You okay, Lead?'),
+  L('nearmiss_w3_01',     'WARDEN-3',  'ON_NEAR_MISS', 2, 'Missile wide! I saw paint come off that one.'),
+  L('nearmiss_awacs_01',  'AWACS',     'ON_NEAR_MISS', 2, 'Warden One, missile defeated. Stay defensive.'),
+  L('nearmiss_c1_01',     'CRIMSON-1', 'ON_NEAR_MISS', 3, 'You dance well, ghost. The next one will not miss.'),
+
+  // ON_PHASE_2_CANYON
+  L('canyon_awacs_01',    'AWACS',     'ON_PHASE_2_CANYON', 1, 'New tasking. Enemy jammers are dug into the canyon and under the bridge. Take them out.', true),
+  L('canyon_w3_01',       'WARDEN-3',  'ON_PHASE_2_CANYON', 2, 'Those jammers are blinding our radar. We go in low, or not at all.'),
+  L('canyon_w2_01',       'WARDEN-2',  'ON_PHASE_2_CANYON', 3, 'Into the canyon? Okay. Okay! Right behind you, Lead.'),
+  L('canyon_awacs_02',    'AWACS',     'ON_PHASE_2_CANYON', 2, 'Strike package, stay below five hundred feet or the jamming will eat your lock.'),
+
+  // ON_CANYON_LOW
+  L('low_w2_01',          'WARDEN-2',  'ON_CANYON_LOW', 2, 'Watch your altitude, Lead. Threading the canyon!'),
+  L('low_w3_01',          'WARDEN-3',  'ON_CANYON_LOW', 2, 'Walls on both sides. Keep it smooth and keep it low.'),
+  L('low_awacs_01',       'AWACS',     'ON_CANYON_LOW', 3, 'Overlord has you under the jamming. Good flying.'),
+
+  // ON_ACE_INBOUND
+  L('ace_awacs_01',       'AWACS',     'ON_ACE_INBOUND', 1, 'Warning. Crimson flight inbound, high and fast. That is their ace squadron.'),
+  L('ace_c1_01',          'CRIMSON-1', 'ON_ACE_INBOUND', 1, 'So this is the ghost of the archipelago. Let us see if the stories are true.', true),
+  L('ace_w3_01',          'WARDEN-3',  'ON_ACE_INBOUND', 2, 'Crimson markings. Those aren\'t rookies, Lead. Fly sharp.'),
+  L('ace_w2_01',          'WARDEN-2',  'ON_ACE_INBOUND', 2, 'Two bogeys, red tails! They\'re coming right for us!'),
+  L('ace_c1_02',          'CRIMSON-1', 'ON_ACE_INBOUND', 3, 'Crimson Two, take the wingmen. The lead is mine.'),
+
+  // ON_ACE_KILL
+  L('acekill_c1_01',      'CRIMSON-1', 'ON_ACE_KILL', 1, 'Impossible. Crimson One, ejecting!', true),
+  L('acekill_w2_01',      'WARDEN-2',  'ON_ACE_KILL', 2, 'Splash the ace! Lead, you did it!'),
+  L('acekill_w3_01',      'WARDEN-3',  'ON_ACE_KILL', 2, 'Red tail going down. That one will be talked about.'),
+  L('acekill_awacs_01',   'AWACS',     'ON_ACE_KILL', 2, 'Overlord confirms. Enemy ace destroyed.'),
+
+  // ON_CARRIER_TRAP
+  L('trap_w2_01',         'WARDEN-2',  'ON_CARRIER_TRAP', 2, 'Good trap, Lead! Deck crew is turning your bird.'),
+  L('trap_w3_01',         'WARDEN-3',  'ON_CARRIER_TRAP', 3, 'Caught the three wire. Textbook.'),
+  L('trap_awacs_01',      'AWACS',     'ON_CARRIER_TRAP', 2, 'Warden One is on deck. Rearm and refuel in progress.'),
+
+  // ON_WINGMAN_ENGAGE
+  L('engage_w2_01',       'WARDEN-2',  'ON_WINGMAN_ENGAGE', 2, 'Engaging! Warden Two, fox two!'),
+  L('engage_w3_01',       'WARDEN-3',  'ON_WINGMAN_ENGAGE', 2, 'Copy, weapons free. Warden Three, fox two.'),
+  L('engage_w2_02',       'WARDEN-2',  'ON_WINGMAN_ENGAGE', 2, 'Clear your six, Lead! I\'ve got him!'),
+  L('reform_w3_01',       'WARDEN-3',  'ON_WINGMAN_ENGAGE', 3, 'Reforming on your wing, Lead.'),
+
+  // ON_LOW_HP
+  L('lowhp_awacs_01',     'AWACS',     'ON_LOW_HP', 1, 'Warden One, you are trailing smoke. Return to the carrier.'),
+  L('lowhp_w2_01',        'WARDEN-2',  'ON_LOW_HP', 1, 'Lead, you\'re hit bad! Get out of there!'),
+  L('lowhp_w3_01',        'WARDEN-3',  'ON_LOW_HP', 2, 'You\'re leaking, Lead. I\'ll cover you back to the boat.'),
+  L('lowhp_c1_01',        'CRIMSON-1', 'ON_LOW_HP', 3, 'Wounded already? Disappointing.'),
+
+  // ON_MISSION_CLEAR
+  L('clear_awacs_01',     'AWACS',     'ON_MISSION_CLEAR', 1, 'All objectives complete. Warden flight, the archipelago is ours. Bring them home.', true),
+  L('clear_w2_01',        'WARDEN-2',  'ON_MISSION_CLEAR', 2, 'We did it! Lead, you were incredible out there!'),
+  L('clear_w3_01',        'WARDEN-3',  'ON_MISSION_CLEAR', 2, 'Nobody lost today. That\'s the only score I care about.', true),
+  L('clear_awacs_02',     'AWACS',     'ON_MISSION_CLEAR', 3, 'Overlord out. Good hunting, Warden.')
+];
+
+// Lookup helpers (pure; safe to import anywhere).
+export const RADIO_BY_EVENT = RADIO_EVENTS.reduce((m, ev) => (m[ev] = RADIO_LINES.filter(l => l.event === ev), m), {});
+export const RADIO_HERO = RADIO_LINES.filter(l => l.trailerHero);
