@@ -1532,6 +1532,25 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     Verified: 6/6 webp requests 200, green↔red swap, scanlines + idle state,
     text-only fallback with portraits removed, zero JS/WebGL errors, frame cost
     7.4 ms. Every `?v=` tag bumped to s71a.
+- [x] **CVN carrier deck** *(build `s72a`, `src/combat.js`, `index.html`,
+  `assets/models/uss_enterprise.glb`)*
+  - The untracked 15.2 MB carrier GLB moved to `assets/models/uss_enterprise.glb`
+    and its opaque PNG textures were re-encoded to JPEG: 7.98 MB total, textures
+    already <= 1024 px. Deployable build is 21.19 MB (< 25 MB).
+  - `loadCarrier()` reuses the jet's GLTFLoader and `renderer.compileAsync`, then
+    scales the model to 360 m, orients the island to +X / bow to -Z, re-centres it,
+    measures the deck with five downward ray hits and rebuilds the pooled edge
+    lights. The procedural ship stays as the default and as the error fallback.
+  - The whole-ship collision box is gone: a local deck/hull box only bites more
+    than 2 m below the deck (and not while gear-down / in a carrier state), and a
+    measured island box is the only solid volume above the deck. Catapult, wires,
+    trap zone, approach gates and debug spawns all derive from `ally.len/deckY`.
+  - Verified: `warp=20&logat=18` reports `glb true`, `len 360`, `deckY 18`, island
+    on +X; catapult reaches ~187 kt and clears; `trapat=1` catches (traps=1) and
+    advances ARREST -> DECK -> CAT; centreline +15 m and below-deck gear-down pass,
+    while x=30 at the island collides; missing GLB falls back procedurally with no
+    JS exception. Zero JS/WebGL errors across six scenarios, frame cost ~7.2 ms
+    median. Every `?v=` tag bumped to s72a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

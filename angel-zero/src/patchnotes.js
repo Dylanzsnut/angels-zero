@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.4', title: 'CVN CARRIER DECK', bullets: [
+    'Allied carrier is now a detailed CVN model at 360 m, with a measured deck height and re-anchored catapult, wires and approach gates.',
+    'Cleaner deck collision: only the island is solid, so centreline and angled-deck approaches pass cleanly and wires catch smoothly.',
+    'Carrier textures compressed for a fast, lightweight deploy.'
+  ] },
   { version: 'v1.1.3', title: 'CRT RADIO PORTRAITS', bullets: [
     'Live pilot portraits on radio calls: Wardens and AWACS in green phosphor, Crimson aces in a red threat frame.',
     'Scanlines, flicker and a sweep-in entrance give every transmission a proper CRT feel.',
