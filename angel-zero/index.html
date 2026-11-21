@@ -667,36 +667,37 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s72a';
-import { createBlastFX } from './src/blastfx.js?v=s72a';
-import { createHUD } from './src/hud.js?v=s72a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s72a';
-import { createCombat } from './src/combat.js?v=s72a';
-import { createEjection } from './src/eject.js?v=s72a';
-import { createAudio } from './src/audio.js?v=s72a';
-import { createRadio } from './src/radio.js?v=s72a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s72a';
-import { createLivery } from './src/livery.js?v=s72a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s72a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s72a';
-import { createCanopyFX } from './src/canopy.js?v=s72a';
-import { createNVG } from './src/nvg.js?v=s72a';
-import { createWorld, WORLD } from './src/world.js?v=s72a';
-import { createSurfaces } from './src/surfaces.js?v=s72a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s72a';
-import { createFreeLook } from './src/freelook.js?v=s72a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s72a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s72a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s72a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s72a';
-import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s72a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s72a';
+import { createVFX } from './src/vfx.js?v=s73a';
+import { createBlastFX } from './src/blastfx.js?v=s73a';
+import { createHUD } from './src/hud.js?v=s73a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s73a';
+import { createCombat } from './src/combat.js?v=s73a';
+import { createEjection } from './src/eject.js?v=s73a';
+import { createAudio } from './src/audio.js?v=s73a';
+import { createRadio } from './src/radio.js?v=s73a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s73a';
+import { createLivery } from './src/livery.js?v=s73a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s73a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s73a';
+import { createCanopyFX } from './src/canopy.js?v=s73a';
+import { createNVG } from './src/nvg.js?v=s73a';
+import { createWorld, WORLD } from './src/world.js?v=s73a';
+import { createSurfaces } from './src/surfaces.js?v=s73a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s73a';
+import { createFreeLook } from './src/freelook.js?v=s73a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s73a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s73a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s73a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s73a';
+import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s73a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s73a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -716,7 +717,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas: glCanvas, antialias: true, powerPreference: 'high-performance',
   logarithmicDepthBuffer: true, preserveDrawingBuffer: DEBUG
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));  // cap: no 4x fragment load on high-DPI laptops
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));  // DPR cap (<=1.5): no over-allocated HDR/composer buffers on 125-150% scaling
 renderer.setSize(innerWidth, innerHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -3343,6 +3344,7 @@ exteriorCanopyMat.onBeforeCompile = sh => {
 };
 airframeMats.add(exteriorCanopyMat);
 const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);                 // CVN GLB uses EXT_meshopt_compression
 loader.load('assets/angels_zero_jet.glb', async gltf => {
   model = gltf.scene;
   const removed = [], names = [];
@@ -3457,6 +3459,21 @@ loader.load('assets/angels_zero_jet.glb', async gltf => {
   if (DEBUG && Q.has('autolaunch') && appMode === 'MENU') {   // test hook: press LAUNCH (needs autoplay allowed)
     launchSortie();
     if (Q.has('fire')) setTimeout(() => console.log('[ANGELS_ZERO] audio', audio.state, 'firing', combat.gunFiring, 'ammo', combat.ammo), 1500);
+  }
+  if (DEBUG && Q.has('memtest')) {                     // log GPU resources + heap across 3 restarts
+    (async () => {
+      const snap = tag => console.log('[ANGELS_ZERO] MEM', tag, JSON.stringify({
+        geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures,
+        prog: renderer.info.programs ? renderer.info.programs.length : 0,
+        heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null }));
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      await wait(3500); snap('startup'); renderer.render(scene, camera); snap('inflight');
+      for (let i = 1; i <= 3; i++) {
+        endSortie('ABORTED'); await wait(120);
+        replaySortie(); await wait(350);
+        renderer.render(scene, camera); snap('restart' + i);
+      }
+    })();
   }
   if (DEBUG && Q.has('bogey')) combatSys.placeAhead(0, Number(Q.get('bogey')) || 1500);
   if (DEBUG && Q.has('msl')) { combatSys.update(0, 0, { playerActive: true, firing: false }); combatSys.fireMissile(); }

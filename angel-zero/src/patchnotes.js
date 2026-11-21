@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.5', title: 'MEMORY OPTIMIZATION', bullets: [
+    'Carrier GLB recompressed with meshopt + WebP at 1.9 MB: 56% less GPU texture memory, deck markings stay crisp.',
+    'Renderer DPR and shadow maps stay capped, and sortie restarts reuse every texture, geometry and render target.',
+    'Added a debug memory trace across three consecutive restarts.'
+  ] },
   { version: 'v1.1.4', title: 'CVN CARRIER DECK', bullets: [
     'Allied carrier is now a detailed CVN model at 360 m, with a measured deck height and re-anchored catapult, wires and approach gates.',
     'Cleaner deck collision: only the island is solid, so centreline and angled-deck approaches pass cleanly and wires catch smoothly.',

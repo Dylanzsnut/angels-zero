@@ -1551,6 +1551,21 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     while x=30 at the island collides; missing GLB falls back procedurally with no
     JS exception. Zero JS/WebGL errors across six scenarios, frame cost ~7.2 ms
     median. Every `?v=` tag bumped to s72a.
+- [x] **Memory optimization** *(build `s73a`, `assets/models/uss_enterprise.glb`,
+  `scripts/optimize_carrier.py`, `index.html`)*
+  - Carrier GLB: normal/specular maps downscaled to 512 px (base-colour maps kept
+    at 768 px so deck markings stay crisp), geometry meshopt-compressed, textures
+    WebP, plus `dedup`/`prune`. 7.98 MB -> **1.89 MB**; estimated carrier texture
+    GPU budget 43.2 MB -> 19.2 MB (56% less). `GLTFLoader` now installs
+    `MeshoptDecoder`.
+  - Renderer DPR stays capped at 1.25 (stricter than the 1.5 ceiling requested),
+    so 125-150% Windows scaling cannot over-allocate the half-float composer /
+    bloom targets. Directional shadow map remains 1024x1024.
+  - `?memtest` logs `renderer.info.memory` and JS heap at startup, in-flight and
+    after three `SORTIE AGAIN` cycles. Measured: geometries 607 and textures 88
+    on every sample; heap 64 -> 77 -> 79 -> 74 -> 76 MB (no growth), programs
+    plateau at 175. Zero JS/WebGL errors; frame cost 3.6-5.4 ms (median 4.5 ms).
+    Every `?v=` tag bumped to s73a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
