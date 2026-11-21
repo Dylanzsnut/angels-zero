@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.1', title: 'BORDERLESS STANDBY HANGAR', bullets: [
+    'Ace-Combat-style STANDBY menu floats over the full-viewport 3D F-15: launch, mode, difficulty, SPW, livery, weather, controls and patch notes.',
+    'FLIGHT roster, MISSION BENCHMARK bars and PC key hints frame the jet; arrow keys or mouse drive every row.',
+    'Controls & Audio modal gathers the keybind matrix, master volume and a persisted music-volume slider.'
+  ] },
   { version: 'v1.1.0', title: 'FULL RADIO VOICE CAST', bullets: [
     '45 radio-filtered lines across AWACS, Warden-2, Warden-3 and Crimson-1, cached on demand with clean CRT-text fallback.',
     'Priority dispatcher interrupts banter for critical calls, spaces tactical lines and drives tinted CRT portraits + subtitles.',

@@ -11,11 +11,13 @@
 
 export function createAudio() {
   let ctx = null, master = null, cockpitLP = null, ready = false;
-  let volume = 0.7, muted = false;
+  let volume = 0.7, muted = false, musicVol = 1;
   // Volume persists; MUTE does not -- a mute pressed in an earlier session (M on the
   // briefing) used to silence every later sortie. Every session starts unmuted, and
   // a stored volume of ~0 falls back to the default.
   try { const v = parseFloat(localStorage.getItem('az_volume')); if (!Number.isNaN(v) && v >= 0.05) volume = Math.min(1, v); localStorage.removeItem('az_muted'); } catch (e) { /* storage unavailable */ }
+  // Independent music-bed level (Controls & Audio slider). New key; all legacy keys stay intact.
+  try { const mv = parseFloat(localStorage.getItem('angelsZero_musicVol')); if (!Number.isNaN(mv) && mv >= 0 && mv <= 1) musicVol = mv; } catch (e) { /* storage unavailable */ }
 
   const N = {};                                            // live nodes
   const radioBufs = Object.create(null);                   // decoded voice clips, cached by line id
@@ -879,7 +881,7 @@ export function createAudio() {
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
   let musicOn = true, mStep = 0, mNext = 0, mLvl = 0, mLvlT = 0, mNear = false, mIdleT = 0, mNotes = 0, mTimer = null;
   function initMusic() {
-    N.music = gain(musicOn ? 1 : 0);                                     // K toggle
+    N.music = gain(musicOn ? musicVol : 0);                              // K toggle × music-bed level
     N.musicDuck = gain(1);                                               // radio transmission duck
     N.musicBus = gain(0.62);                                             // sits under engine / gun / RWR
     N.music.connect(N.musicDuck).connect(N.musicBus).connect(master);
@@ -1005,8 +1007,14 @@ export function createAudio() {
   }
   function setMusic(on) {
     musicOn = !!on;
-    if (N.music) set(N.music.gain, musicOn ? 1 : 0, 0.25);
+    if (N.music) set(N.music.gain, musicOn ? musicVol : 0, 0.25);
     if (musicOn) mNext = 0;
+  }
+  // Music-bed level: 0..1, persisted separately from the master volume and the K toggle.
+  function setMusicVolume(v) {
+    musicVol = Math.min(1, Math.max(0, v));
+    try { localStorage.setItem('angelsZero_musicVol', String(musicVol)); } catch (e) { /* ignore */ }
+    if (N.music) set(N.music.gain, musicOn ? musicVol : 0, 0.08);
   }
   // Voiced radio: duck music -9 dB and combat SFX about -4 dB while a line plays.
   function setRadio(active) {
@@ -1328,7 +1336,8 @@ export function createAudio() {
   return {
     init, resume, suspend, update, explosion, sonicBoom, flybyWhoosh, fireBell, extinguisher, relightCrank, relightBoom, compressorStall, missileLaunch, hit, bombRelease, bombDetonation, flare, designate, lockDrop, nvg, rwrChirp, ecm, thunder, glocChime, overheat, flameout, masterCaution, mfdClick, aceWarning, cableScreech, catapult, slowMo, styleChime, missileWhoosh, steamHiss, flareClack, gearMotor, gearLock, tireScreech, setMusic, setRadio, radioSquelch, preloadRadio, playRadio, stopRadio, preload,
     toggleMusic() { setMusic(!musicOn); return musicOn; },
-    get musicOn() { return musicOn; },
+    get musicOn() { return musicOn; }, setMusicVolume,
+    get musicVolume() { return musicVol; },
     // Music sequencer state for __audioDebug: intensity layer, live layer gains, loop position, notes scheduled.
     get music() {
       return { on: musicOn, layer: mLvl, gains: N.mL ? N.mL.map(g => +g.gain.value.toFixed(2)) : [0, 0, 0],

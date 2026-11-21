@@ -308,6 +308,110 @@
   #patchPanel .patch-close:hover { border-color:#52ff9c; color:#ecfff5; background:rgba(16,48,38,.9); }
   .tod-btn { background:rgba(4,16,24,.6); border:1px solid rgba(82,255,156,.55); color:#9dffcc; font:600 11px 'Rajdhani','Share Tech Mono',monospace; letter-spacing:1.6px; padding:3px 9px; cursor:pointer; }
   .tod-btn:hover { background:rgba(16,48,38,.88); color:#e6fff2; }
+
+  /* ==========================================================================
+     BORDERLESS STANDBY HANGAR UI
+     The legacy #menu stays in the DOM (every id + listener intact) but loses all
+     of its chrome; the new controls sit directly over the full-viewport 3D jet.
+     ========================================================================== */
+  #menu, #menu .sec-box, #menu .ac7-layout, #menu .panel {
+    background:none !important; border:0 !important; box-shadow:none !important;
+    backdrop-filter:none !important; clip-path:none !important;
+  }
+  #menu .panel::before, #menu .panel::after { display:none !important; }
+  #menu { pointer-events:none !important; }
+  /* Every legacy panel child stays in the DOM (ids + JS updates intact) but is hidden:
+     only the new borderless HUD over the 3D jet is visible. */
+  #menu .panel > * { display:none !important; }
+  #menu .tac-tags, #loadoutChip, #liveryRow, #spwRow, #launchBtn, #hBadge, #menu .bind-grid { display:none !important; }
+
+  #sbUI { position:fixed; inset:0; z-index:41; pointer-events:none;
+    font-family:'Rajdhani','Share Tech Mono',monospace; color:#F2F5F8;
+    text-shadow:0 1px 4px rgba(0,0,0,0.85); letter-spacing:0.06em; text-transform:uppercase; }
+  #sbUI[hidden] { display:none; }
+  #sbUI button { pointer-events:auto; font-family:inherit; color:inherit; background:none; border:0; cursor:pointer;
+    text-shadow:inherit; letter-spacing:inherit; text-transform:inherit; }
+
+  /* --- | STANDBY | menu (top-left) --- */
+  #sbMenu { position:fixed; left:54px; top:56px; width:300px; }
+  .sbTitle { margin:0 0 14px 12px; font-size:26px; font-weight:300; letter-spacing:0.14em; line-height:1.1; }
+  .sbRow { position:relative; display:flex; align-items:center; justify-content:space-between; gap:8px;
+    width:100%; height:34px; padding:0 12px 0 24px; box-sizing:border-box; text-align:left;
+    font-size:18px; line-height:34px; }
+  .sbRow[hidden] { display:none; }
+  .sbRow::before { content:'▷'; position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:14px; opacity:0; }
+  .sbRow.active { background:rgba(255,255,255,0.16); box-shadow:inset 3px 0 0 #fff; }
+  .sbRow.active::before { opacity:1; }
+  .sbLabel { flex:0 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sbValue { flex:0 0 auto; max-width:44%; font-size:12px; opacity:0.8; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* --- [ FLIGHT ] roster (top-right) --- */
+  #flightRoster { position:fixed; right:54px; top:56px; text-align:right; }
+  .rosterHead { font-size:15px; margin-bottom:12px; }
+  .rosterEntry { margin-bottom:10px; }
+  .rosterCall { font-size:19px; line-height:1.15; }
+  .rosterSub { font-size:12px; opacity:0.7; line-height:1.2; }
+  .spwBadge { display:inline-block; margin-left:6px; padding:0 5px; font-size:11px; line-height:16px;
+    border:1px solid currentColor; vertical-align:2px; }
+  .spwBadge.spw-4AAM { color:#5fe8ff; }
+  .spwBadge.spw-UGB { color:#ffbf3f; }
+  .spwBadge.spw-QAAM { color:#ff4fd8; }
+
+  /* --- [ MISSION BENCHMARK ] (bottom-right) --- */
+  #missionBenchmark { position:fixed; right:54px; bottom:44px; width:240px; }
+  .bmHead { font-size:15px; text-align:right; margin-bottom:12px; }
+  .bmRow { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:7px; font-size:12px; }
+  .bmTrack { flex:none; width:140px; height:4px; border:1px solid rgba(255,255,255,0.55); box-sizing:content-box; }
+  .bmFill { height:100%; width:0; background:#F2F5F8; transition:width 0.35s; }
+  #bmRankLine { margin-top:12px; font-size:12px; text-align:right; white-space:nowrap; }
+
+  /* --- description + PC hints + camera toggle (bottom-left) --- */
+  #sbHints { position:fixed; left:54px; bottom:44px; }
+  #sbDesc { font-size:14px; opacity:0.85; margin-bottom:12px; }
+  .hintRow { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; }
+  .keycap { display:inline-block; padding:1px 5px; border:1px solid rgba(255,255,255,0.6); }
+  #camToggle { margin-left:16px; white-space:nowrap; }
+  .camOpt { padding:0 3px !important; font-size:12px !important; opacity:0.45; }
+  .camOpt.active, .camOpt:hover { opacity:1; }
+
+  /* --- [ CONTROLS & AUDIO ] modal --- */
+  #ctrlOverlay { position:fixed; inset:0; z-index:101; display:none; align-items:center; justify-content:center;
+    padding:20px; box-sizing:border-box; background:rgba(4,8,12,0.82); backdrop-filter:blur(6px); pointer-events:auto;
+    font-family:'Rajdhani','Share Tech Mono',monospace; color:#F2F5F8;
+    text-shadow:0 1px 4px rgba(0,0,0,0.85); letter-spacing:0.06em; text-transform:uppercase; }
+  #ctrlOverlay.open { display:flex; }
+  #ctrlPanel { position:relative; display:flex; flex-direction:column; width:100%; max-width:720px; max-height:560px;
+    box-sizing:border-box; background:rgba(4,8,12,0.72); border:1px solid rgba(255,255,255,0.18); }
+  .ctrlHead { display:flex; align-items:center; justify-content:space-between; gap:12px; flex:none;
+    padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.18); }
+  .ctrlHead h2 { margin:0; font-size:15px; font-weight:600; }
+  .ctrlClose { padding:4px 10px !important; border:1px solid rgba(255,255,255,0.4) !important; font-size:12px !important; }
+  #ctrlBody { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:12px 16px; }
+  #ctrlBindHost .bind-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:18px; row-gap:2px; }
+  #ctrlOverlay .bind { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:6px;
+    font-size:12px; line-height:1.35; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.12); min-width:0; }
+  #ctrlOverlay .bind .k { color:#fff; white-space:nowrap; font-weight:600; }
+  #ctrlOverlay .bind .k kbd { display:inline-block; min-width:16px; padding:1px 5px; margin:0 1px;
+    border:1px solid rgba(255,255,255,0.55); border-radius:2px; font-family:'Share Tech Mono',monospace; font-size:11px; text-align:center; }
+  #ctrlOverlay .bind .a { color:#F2F5F8; opacity:0.8; text-align:right; font-weight:500; flex:1 1 auto; }
+  #ctrlAudioHost .audio { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; font-weight:600; }
+  #ctrlOverlay input[type=range] { width:140px; accent-color:#F2F5F8; }
+  #ctrlOverlay .mute { padding:4px 8px; border:1px solid rgba(255,255,255,0.4) !important; font-size:12px !important; }
+  #ctrlOverlay .music-btn.off { opacity:0.55; }
+  .ctrlSliderRow { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; font-size:12px; font-weight:600; }
+  .ctrlFoot { flex:none; padding:10px 16px; border-top:1px solid rgba(255,255,255,0.18); font-size:12px; text-align:center; }
+
+  @media (max-width:760px) {
+    #sbMenu { left:16px; top:16px; width:calc(100% - 32px); }
+    #flightRoster { display:none; }
+    #missionBenchmark { right:16px; bottom:96px; width:200px; }
+    .bmTrack { width:110px; }
+    #sbHints { left:16px; right:16px; bottom:16px; }
+    .hintRow { gap:5px; }
+    #camToggle { margin-left:0; }
+    #ctrlBindHost .bind-grid { grid-template-columns:minmax(0,1fr); }
+    #ctrlOverlay { padding:10px; }
+  }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -451,6 +555,44 @@
       <div class="hint" id="menuHint">CLICK LAUNCH OR PRESS ENTER</div>
     </div>
   </div>
+  <!-- Borderless STANDBY hangar UI. The legacy #menu above stays in the DOM with
+       every id and listener intact; these controls drive it via .click(). -->
+  <div id="sbUI" hidden>
+    <nav id="sbMenu" aria-label="Standby menu">
+      <div class="sbTitle" id="sbTitle">| STANDBY |</div>
+      <button class="sbRow active" data-k="launch" type="button"><span class="sbLabel">LAUNCH SORTIE</span><span class="sbValue"></span></button>
+      <button class="sbRow" data-k="resume" type="button" hidden><span class="sbLabel">RESUME SORTIE</span><span class="sbValue"></span></button>
+      <button class="sbRow" data-k="restart" type="button" hidden><span class="sbLabel">RESTART</span><span class="sbValue"></span></button>
+      <button class="sbRow" data-k="mode" type="button"><span class="sbLabel">MODE</span><span class="sbValue" id="sbModeVal"></span></button>
+      <button class="sbRow" data-k="diff" type="button"><span class="sbLabel">DIFFICULTY</span><span class="sbValue" id="sbDiffVal"></span></button>
+      <button class="sbRow" data-k="spw" type="button"><span class="sbLabel">SPECIAL WEAPON</span><span class="sbValue" id="sbSpwVal"></span></button>
+      <button class="sbRow" data-k="liv" type="button"><span class="sbLabel">AIRFRAME LIVERY</span><span class="sbValue" id="sbLivVal"></span></button>
+      <button class="sbRow" data-k="wx" type="button"><span class="sbLabel">WEATHER / TIME</span><span class="sbValue" id="sbWxVal"></span></button>
+      <button class="sbRow" data-k="ctrl" type="button"><span class="sbLabel">CONTROLS &amp; AUDIO</span><span class="sbValue"></span></button>
+      <button class="sbRow" data-k="patch" type="button"><span class="sbLabel" id="sbPatchLabel">PATCH NOTES</span><span class="sbValue"></span></button>
+    </nav>
+    <div id="flightRoster">
+      <div class="rosterHead">[ FLIGHT ]</div>
+      <div class="rosterEntry"><div class="rosterCall">WARDEN-1<span class="spwBadge spw-4AAM" id="sbSpwBadge">4AAM</span></div><div class="rosterSub">F-15C</div></div>
+      <div class="rosterEntry"><div class="rosterCall">WARDEN-2</div><div class="rosterSub">F-15C</div></div>
+      <div class="rosterEntry"><div class="rosterCall">WARDEN-3</div><div class="rosterSub">F-15C</div></div>
+    </div>
+    <div id="missionBenchmark">
+      <div class="bmHead">[ MISSION BENCHMARK ]</div>
+      <div class="bmRow"><span>AIR-TO-AIR</span><div class="bmTrack"><div class="bmFill" id="bmAa"></div></div></div>
+      <div class="bmRow"><span>AIR-TO-GROUND</span><div class="bmTrack"><div class="bmFill" id="bmAg"></div></div></div>
+      <div id="bmRankLine">RANK —&nbsp;&nbsp; SCORE 000000&nbsp;&nbsp; KILLS 0</div>
+    </div>
+    <div id="sbHints">
+      <div id="sbDesc">Sortie using the current setup.</div>
+      <div class="hintRow">
+        <span class="keycap">↑↓</span><span>SELECT</span>
+        <span class="keycap">←→</span><span>CYCLE</span>
+        <span class="keycap">ENTER / CLICK</span><span>CONFIRM</span>
+        <span id="camToggle">[ CAM: <button class="camOpt active" id="sbCamOrbit" type="button">ORBIT</button> / <button class="camOpt" id="sbCamCockpit" type="button">COCKPIT</button> ]</span>
+      </div>
+    </div>
+  </div>
   <div id="debrief" hidden role="dialog" aria-modal="true" aria-labelledby="dbTitle">
     <div class="panel">
       <div class="eyebrow">SORTIE DEBRIEF // OPERATION ARCHIPELAGO</div>
@@ -483,6 +625,21 @@
       <div id="patchBody"><div id="patchList"></div></div>
     </div>
   </div>
+  <div id="ctrlOverlay">
+    <div id="ctrlPanel" role="dialog" aria-modal="true" aria-labelledby="ctrlTitle">
+      <div class="ctrlHead"><h2 id="ctrlTitle">[ CONTROLS &amp; AUDIO ]</h2><button class="ctrlClose" id="ctrlCloseX" type="button">[ CLOSE ]</button></div>
+      <div id="ctrlBody">
+        <div id="ctrlBindHost"></div>
+        <div id="ctrlAudioHost"></div>
+        <div class="ctrlSliderRow">
+          <label for="sbMusicVol">MUSIC</label>
+          <input type="range" id="sbMusicVol" min="0" max="100" step="1" />
+          <span id="sbMusicVolVal">100</span>
+        </div>
+      </div>
+      <div class="ctrlFoot">[ ESC / CLICK OUTSIDE ] CLOSE</div>
+    </div>
+  </div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -493,30 +650,30 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s68a';
-import { createBlastFX } from './src/blastfx.js?v=s68a';
-import { createHUD } from './src/hud.js?v=s68a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s68a';
-import { createCombat } from './src/combat.js?v=s68a';
-import { createEjection } from './src/eject.js?v=s68a';
-import { createAudio } from './src/audio.js?v=s68a';
-import { createRadio } from './src/radio.js?v=s68a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s68a';
-import { createLivery } from './src/livery.js?v=s68a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s68a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s68a';
-import { createCanopyFX } from './src/canopy.js?v=s68a';
-import { createNVG } from './src/nvg.js?v=s68a';
-import { createWorld, WORLD } from './src/world.js?v=s68a';
-import { createSurfaces } from './src/surfaces.js?v=s68a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s68a';
-import { createFreeLook } from './src/freelook.js?v=s68a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s68a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s68a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s68a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s68a';
-import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s68a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s68a';
+import { createVFX } from './src/vfx.js?v=s69a';
+import { createBlastFX } from './src/blastfx.js?v=s69a';
+import { createHUD } from './src/hud.js?v=s69a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s69a';
+import { createCombat } from './src/combat.js?v=s69a';
+import { createEjection } from './src/eject.js?v=s69a';
+import { createAudio } from './src/audio.js?v=s69a';
+import { createRadio } from './src/radio.js?v=s69a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s69a';
+import { createLivery } from './src/livery.js?v=s69a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s69a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s69a';
+import { createCanopyFX } from './src/canopy.js?v=s69a';
+import { createNVG } from './src/nvg.js?v=s69a';
+import { createWorld, WORLD } from './src/world.js?v=s69a';
+import { createSurfaces } from './src/surfaces.js?v=s69a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s69a';
+import { createFreeLook } from './src/freelook.js?v=s69a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s69a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s69a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s69a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s69a';
+import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s69a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s69a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -888,7 +1045,7 @@ let cloudWet = 0;
 
 const mouse = { nx: 0, ny: 0 };
 const keys = { w: false, s: false, a: false, d: false, shift: false, fire: false, b: false };
-let uiModal = false, firstPerson = Q.has('cockpit');
+let uiModal = false, ctrlOpen = false, firstPerson = Q.has('cockpit');
 if (Q.has('mouse')) { const [mx, my] = Q.get('mouse').split(',').map(Number); mouse.nx = mx || 0; mouse.ny = my || 0; }
 
 const camVelocity = new THREE.Vector3();
@@ -1131,9 +1288,11 @@ function showMenuEl() {
   menuEl.removeAttribute('data-closing');
   menuEl.hidden = false;
   hBadge.style.display = 'none';
+  const sb = document.getElementById('sbUI'); if (sb) sb.hidden = false;
 }
 async function hideMenuEl() {
   hBadge.style.display = 'block';
+  const sb = document.getElementById('sbUI'); if (sb) sb.hidden = true;
   if (canTransitionDisplay()) menuEl.hidden = true;
   else menuEl.setAttribute('data-closing', '');
   const animations = menuEl.getAnimations();
@@ -1189,6 +1348,7 @@ function showMenu(kind) {
   document.getElementById('menuHint').textContent = pause ? 'H / ESC / ENTER TO RESUME' : 'CLICK LAUNCH OR PRESS ENTER';
   showMenuEl();
   syncAudioUI();
+  syncSBMenu(pause);
   launchBtn.focus({ preventScroll: true });
 }
 function hideMenu() { return hideMenuEl(); }
@@ -1489,6 +1649,22 @@ function syncLoadoutUI() {
   if (chip) chip.textContent = `LOADOUT: MSL + ${selectedSPW} // ${selectedLivery}`;
   const sn = document.getElementById('spwName'); if (sn) sn.textContent = selectedSPW;
   document.getElementById('livName').textContent = selectedLivery;
+  syncSBRoster(); syncSBBenchmark();
+}
+const SPW_FILL = { '4AAM': [0.85, 0.35], UGB: [0.55, 0.90], QAAM: [0.95, 0.25] };
+// Roster badge + benchmark bars follow the persistent SPW choice (renderHangar -> syncLoadoutUI).
+function syncSBRoster() {
+  const el = document.getElementById('sbSpwBadge'); if (!el) return;
+  el.textContent = selectedSPW; el.className = 'spwBadge spw-' + selectedSPW;
+}
+function syncSBBenchmark() {
+  const f = SPW_FILL[selectedSPW] || SPW_FILL['4AAM'];
+  const aa = document.getElementById('bmAa'), ag = document.getElementById('bmAg');
+  if (aa) aa.style.width = Math.round(f[0] * 100) + '%';
+  if (ag) ag.style.width = Math.round(f[1] * 100) + '%';
+  const line = document.getElementById('bmRankLine');
+  const p = profile.data;
+  if (line) line.innerHTML = `RANK ${p.bestRank || '—'}&nbsp;&nbsp; SCORE ${String(p.bestScore).padStart(6, '0')}&nbsp;&nbsp; KILLS ${p.totalKills}`;
 }
 const SPW_LABEL = { '4AAM': '4AAM // MULTI-LOCK', UGB: 'UGB // HEAVY BOMBS + CCIP', QAAM: 'QAAM // HIGH-OFF-BORESIGHT' };
 function renderHangar() {
@@ -1586,6 +1762,7 @@ addEventListener('keydown', e => {
   if (freeLook.onKey(e, true)) return;
   const k = keyOf(e);
   if (k === 'escape' && patchOverlay.classList.contains('open')) { setPatchOpen(false); return; }
+  if (k === 'escape' && ctrlOverlay.classList.contains('open')) { setCtrlOpen(false); return; }
   if (k === 'f1') {
     e.preventDefault();
     if (!e.repeat) combat.cheat = !combat.cheat;
@@ -1601,10 +1778,16 @@ addEventListener('keydown', e => {
     return;
   }
   if (appMode === 'MENU' || appMode === 'PAUSED') {
-    if (k === 'enter' && !['restartBtn', 'camOrbitBtn', 'camCockpitBtn', 'muteBtn', 'musicBtn'].includes(document.activeElement?.id)) {
-      e.preventDefault(); appMode === 'MENU' ? launchSortie() : resumeSim();
+    if (uiModal) {                                       // a modal owns the keys until it closes
+      if ((k === 'escape' || k === 'h') && !e.repeat) { e.preventDefault(); setPatchOpen(false); setCtrlOpen(false); }
+      else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
+      else if (k === 'k' && !e.repeat) toggleMusic();
+      return;
     }
-    else if ((k === 'h' || k === 'escape') && appMode === 'PAUSED' && !e.repeat) resumeSim();
+    if (k === 'arrowup' || k === 'arrowdown') { e.preventDefault(); if (!e.repeat) sbMove(k === 'arrowdown' ? 1 : -1); return; }
+    if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); if (!e.repeat) sbCycle(k === 'arrowright' ? 1 : -1); return; }
+    if (k === 'enter') { e.preventDefault(); if (!e.repeat) sbConfirm(); return; }   // replaces the old launch shortcut
+    if ((k === 'h' || k === 'escape') && appMode === 'PAUSED' && !e.repeat) resumeSim();
     else if (k === 'm' && !e.repeat) { audio.toggleMute(); syncAudioUI(); }
     else if (k === 'k' && !e.repeat) toggleMusic();
     if (e.code === 'Space') e.preventDefault();
@@ -1697,7 +1880,10 @@ const BUILD_VERSION = PATCH_NOTES[0].version;
 renderPatchNotes(document.getElementById('patchList'));
 patchButton.textContent = '[ PATCH NOTES ' + BUILD_VERSION + ' ]';
 document.getElementById('buildChip').textContent = BUILD_VERSION;
-function setPatchOpen(open) { patchOverlay.classList.toggle('open', open); uiModal = open; if (open) keys.fire = false; }
+function setPatchOpen(open) {
+  patchOverlay.classList.toggle('open', open);
+  uiModal = open || ctrlOpen; if (open) keys.fire = false;
+}
 if (DEBUG && Q.has('patchopen')) setPatchOpen(true);                // screenshot hook: open the modal at boot
 for (const el of [patchButton, patchOverlay]) el.addEventListener('mousedown', e => e.stopPropagation());
 patchButton.addEventListener('click', e => { e.stopPropagation(); setPatchOpen(!patchOverlay.classList.contains('open')); });
@@ -1709,6 +1895,32 @@ for (const ev of ['wheel', 'touchmove']) {
   patchOverlay.addEventListener(ev, e => e.stopPropagation(), { passive: true });
   patchBody.addEventListener(ev, e => e.stopPropagation(), { passive: true });
 }
+
+/* ---- [ CONTROLS & AUDIO ] modal: reuses the legacy bind rows and audio widgets ---- */
+const ctrlOverlay = document.getElementById('ctrlOverlay');
+const ctrlBody = document.getElementById('ctrlBody');
+document.getElementById('ctrlBindHost').appendChild(document.querySelector('#menu .bind-grid'));
+document.getElementById('ctrlAudioHost').appendChild(document.querySelector('#menu .audio'));
+function setCtrlOpen(open) {
+  ctrlOpen = !!open;
+  ctrlOverlay.classList.toggle('open', ctrlOpen);
+  uiModal = ctrlOpen || patchOverlay.classList.contains('open');
+  if (ctrlOpen) { keys.fire = false; syncCtrlUI(); }
+}
+for (const el of [ctrlOverlay]) el.addEventListener('mousedown', e => e.stopPropagation());
+document.getElementById('ctrlCloseX').addEventListener('click', e => { e.stopPropagation(); setCtrlOpen(false); });
+ctrlOverlay.addEventListener('click', e => { if (e.target === ctrlOverlay) setCtrlOpen(false); });
+for (const ev of ['wheel', 'touchmove']) {
+  ctrlOverlay.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+  ctrlBody.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+}
+const sbMusicSlider = document.getElementById('sbMusicVol');
+function syncCtrlUI() {
+  sbMusicSlider.value = String(Math.round(audio.musicVolume * 100));
+  document.getElementById('sbMusicVolVal').textContent = sbMusicSlider.value;
+  syncAudioUI();
+}
+sbMusicSlider.addEventListener('input', () => { audio.setMusicVolume(Number(sbMusicSlider.value) / 100); syncCtrlUI(); });
 
 const AX_X = new THREE.Vector3(1, 0, 0), AX_Y = new THREE.Vector3(0, 1, 0), AX_Z = new THREE.Vector3(0, 0, 1);
 const _dq = new THREE.Quaternion(), _fwd = new THREE.Vector3(), _up = new THREE.Vector3(), _right = new THREE.Vector3();
@@ -3324,9 +3536,95 @@ if (DEBUG) {
     triggerEject, startRoll, stepSim, profile, toggleGear, placeOnRunway, get landingGear() { return landingGear; }, get livery() { return livery; }, endSortie, sortie, renderHangar, replaySortie, debriefToBriefing,
     get mode() { return flightMode; }, get enemies() { return combatSys.enemies; }, get model() { return model; }, get ready() { return modelReady; } };
 }
+/* ============================================================================
+   BORDERLESS STANDBY HANGAR MENU
+   Keyboard / mouse drive the legacy buttons through .click() so every existing
+   persistence hook (SPW, livery, mode, weather, difficulty, patch) stays in one place.
+   ============================================================================ */
+const SB_DESC = {
+  launch: 'Sortie using the current setup.',
+  resume: 'Resume the current sortie.',
+  restart: 'Restart the current mission.',
+  mode: 'MISSION: 4-phase campaign. FURBALL: endless instant dogfight.',
+  diff: 'Missile cap, lock forgiveness and damage.',
+  spw: 'Special weapon carried beside the AIM-9s.',
+  liv: 'Squadron paint, applied to Warden-2 and Warden-3 too.',
+  wx: '← time of day   → weather',
+  ctrl: 'Keybinds, master and music volume.',
+  patch: 'What changed in this build.'
+};
+const sbMenuEl = document.getElementById('sbMenu');
+const sbRows = Array.from(sbMenuEl.querySelectorAll('.sbRow'));
+let sbActive = 0;
+const sbVisibleRows = () => sbRows.filter(r => !r.hidden);
+function sbSetActive(i) {
+  const vis = sbVisibleRows(); if (!vis.length) return;
+  sbActive = ((i % vis.length) + vis.length) % vis.length;
+  sbRows.forEach(r => r.classList.toggle('active', r === vis[sbActive]));
+  document.getElementById('sbDesc').textContent = SB_DESC[vis[sbActive].dataset.k] || '';
+}
+function sbMove(dir) { sbSetActive(sbActive + dir); }
+function syncSBCam() {
+  document.getElementById('sbCamOrbit').classList.toggle('active', !menuPreviewCockpit);
+  document.getElementById('sbCamCockpit').classList.toggle('active', menuPreviewCockpit);
+}
+function syncSBMenu(paused) {
+  const isPause = paused === undefined ? appMode === 'PAUSED' : paused;
+  document.getElementById('sbTitle').textContent = isPause ? '| PAUSED |' : '| STANDBY |';
+  sbMenuEl.querySelector('[data-k="launch"]').hidden = isPause;
+  sbMenuEl.querySelector('[data-k="resume"]').hidden = !isPause;
+  sbMenuEl.querySelector('[data-k="restart"]').hidden = !isPause;
+  document.getElementById('sbModeVal').textContent = selectedMode;
+  document.getElementById('sbDiffVal').textContent = DIFFICULTY_PRESETS[diffMode] ? diffMode : 'NORMAL';
+  document.getElementById('sbSpwVal').textContent = selectedSPW;
+  document.getElementById('sbLivVal').textContent = selectedLivery;
+  document.getElementById('sbPatchLabel').textContent = 'PATCH NOTES ' + BUILD_VERSION;
+  const wx = (document.getElementById('wxChip')?.textContent || '').replace(/^WX:\s*/, '').split(' // ')[0];
+  const tod = ((document.getElementById('todChip')?.textContent || '').match(/TIME:\s*([\d:]+)/) || [])[1] || '--:--';
+  document.getElementById('sbWxVal').textContent = wx + ' // ' + tod;
+  sbSetActive(sbActive); syncSBCam(); syncSBRoster(); syncSBBenchmark();
+}
+function sbAction(k, dir) {
+  switch (k) {
+    case 'launch': launchSortie(); break;
+    case 'resume': resumeSim(); break;
+    case 'restart': restartBtn.click(); break;
+    case 'mode': modeBtn.click(); break;
+    case 'diff': diffBtn.click(); break;
+    case 'spw': {
+      const ids = Object.keys(SPW), i = ids.indexOf(selectedSPW);
+      const id = ids[(i + (dir || 1) + ids.length) % ids.length];
+      selectedSPW = id; saveSPW(id); combatSys.setSPW(id); renderHangar(); break;
+    }
+    case 'liv': {
+      const ids = Object.keys(SQUADRON), i = ids.indexOf(selectedLivery);
+      const id = ids[(i + (dir || 1) + ids.length) % ids.length];
+      selectedLivery = id; saveLivery(id); profile.data.selectedLivery = id; setLivery(id); renderHangar(); break;
+    }
+    case 'wx': (dir < 0 ? todBtn : wxBtn).click(); break;
+    case 'ctrl': setCtrlOpen(true); break;
+    case 'patch': setPatchOpen(true); break;
+  }
+  syncSBMenu();
+}
+function sbConfirm() { const k = sbVisibleRows()[sbActive]?.dataset.k; if (k) sbAction(k, 1); }
+function sbCycle(dir) {
+  const k = sbVisibleRows()[sbActive]?.dataset.k; if (!k) return;
+  if (k === 'wx') { (dir < 0 ? todBtn : wxBtn).click(); syncSBMenu(); return; }
+  sbAction(k, dir);
+}
+for (const r of sbRows) {
+  r.addEventListener('mouseenter', () => sbSetActive(sbVisibleRows().indexOf(r)));
+  r.addEventListener('click', e => { e.stopPropagation(); sbSetActive(sbVisibleRows().indexOf(r)); sbConfirm(); });
+}
+for (const [id, legacy] of [['sbCamOrbit', camOrbitBtn], ['sbCamCockpit', camCockpitBtn]]) {
+  document.getElementById(id).addEventListener('click', e => { e.stopPropagation(); legacy.click(); syncSBCam(); });
+}
+syncSBMenu(false); syncCtrlUI();
+
 resetAircraft();
 hud.resize();
-if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; hBadge.style.display = 'block'; startSortie(); }   // test hook: skip the briefing (sortie tracked)
+if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; document.getElementById('sbUI').hidden = true; hBadge.style.display = 'block'; startSortie(); }   // test hook: skip the briefing (sortie tracked)
 else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 // Debug: ?debrief=CLEARED|FAILED[,score] ends the sortie at load + 3 s with that outcome (debrief / unlock checks).
 if (DEBUG && Q.has('debrief')) setTimeout(() => { const [o, s] = Q.get('debrief').split(','); if (s) combat.score = Number(s); endSortie((o || 'CLEARED').toUpperCase() === 'FAILED' ? 'FAILED' : 'CLEARED'); }, 3000);

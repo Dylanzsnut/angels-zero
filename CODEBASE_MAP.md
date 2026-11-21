@@ -1,3 +1,4 @@
+angel-zero/index.html -> borderless STANDBY UI: #sbMenu / .sbRow (sbMove/sbCycle/sbConfirm/sbAction/syncSBMenu/SB_DESC), #flightRoster + syncSBRoster(), #missionBenchmark + syncSBBenchmark(), #sbHints, #ctrlOverlay + setCtrlOpen()/syncCtrlUI(); legacy #menu kept in DOM with all ids/listeners; src/audio.js -> setMusicVolume() + angelsZero_musicVol
 angel-zero/src/patchnotes.js:5 -> PATCH_NOTES (newest-first releases); :88 -> renderPatchNotes(container)
 angel-zero/index.html:428 -> patchnotes.js import; :274 -> buildChip; :282 -> #patchOverlay modal CSS; :292 -> #patchBody scroll CSS; :432 -> briefing PATCH NOTES button; :1399 -> ESC dismiss; :1484 -> BUILD_VERSION / setPatchOpen / wheel+touchmove guards
 angel-zero/src/telemetry.js:4 -> TELE_MAX / EV constants; :8 -> fixed Float32Array buffers, tick()/event()/reset()

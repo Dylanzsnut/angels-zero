@@ -1476,6 +1476,27 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
     (< 25 MB); render cost 3.4-7.2 ms/frame (3.5-7.0 ms with radio active), well
     inside the 16.7 ms 60 FPS budget; zero JS/WebGL errors across three Edge CLI
     URLs. Every `?v=` tag bumped to s68a.
+- [x] **Borderless STANDBY hangar** *(build `s69a`, `index.html`, `src/audio.js`)*
+  - The legacy `#menu` stays in the DOM with every id and listener; its chrome is
+    transparent and all panel children are hidden. A new `| STANDBY |` nav
+    (top-left), `[ FLIGHT ]` roster (top-right), `[ MISSION BENCHMARK ]`
+    (bottom-right) and description + PC key hints + camera toggle (bottom-left)
+    sit directly over the full-viewport 3D F-15C.
+  - Arrow keys / mouse drive one active row; LAUNCH, MODE, DIFFICULTY, SPW,
+    LIVERY, WEATHER/TIME, CONTROLS & AUDIO and PATCH NOTES all route through the
+    legacy buttons or their functions. PAUSED swaps in RESUME SORTIE + RESTART.
+    SPW changes recolour the roster badge and the benchmark bars.
+  - `[ CONTROLS & AUDIO ]` modal receives the existing 26 bind rows and audio
+    widgets via `appendChild`; adds a persisted MUSIC slider
+    (`angelsZero_musicVol`) alongside MASTER, mute and the K toggle.
+  - Verified headless at 1280x720 and 1920x1080 (and a true 320 px CSS viewport):
+    no green panels, 0 JS/WebGL errors; ArrowDown x3 + ArrowRight cycles SPW
+    4AAM -> UGB (cyan -> amber badge, bars 85/35 -> 55/90); Enter on LAUNCH starts
+    the sortie; PAUSED rows, modal, slider persistence and Escape close all pass.
+    Render cost 2.2-4.6 ms/frame (median 2.7 ms), well inside 16.7 ms. Note:
+    headless Edge clamps a 375 px window to a 496 px CSS viewport, so the 375 px
+    screenshot is cropped by the harness, not by page overflow. Every `?v=` tag
+    bumped to s69a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /
