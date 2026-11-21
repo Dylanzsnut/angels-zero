@@ -9,8 +9,31 @@
   #gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
   #hud { position:fixed; inset:0; width:100vw; height:100vh; display:block; pointer-events:none; z-index:10; }
   #flybyPulse { position:fixed; inset:0; pointer-events:none; z-index:11; opacity:0; }
-  #crt { position:fixed; left:18px; top:150px; z-index:11; pointer-events:none; border:1px solid rgba(0,255,102,.55); background:#010a05; opacity:0; }
-  #crtCap { position:fixed; left:18px; top:252px; z-index:11; pointer-events:none; font-family:'Share Tech Mono',Consolas,monospace; font-size:11px; color:#00ff66; letter-spacing:1px; opacity:0; white-space:nowrap; }
+  /* Tactical radio CRT: a CSS-only portrait tube (no canvas, no per-frame JS). */
+  #crtBox { position:fixed; left:18px; top:150px; width:110px; height:140px; z-index:11; pointer-events:none;
+    border:1px solid var(--crt, #20FF70); background:#010a05; overflow:hidden; box-sizing:border-box;
+    box-shadow:0 0 14px rgba(0,0,0,.55), inset 0 0 18px rgba(0,0,0,.55); }
+  #crtBox[hidden] { display:none; }
+  #crtBox.crt-off { background:#000804; }
+  #crtBox.crt-off::before { content:'STANDBY / NO SIGNAL'; position:absolute; inset:auto 0 44% 0; text-align:center;
+    font:10px 'Share Tech Mono',Consolas,monospace; color:var(--crt); opacity:.55; letter-spacing:.5px; }
+  #activePortrait { display:block; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .22s linear; }
+  #activePortrait[hidden] { display:none; }
+  #activePortrait.crt-on { animation:crtIn .28s ease-out both; }
+  #activePortrait.crt-off { opacity:0; }
+  .crt-scanline { position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0.38) 0 1px, transparent 1px 3px);
+    animation:crtRoll 6s linear infinite, crtFlick 0.12s steps(2) infinite; }
+  .crt-tag { position:absolute; left:5px; bottom:3px; pointer-events:none; white-space:nowrap;
+    font:9px 'Share Tech Mono',Consolas,monospace; color:var(--crt); text-shadow:0 0 5px currentColor; }
+  @keyframes crtRoll { to { background-position:0 3px } }
+  @keyframes crtFlick { 50% { opacity:.86 } }
+  @keyframes crtIn {
+    0% { transform:translateX(-14px); opacity:0; filter:brightness(2.2) }
+    35% { opacity:1 } 45% { opacity:.3 }
+    60%, 100% { transform:none; opacity:1; filter:none }
+  }
+  #crtCap { position:fixed; left:18px; top:296px; z-index:11; pointer-events:none; font-family:'Share Tech Mono',Consolas,monospace; font-size:11px; color:var(--crt, #20FF70); letter-spacing:1px; opacity:0; white-space:nowrap; transition:opacity .22s linear; }
   /* NVG: dark halo + slight lift keeps green symbology crisp over the green tube image. */
   body.nvg #hud { filter: drop-shadow(0 0 1.2px rgba(0,0,0,.95)) drop-shadow(0 0 2.5px rgba(0,8,3,.85)) brightness(1.12); }
   #status { position:fixed; z-index:25; left:50%; top:62%; transform:translateX(-50%); color:#52ff9c; font-size:13px; font-weight:600; letter-spacing:3px; pointer-events:none; text-shadow:0 0 10px rgba(0,255,110,.55); }
@@ -428,7 +451,7 @@
 <body>
   <canvas id="gl"></canvas>
   <canvas id="hud"></canvas>
-  <canvas id="crt" width="96" height="96"></canvas>
+  <div id="crtBox" class="crt-box" hidden><img id="activePortrait" width="110" height="140" alt="" decoding="async" hidden><div class="crt-scanline"></div><div id="crtTag" class="crt-tag"></div></div>
   <div id="crtCap"></div>
   <div id="flybyPulse"></div>
   <div id="status">LOADING F-15...</div>
@@ -650,30 +673,30 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Bump the ?v= build tag on every release so CDN edges never mix module versions.
-import { createVFX } from './src/vfx.js?v=s70a';
-import { createBlastFX } from './src/blastfx.js?v=s70a';
-import { createHUD } from './src/hud.js?v=s70a';
-import { createCockpit3D } from './src/cockpit3d.js?v=s70a';
-import { createCombat } from './src/combat.js?v=s70a';
-import { createEjection } from './src/eject.js?v=s70a';
-import { createAudio } from './src/audio.js?v=s70a';
-import { createRadio } from './src/radio.js?v=s70a';
-import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s70a';
-import { createLivery } from './src/livery.js?v=s70a';
-import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s70a';
-import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s70a';
-import { createCanopyFX } from './src/canopy.js?v=s70a';
-import { createNVG } from './src/nvg.js?v=s70a';
-import { createWorld, WORLD } from './src/world.js?v=s70a';
-import { createSurfaces } from './src/surfaces.js?v=s70a';
-import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s70a';
-import { createFreeLook } from './src/freelook.js?v=s70a';
-import { createCanopyGlass } from './src/canopyglass.js?v=s70a';
-import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s70a';
-import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s70a';
-import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s70a';
-import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s70a';
-import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s70a';
+import { createVFX } from './src/vfx.js?v=s71a';
+import { createBlastFX } from './src/blastfx.js?v=s71a';
+import { createHUD } from './src/hud.js?v=s71a';
+import { createCockpit3D } from './src/cockpit3d.js?v=s71a';
+import { createCombat } from './src/combat.js?v=s71a';
+import { createEjection } from './src/eject.js?v=s71a';
+import { createAudio } from './src/audio.js?v=s71a';
+import { createRadio } from './src/radio.js?v=s71a';
+import { createProfile, LIVERIES, liveryById } from './src/profile.js?v=s71a';
+import { createLivery } from './src/livery.js?v=s71a';
+import { createGear, GEAR_H, GEAR_PTS } from './src/gear.js?v=s71a';
+import { createAtmosphere, PRESETS } from './src/atmosphere.js?v=s71a';
+import { createCanopyFX } from './src/canopy.js?v=s71a';
+import { createNVG } from './src/nvg.js?v=s71a';
+import { createWorld, WORLD } from './src/world.js?v=s71a';
+import { createSurfaces } from './src/surfaces.js?v=s71a';
+import { createWeather, WEATHER, WEATHER_ORDER } from './src/weather.js?v=s71a';
+import { createFreeLook } from './src/freelook.js?v=s71a';
+import { createCanopyGlass } from './src/canopyglass.js?v=s71a';
+import { DIFFICULTY_PRESETS, DIFFICULTY_ORDER, loadDifficulty, saveDifficulty } from './src/difficulty.js?v=s71a';
+import { SPW, SQUADRON, MODES, loadSPW, saveSPW, loadLivery, saveLivery, loadMode, saveMode } from './src/loadout.js?v=s71a';
+import { PATCH_NOTES, renderPatchNotes } from './src/patchnotes.js?v=s71a';
+import { RADIO_LINES, RADIO_BY_EVENT, RADIO_SPEAKERS, RADIO_HERO } from './src/radioScript.js?v=s71a';
+import { createTelemetry, EV, EV_MAX } from './src/telemetry.js?v=s71a';
 
 const Q = new URLSearchParams(location.search);
 // Persistent pilot record (localStorage `angels_zero_profile`) + live F-15C livery painter (set on GLB load).
@@ -1295,10 +1318,12 @@ function showMenuEl() {
   menuEl.hidden = false;
   hBadge.style.display = 'none';
   const sb = document.getElementById('sbUI'); if (sb) sb.hidden = false;
+  if (typeof syncCrtVisible === 'function') syncCrtVisible();
 }
 async function hideMenuEl() {
   hBadge.style.display = 'block';
   const sb = document.getElementById('sbUI'); if (sb) sb.hidden = true;
+  if (typeof syncCrtVisible === 'function') syncCrtVisible();
   if (canTransitionDisplay()) menuEl.hidden = true;
   else menuEl.setAttribute('data-closing', '');
   const animations = menuEl.getAnimations();
@@ -1420,6 +1445,7 @@ function endSortie(outcome) {
   st.rankInfo = computeRank(st, outcome);
   const res = profile.recordSortie({ outcome, ...st, rankOverride: st.rankInfo.rank });
   appMode = 'DEBRIEF';
+  if (typeof syncCrtVisible === 'function') syncCrtVisible();
   for (const k in keys) keys[k] = false;
   audio.suspend();
   hBadge.style.display = 'none';
@@ -1614,6 +1640,7 @@ function replaySortie(equipId) {
   const fp = viewBeforeEject || firstPerson;
   resetMission();
   appMode = 'PLAY';
+  syncCrtVisible();
   lastTime = performance.now();
   for (const k in keys) keys[k] = false;
   mouse.nx = 0; mouse.ny = 0;
@@ -2811,43 +2838,53 @@ let glFilter = '';
    8. VFX + HUD MODULES (src/vfx.js, src/hud.js)
    ============================================================================ */
 const audio = createAudio();
-/* ---- WARDEN CRT radio portrait (plain 2D canvas, no WebGL texture cost) ---- */
-const crtCanvas = document.getElementById('crt'), crtCap = document.getElementById('crtCap');
-const crtCtx = crtCanvas.getContext('2d', { willReadFrequently: true });
-let crtT = 0, crtVis = false, crtPaintT = 0, calloutT = -1e4, crtHold = 2780, crtCaption = '', crtTint = '#00ff66';
-function paintCrt(caption, tint = '#00ff66') {
-  const x = crtCtx;
-  x.fillStyle = '#010a05'; x.fillRect(0, 0, 96, 96);
-  x.strokeStyle = tint; x.lineWidth = 2;
-  x.beginPath(); x.arc(48, 43, 27, Math.PI, 0); x.stroke();               // helmet arc
-  x.fillStyle = tint === '#ff3b5c' ? 'rgba(255,59,92,0.20)' : 'rgba(0,255,102,0.20)';
-  x.fillRect(23, 38, 50, 13);                                              // visor band
-  x.beginPath(); x.moveTo(38, 60); x.lineTo(58, 60); x.lineTo(54, 73); x.lineTo(42, 73); x.closePath(); x.stroke(); // oxygen mask
-  x.fillStyle = 'rgba(0,0,0,0.35)';
-  for (let y = 0; y < 96; y += 2) x.fillRect(0, y, 96, 1);               // scanlines
-  crtCap.textContent = caption || '';
+/* ---- CRT radio portrait: preloaded images, CSS animation, zero per-frame work ---- */
+const crtBox = document.getElementById('crtBox'), activePortrait = document.getElementById('activePortrait');
+const crtCap = document.getElementById('crtCap'), crtTag = document.getElementById('crtTag');
+activePortrait.onerror = () => { activePortrait.hidden = true; };      // never show a broken-image icon
+const PORTRAIT = {
+  'AWACS': 'assets/portraits/awacs.webp',
+  'WARDEN-1': 'assets/portraits/warden1.webp',
+  'WARDEN-2': 'assets/portraits/warden2.webp',
+  'WARDEN-3': 'assets/portraits/warden3.webp',
+  'CRIMSON-1': 'assets/portraits/crimson1.webp',
+  'CRIMSON-2': 'assets/portraits/crimson2.webp'
+};
+const CRT_COL = { green: '#20FF70', red: '#FF2A3B' };
+const portraitImg = {};                                       // one Image per key, created once at boot
+for (const k in PORTRAIT) {
+  const im = new Image();
+  im.onerror = () => { portraitImg[k].failed = true; };
+  portraitImg[k] = im; im.src = PORTRAIT[k];
 }
-function updateCrt(now) {
-  if (!crtVis) return;
-  const age = now - crtT;
-  if (age < 180) {
-    crtCtx.fillStyle = 'rgba(190,255,215,0.4)';
-    for (let i = 0; i < 40; i++) crtCtx.fillRect((Math.random() * 96) | 0, (Math.random() * 96) | 0, 1, 1);
-  } else if (age < crtHold) {
-    if (now - crtPaintT > 50) { paintCrt(crtCaption, crtTint); crtPaintT = now; } // 20 fps max
-    crtCanvas.style.filter = `brightness(${(1 + Math.random() * 0.12 - 0.06).toFixed(3)})`;
-  } else {
-    crtVis = false; crtCanvas.style.opacity = '0'; crtCap.style.opacity = '0'; crtCanvas.style.filter = '';
-  }
-}
-function onWing(text, caption, tint, force = false, hold = 2780) {
+let crtTimer = 0, calloutT = -1e4, crtLastKey = '';
+function syncCrtVisible() { crtBox.hidden = appMode !== 'PLAY'; }
+function onWing(text, caption, tint, force = false, hold = 2600) {
   const now = performance.now();
-  if (!force && now - calloutT < 4000) return;                            // at most 1 / 4 s
-  calloutT = now; crtT = now; crtVis = true; crtPaintT = 0; crtHold = hold;
-  crtCanvas.style.opacity = '1'; crtCap.style.opacity = '1';
-  crtCaption = caption || ''; crtTint = tint || '#00ff66';
-  crtCap.style.color = crtTint;
-  paintCrt(crtCaption, crtTint);
+  let key = String(caption || '').toUpperCase();
+  if (key === 'OVERLORD' || key === 'OVERLORD-1') key = 'AWACS';
+  if (!force && key === crtLastKey && now - calloutT < 4000) return;      // throttle repeat calls, not a new speaker
+  calloutT = now; crtLastKey = key;
+  const red = /^CRIMSON/.test(key), col = red ? CRT_COL.red : CRT_COL.green;
+  const entry = PORTRAIT[key] ? portraitImg[key] : null;
+  crtBox.style.setProperty('--crt', col);
+  crtTag.textContent = red ? '▲ THREAT // ' + key : key;
+  crtCap.textContent = text || ''; crtCap.style.color = col; crtCap.style.opacity = '1';
+  crtBox.classList.remove('crt-off'); crtBox.classList.add('crt-on');
+  activePortrait.classList.remove('crt-on', 'crt-off');
+  if (entry && !entry.failed) {
+    activePortrait.hidden = false; activePortrait.src = PORTRAIT[key];
+    void activePortrait.offsetWidth;                                      // restart the entrance animation
+    activePortrait.classList.add('crt-on');
+  } else {
+    activePortrait.hidden = true;                                         // text-only fallback, no broken icon
+  }
+  clearTimeout(crtTimer);
+  crtTimer = setTimeout(() => {
+    crtBox.classList.remove('crt-on'); crtBox.classList.add('crt-off');
+    activePortrait.classList.remove('crt-on'); activePortrait.classList.add('crt-off');
+    crtCap.style.opacity = '0'; crtTag.textContent = '';
+  }, Math.max(400, hold));
   if (audio.ready) audio.radioSquelch();
 }
 
@@ -2928,7 +2965,6 @@ if (DEBUG) window.__frame = (dt = 1 / 60) => {
   const t0 = performance.now();
   simTime += dt; if (appMode === 'PLAY') stepSim(dt); updateCameraAndVisuals(dt, simTime);
   nvg.render(scene, camera, simTime, firstPerson); hud.draw();
-  updateCrt(performance.now());
   renderer.getContext().finish();
   return performance.now() - t0;
 };
@@ -3775,7 +3811,7 @@ syncSBMenu(false); syncCtrlUI();
 
 resetAircraft();
 hud.resize();
-if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; document.getElementById('sbUI').hidden = true; hBadge.style.display = 'block'; startSortie(); }   // test hook: skip the briefing (sortie tracked)
+if (Q.has('nointro')) { appMode = 'PLAY'; menuEl.hidden = true; document.getElementById('sbUI').hidden = true; hBadge.style.display = 'block'; syncCrtVisible(); startSortie(); }   // test hook: skip the briefing (sortie tracked)
 else { showMenu('title'); launchBtn.disabled = true; document.getElementById('menuHint').textContent = 'LOADING F-15...'; }
 // Debug: ?debrief=CLEARED|FAILED[,score] ends the sortie at load + 3 s with that outcome (debrief / unlock checks).
 if (DEBUG && Q.has('debrief')) setTimeout(() => { const [o, s] = Q.get('debrief').split(','); if (s) combat.score = Number(s); endSortie((o || 'CLEARED').toUpperCase() === 'FAILED' ? 'FAILED' : 'CLEARED'); }, 3000);

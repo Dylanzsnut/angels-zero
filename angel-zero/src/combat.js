@@ -8,8 +8,8 @@
 // burning wrecks that splash, scoring, waves, lock-on and threat warnings.
 
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIFFICULTY_PRESETS } from './difficulty.js?v=s70a';
-import { SPW } from './loadout.js?v=s70a';
+import { DIFFICULTY_PRESETS } from './difficulty.js?v=s71a';
+import { SPW } from './loadout.js?v=s71a';
 
 const NM = 1852, FT = 0.3048, G0 = 9.81;
 // Strike campaign: four jammer bunkers, one-shot-per-sortie, altitude-gated EW field.

@@ -1516,6 +1516,22 @@ Status legend: `[x]` implemented and verified · `[ ]` open — gaps listed.
   - High-AoA vapor is dense, camera buffet is rotation-only, and `stats()` /
     warp log report `psm: { active, alphaPk, spin, lastMan }`. Debug `?psm`,
     `?spintest`, `?rudder=a|d`. No per-frame `new THREE.*` in the new code.
+- [x] **CRT radio portraits** *(build `s71a`, `index.html`,
+  `scripts/make_portraits.py`, `assets/portraits/`)*
+  - `make_portraits.py` (Voicebox venv Pillow) crops the single source photo in
+    `art_src/portraits/` into six 128x160 webp phosphor portraits: Warden-1/2/3,
+    procedural AWACS operator, and Crimson-1/2 in `#FF2233` red with a threat
+    frame and corner brackets. All six total 19.9 KB (each < 4 KB).
+  - The old 96 px canvas silhouette loop is gone. `#crtBox` shows a preloaded
+    `<img>` with CSS scanlines, flicker and a sweep-in `crtIn` entrance; the
+    radio dispatcher picks the portrait from the speaker callsign, tints the
+    border/CRT caption green `#20FF70` or red `#FF2A3B`, and adds the
+    `▲ THREAT //` tag for Crimson. Idle state reads `STANDBY / NO SIGNAL`.
+  - Updates happen only in `onWing()` (class toggles + one timer) — zero
+    per-frame JS. A failed image hides the `<img>` and keeps the text caption.
+    Verified: 6/6 webp requests 200, green↔red swap, scanlines + idle state,
+    text-only fallback with portraits removed, zero JS/WebGL errors, frame cost
+    7.4 ms. Every `?v=` tag bumped to s71a.
 
 ## Pillar 5 — Ace Combat 8 HUD & Briefing UI (`src/hud.js`)
 - [x] **3rd person** — `-o-` reticle with velocity parallax, pointed SPEED /

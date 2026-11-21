@@ -3,6 +3,11 @@
 // The UI reads PATCH_NOTES[0].version for the briefing + button version chips.
 
 export const PATCH_NOTES = [
+  { version: 'v1.1.3', title: 'CRT RADIO PORTRAITS', bullets: [
+    'Live pilot portraits on radio calls: Wardens and AWACS in green phosphor, Crimson aces in a red threat frame.',
+    'Scanlines, flicker and a sweep-in entrance give every transmission a proper CRT feel.',
+    'Text-only fallback keeps captions readable if a portrait fails to load.'
+  ] },
   { version: 'v1.1.2', title: 'POST-STALL MANEUVERING', bullets: [
     'Decoupled AoA and post-stall aero: Cobra, Kulbit and Hammerhead with full over-the-top control authority.',
     'Flat spins with rudder/opposite-roll entry and neutral-stick recovery; apex pivot keeps slow vertical noses flying.',
